@@ -55,7 +55,7 @@ export function StoreManagerReview({ chain, hrefFor, openLine, onOpenLine }: Cha
   const ids = useMemo(() => new Set(all.map(l => l.rowId)), [all])
   const manager = personIn(chain, 'Store Manager', p => p.places.some(x => x.store === STORE))
   const header = chainHeader(chain, manager?.name ?? 'Store Manager', 'Store Manager', STORE)
-  const review = useChainReview(chain.proposals.filter(p => ids.has(p.line)))
+  const review = useChainReview(chain.proposals.filter(p => ids.has(p.line)), { chain, person: header.person, role: 'Store Manager' })
   const storeStep = useMemo(() => storeStepOf(all), [all])
   const arriving = openLine ? all.find(l => l.rowId === openLine) : undefined
 
@@ -226,7 +226,7 @@ export function StoreManagerReview({ chain, hrefFor, openLine, onOpenLine }: Cha
   ]
 
   return (
-    <ReviewFrame testId="store-manager-review" unsaved={chain.real} title={`${STORE} · ${all[0]?.storeName ?? ''} · ${header.month.label}`}
+    <ReviewFrame testId="store-manager-review" problem={review.problem} title={`${STORE} · ${all[0]?.storeName ?? ''} · ${header.month.label}`}
       status={`${header.person} · ${header.role} · sales to ${header.cutOff} · before tax`}
       all={all} scope={scope} kinds={KINDS_HERE} views={views} view={screen}
       onView={v => { setScreen(v); setOpen(null); if (v !== 'help') setHelp({ at: null, from: null }) }} />

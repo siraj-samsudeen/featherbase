@@ -179,3 +179,119 @@ describe('a day explanation (#1425)', () => {
     await expect(call('u_tara', { ...day, direction: '' })).rejects.toThrow(/below or above/)
   })
 })
+
+// #1442: who moves a forecast_change's status. Made-up people and lines: Tara leads Kids at North; Omar is North's
+// Store Manager, Sam another store's; Priya is the category head of Kids Jean (C1) only; Lena the Chief Executive.
+describe('a change on the managers\' pages (#1442)', () => {
+  const REACH = [
+    { full_name: 'Tara', role: 'Team Leader', place: 'North · Kids', reports_to: 'Omar', places_json: JSON.stringify([{ store: 'North', codes: ['C1'] }]) },
+    { full_name: 'Omar', role: 'Store Manager', place: 'North', reports_to: 'Lena', places_json: JSON.stringify([{ store: 'North', codes: null }]) },
+    { full_name: 'Sam', role: 'Store Manager', place: 'South', reports_to: 'Lena', places_json: JSON.stringify([{ store: 'South', codes: null }]) },
+    { full_name: 'Priya', role: 'Category Head', place: 'R', reports_to: 'Lena', places_json: '[]' },
+    { full_name: 'Lena', role: 'Chief Executive', place: 'Head Office', reports_to: '', places_json: '[]' },
+  ]
+  const LINES = [
+    { row_id: 'L1', run_id: 'r', store_code: '9001', store_short_code: 'North', subcategory_code: 'C1', division_name: 'D', subdivision_name: 'S', category_name: 'Kids Bottom',
+      subcategory_name: 'Kids Jean', forecast_month: '2026-12-01', forecast_value_before_tax: 100000, forecast_qty: 100 },
+    { row_id: 'L3', run_id: 'r', store_code: '9001', store_short_code: 'North', subcategory_code: 'C3', division_name: 'D', subdivision_name: 'S', category_name: 'Kids Top',
+      subcategory_name: 'Kids Shirt', forecast_month: '2026-12-01', forecast_value_before_tax: 50000, forecast_qty: 40 },
+  ]
+  const IDS: Record<string, string> = { u_tara: 'Tara', u_omar: 'Omar', u_sam: 'Sam', u_priya: 'Priya', u_lena: 'Lena' }
+  const ORG: Record<string, Record<string, unknown>[]> = {
+    Site: [{ row_id: 'North', name: 'North', operating_region: 'R' }],
+    Section: [{ row_id: 'N-Kids', name: 'Kids', site: 'North', floor: null, status: 'Active' }],
+    'Store Floor': [],
+    'Section Subcategory': [{ store: 'North', subcategory: 'C1', section: 'N-Kids', starts_on: '2026-01-01', ends_on: null }],
+    'Job Assignment': [{ employee: 'E1', job: 'Team Leader', site: 'North', section: 'N-Kids', starts_on: '2026-01-01', ends_on: null },
+      { employee: 'E2', job: 'Store Manager', site: 'North', section: null, starts_on: '2026-01-01', ends_on: null }],
+    'Merchandise Assignment': [{ employee: 'E3', responsibility: 'Category head', operating_region: 'R', category: null, subcategory: 'C1', starts_on: '2026-01-01', ends_on: null }],
+    Subcategory: [{ row_id: 'C1', category: 'K' }, { row_id: 'C3', category: 'K2' }],
+    Employee: [{ row_id: 'E1', name: 'Tara' }, { row_id: 'E2', name: 'Omar' }, { row_id: 'E3', name: 'Priya' }],
+  }
+  const match = (r: Record<string, unknown>, filters: [string, string, unknown][] = []) =>
+    filters.every(([c, op, v]) => (op === 'in' ? (v as unknown[]).includes(r[c]) : r[c] === v))
+  const baseTables = { list: async (table: string, args: { filters?: [string, string, unknown][] }) => (ORG[table] ?? []).filter(r => match(r, args.filters)) }
+  const list = async (table: string, args: { filters?: [string, string, unknown][] }) => {
+    const rows: Record<string, unknown>[] = table === 'forecasting.reach' ? REACH : table === 'forecasting.run_line' ? [{ row_id: 'x' }] : table === 'forecasting.forecast_line_month' ? LINES : []
+    return rows.filter(r => match(r, args.filters))
+  }
+  function call(table: 'forecasting.forecast_change' | 'forecasting.forecast_question', user: string, row: Record<string, unknown>, old?: Record<string, unknown>) {
+    const ctx: Context = { user, roles: user === 'Administrator' ? ['System Manager'] : ['Forecasting Member'], isNew: !old, row: { ...old, ...row }, old,
+      documents: { members: async () => Object.entries(IDS).map(([row_id, full_name]) => ({ row_id, full_name })), list }, baseTables,
+      reject(message: string): never { throw new Error(message) } }
+    return validators[table](ctx).then(() => ctx.row)
+  }
+  const ask = { run_id: 'r', store_code: '9001', category_name: 'Kids Bottom', subcategory_name: 'Kids Jean', change_scope: 'month', change_method: 'set_value',
+    set_value_before_tax: 80000, explanation: 'Stock arriving late', proposed_by: 'Tara', change_status: 'sent' }
+  const sent = { ...ask, row_id: 'CH-1', division_name: 'D', subdivision_name: 'S', proposed_by_role: 'Team Leader', engine_value_before_tax: 100000, changed_value_before_tax: 80000,
+    decided_by: null, decided_at: null, decision_note: null }
+
+  describe('a new change', () => {
+    it("is sent by a Team Leader, and final when a manager makes it", async () => {
+      await expect(call('forecasting.forecast_change', 'u_tara', ask)).resolves.toMatchObject({ change_status: 'sent', proposed_by_role: 'Team Leader' })
+      await expect(call('forecasting.forecast_change', 'u_omar', { ...ask, proposed_by: 'Omar' })).resolves.toMatchObject({ change_status: 'approved', proposed_by_role: 'Store Manager' })
+      await expect(call('forecasting.forecast_change', 'u_priya', { ...ask, proposed_by: 'Priya' })).resolves.toMatchObject({ change_status: 'approved', proposed_by_role: 'Category Head' })
+      await expect(call('forecasting.forecast_change', 'u_lena', { ...ask, proposed_by: 'Lena', subcategory_name: 'Kids Shirt' })).resolves.toMatchObject({ change_status: 'approved', proposed_by_role: 'Chief Executive' })
+    })
+    it("keeps a category head to their merchandise and a Store Manager to their store", async () => {
+      await expect(call('forecasting.forecast_change', 'u_priya', { ...ask, proposed_by: 'Priya', subcategory_name: 'Kids Shirt' })).rejects.toThrow(/outside it/)
+      await expect(call('forecasting.forecast_change', 'u_sam', { ...ask, proposed_by: 'Sam' })).rejects.toThrow(/outside it/)
+    })
+    it("lets an administrator viewing a manager's page make that manager's final change", async () => {
+      await expect(call('forecasting.forecast_change', 'Administrator', { ...ask, proposed_by: 'Omar', proposed_by_role: 'Store Manager' })).resolves.toMatchObject({ change_status: 'approved', proposed_by_role: 'Store Manager' })
+    })
+    it('lets a category head and the Chief Executive ask a question on a line they review', async () => {
+      const q = { run_id: 'r', store_code: '9001', category_name: 'Kids Bottom', subcategory_name: 'Kids Jean', question_text: 'Why so high?' }
+      await expect(call('forecasting.forecast_question', 'u_priya', { ...q, asked_by: 'Priya' })).resolves.toMatchObject({ question_status: 'open' })
+      await expect(call('forecasting.forecast_question', 'u_lena', { ...q, asked_by: 'Lena' })).resolves.toMatchObject({ question_status: 'open' })
+      await expect(call('forecasting.forecast_question', 'u_priya', { ...q, subcategory_name: 'Kids Shirt', asked_by: 'Priya' })).rejects.toThrow(/outside it/)
+    })
+  })
+
+  describe("a sent change's status", () => {
+    it("is approved or rejected by the store's Store Manager, who is stamped as deciding", async () => {
+      await expect(call('forecasting.forecast_change', 'u_omar', { change_status: 'approved', decided_by: 'Omar' }, sent)).resolves.toMatchObject({ change_status: 'approved', decided_by: 'Omar', decided_at: expect.any(String) })
+      await expect(call('forecasting.forecast_change', 'u_omar', { change_status: 'rejected', decided_by: 'Omar', decision_note: 'Stock is here' }, sent)).resolves.toMatchObject({ change_status: 'rejected' })
+    })
+    it('is not decided by a Team Leader, another store\'s manager, a category head or the Chief Executive', async () => {
+      await expect(call('forecasting.forecast_change', 'u_tara', { change_status: 'approved', decided_by: 'Tara' }, sent)).rejects.toThrow(/Store Manager decides/)
+      await expect(call('forecasting.forecast_change', 'u_sam', { change_status: 'approved', decided_by: 'Sam' }, sent)).rejects.toThrow(/outside it/)
+      await expect(call('forecasting.forecast_change', 'u_priya', { change_status: 'approved', decided_by: 'Priya' }, sent)).rejects.toThrow(/Store Manager decides/)
+      await expect(call('forecasting.forecast_change', 'u_lena', { change_status: 'rejected', decided_by: 'Lena', decision_note: 'no' }, sent)).rejects.toThrow(/Store Manager decides/)
+    })
+    it('is decided by the signed-in person only, never a name in the request', async () => {
+      await expect(call('forecasting.forecast_change', 'u_tara', { change_status: 'approved', decided_by: 'Omar' }, sent)).rejects.toThrow(/cannot act as Omar/)
+    })
+    it('is sent back only with a reason', async () => {
+      await expect(call('forecasting.forecast_change', 'u_omar', { change_status: 'rejected', decided_by: 'Omar', decision_note: ' ' }, sent)).rejects.toThrow(/Say why/)
+    })
+    it("is replaced by the Store Manager's own number, or by the Team Leader's next one", async () => {
+      await expect(call('forecasting.forecast_change', 'u_omar', { change_status: 'replaced', decided_by: 'Omar' }, sent)).resolves.toMatchObject({ change_status: 'replaced', decided_by: 'Omar' })
+      await expect(call('forecasting.forecast_change', 'u_tara', { change_status: 'replaced' }, sent)).resolves.toMatchObject({ change_status: 'replaced', decided_by: null })
+      await expect(call('forecasting.forecast_change', 'u_tara', { change_status: 'withdrawn' }, sent)).resolves.toMatchObject({ change_status: 'withdrawn' })
+      await expect(call('forecasting.forecast_change', 'u_omar', { change_status: 'withdrawn' }, sent)).rejects.toThrow(/cannot act as Tara/)
+    })
+    it('keeps its numbers: a change is never edited once sent', async () => {
+      await expect(call('forecasting.forecast_change', 'u_omar', { change_status: 'approved', decided_by: 'Omar', changed_value_before_tax: 1 }, sent)).rejects.toThrow(/cannot change once it is sent/)
+      await expect(call('forecasting.forecast_change', 'u_tara', { set_value_before_tax: 1 }, sent)).rejects.toThrow(/not edited/)
+    })
+  })
+
+  describe('a decision taken back (Undo)', () => {
+    const approved = { ...sent, change_status: 'approved', decided_by: 'Omar', decided_at: '2026-12-02T10:00:00Z' }
+    it('is taken back to sent only by the person who decided it', async () => {
+      await expect(call('forecasting.forecast_change', 'u_omar', { change_status: 'sent' }, approved)).resolves.toMatchObject({ change_status: 'sent', decided_by: null, decided_at: null })
+      await expect(call('forecasting.forecast_change', 'u_tara', { change_status: 'sent' }, approved)).rejects.toThrow(/cannot act as Omar/)
+      await expect(call('forecasting.forecast_change', 'u_omar', { change_status: 'sent' }, { ...approved, change_status: 'replaced' })).resolves.toMatchObject({ change_status: 'sent' })
+    })
+    it("lets a manager withdraw their own final change, but not a Team Leader's approved one", async () => {
+      const own = { ...sent, row_id: 'CH-2', proposed_by: 'Omar', proposed_by_role: 'Store Manager', change_status: 'approved' }
+      await expect(call('forecasting.forecast_change', 'u_omar', { change_status: 'withdrawn' }, own)).resolves.toMatchObject({ change_status: 'withdrawn' })
+      await expect(call('forecasting.forecast_change', 'u_tara', { change_status: 'withdrawn' }, approved)).rejects.toThrow(/taken back by the person who approved it/)
+      await expect(call('forecasting.forecast_change', 'u_omar', { change_status: 'sent' }, own)).rejects.toThrow(/never decided/)
+    })
+    it('never moves a withdrawn change', async () => {
+      await expect(call('forecasting.forecast_change', 'u_tara', { change_status: 'sent' }, { ...sent, change_status: 'withdrawn' })).rejects.toThrow(/cannot go from withdrawn to sent/)
+    })
+  })
+})
