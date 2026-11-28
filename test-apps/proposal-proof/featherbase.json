@@ -3,7 +3,7 @@
   "platformVersion": "2026-10",
   "name": "proposalproof",
   "title": "Change proposal proof",
-  "entryTable": "proposalproof.entry",
+  "entryTable": "proposalproof.entry", "rowRules": {"proposalproof.entry": { "kind": "all" }},
   "server": "server.mjs",
   "settings": [
     {

@@ -3,7 +3,7 @@
   "platformVersion": "2026-10",
   "name": "grantproof",
   "title": "Grant proof",
-  "entryTable": "grantproof.gift",
+  "entryTable": "grantproof.gift", "rowRules": {"grantproof.gift": { "kind": "all" }},
   "server": "server.mjs",
   "client": "client",
   "roles": [

@@ -3,7 +3,7 @@
   "platformVersion": "2026-10",
   "name": "actionproof",
   "title": "Transactional action proof",
-  "entryTable": "actionproof.work",
+  "entryTable": "actionproof.work", "rowRules": {"actionproof.work": { "kind": "all" }, "actionproof.destination": { "kind": "all" }},
   "server": "server.mjs",
   "settings": [{"name": "linked_tables", "required": false}],
   "actions": {"version": 2, "operations": {

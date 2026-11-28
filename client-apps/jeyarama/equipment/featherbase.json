@@ -8,6 +8,33 @@
   "server": "dist/server.mjs",
   "client": "dist/client",
   "entryTable": "equipment.asset",
+  "rowRules": {
+    "equipment.entity": { "kind": "all" },
+    "equipment.place": { "kind": "all" },
+    "equipment.asset_type": { "kind": "all" },
+    "equipment.asset": { "kind": "all" },
+    "equipment.job": { "kind": "all" },
+    "equipment.restoration": { "kind": "all" },
+    "equipment.count": { "kind": "all" },
+    "equipment.counter": { "kind": "all" },
+    "equipment.count_expected": { "kind": "all" },
+    "equipment.scan": { "kind": "all" },
+    "equipment.count_decision": { "kind": "all" },
+    "equipment.custody": { "kind": "all" },
+    "equipment.clearance": { "kind": "all" },
+    "equipment.transfer": { "kind": "all" },
+    "equipment.transfer_line": { "kind": "all" },
+    "equipment.asset_class": { "kind": "all" },
+    "equipment.tag_roll": { "kind": "all" },
+    "equipment.tag_event": { "kind": "all" },
+    "equipment.area_close": { "kind": "all" },
+    "equipment.sap_book": { "kind": "all" },
+    "equipment.sap_match": { "kind": "all" },
+    "equipment.exception": { "kind": "all" },
+    "equipment.control_setting": { "kind": "all" },
+    "equipment.finance_person": { "kind": "all" },
+    "equipment.count_line": { "kind": "all" }
+  },
   "actions": {
     "version": 2,
     "operations": {
@@ -390,9 +417,9 @@
       "toVersion": "0.2.1",
       "operations": []
     },
-    {"id": "switcher_summary", "fromVersion": "0.2.1", "toVersion": "0.2.2", "operations": []}
+    {"id": "switcher_summary", "fromVersion": "0.2.1", "toVersion": "0.2.2", "operations": []}, { "id": "row_rules", "fromVersion": "0.2.2", "toVersion": "0.2.3", "operations": [] }
   ],
-  "releaseNotes": [
+  "releaseNotes": [{ "version": "0.2.3", "changes": ["Each Table says who reads which of its rows"] }, 
     {"version": "0.2.2", "changes": ["The app switcher shows what this app is for, with its icon"]},
     {
       "version": "0.2.1",

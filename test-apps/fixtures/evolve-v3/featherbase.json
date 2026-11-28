@@ -3,7 +3,7 @@
   "platformVersion": "2026-10",
   "name": "evolve",
   "title": "Schema evolution proof",
-  "entryTable": "evolve.item",
+  "entryTable": "evolve.item", "rowRules": {"evolve.supplier": { "kind": "all" }, "evolve.item": { "kind": "all" }, "evolve.region": { "kind": "all" }},
   "roles": ["Evolve Clerk"],
   "tables": [
     {

@@ -3,7 +3,7 @@
   "platformVersion": "2026-10",
   "name": "dash",
   "title": "Dash stand-in",
-  "entryTable": "dash.note",
+  "entryTable": "dash.note", "rowRules": {"dash.note": { "kind": "all" }},
   "server": "server.mjs",
   "client": "client",
   "tables": [

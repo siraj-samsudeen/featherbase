@@ -21,6 +21,8 @@ const tables = [
 await writeFile(new URL('featherbase.json', import.meta.url), JSON.stringify({
   manifestVersion: 1, platformVersion: '2026-10', name: 'scopeproof', title: 'App scope proof',
   entryTable: 'scopeproof.object', server: 'server.mjs', tables,
+  // #1459: every row of each, to whoever is granted it; the app's own scope policies narrow its reads
+  rowRules: Object.fromEntries(tables.map(t => [t.name, { kind: 'all' }])),
   roles: ['Scope Reader', 'Scope Planner'],
   permissions: [
     ...tables.map(t => ({ table: t.name, role: 'All', can_read: true, can_create: true, can_write: true, can_delete: true })),

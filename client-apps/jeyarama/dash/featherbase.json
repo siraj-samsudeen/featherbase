@@ -8,6 +8,21 @@
   "server": "dist/server.mjs",
   "client": "dist/client",
   "entryTable": "dash.report",
+  "rowRules": {
+    "dash.report": { "kind": "all" },
+    "dash.report_bundle": { "kind": "all" },
+    "dash.report_bundle_member": { "kind": "all" },
+    "dash.report_access": { "kind": "all" },
+    "dash.business_role": { "kind": "all" },
+    "dash.business_role_permission": { "kind": "all" },
+    "dash.title_map": { "kind": "all" },
+    "dash.role_assignment": { "kind": "all" },
+    "dash.access_source": { "kind": "all" },
+    "dash.switch_over_log": { "kind": "all" },
+    "dash.permission_change": { "kind": "all" },
+    "dash.setup_run": { "kind": "all" },
+    "dash.access_decision": { "kind": "all" }
+  },
   "roles": [
     "Dash All-Stores Reader",
     "Dash Reader",
@@ -3640,7 +3655,7 @@
       "fromVersion": "0.13.47",
       "toVersion": "0.13.48",
       "operations": []
-    }
+    }, { "id": "row_rules", "fromVersion": "0.13.48", "toVersion": "0.13.49", "operations": [] }
   ],
   "baseTables": {
     "read": {

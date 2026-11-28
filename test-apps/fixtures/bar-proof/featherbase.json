@@ -3,7 +3,7 @@
   "platformVersion": "2026-10",
   "name": "barproof",
   "title": "Bar proof",
-  "entryTable": "barproof.note",
+  "entryTable": "barproof.note", "rowRules": {"barproof.note": { "kind": "all" }},
   "server": "server.mjs",
   "client": "client",
   "tables": [

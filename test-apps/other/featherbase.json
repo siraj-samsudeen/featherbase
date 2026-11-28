@@ -5,7 +5,7 @@
   "title": "Other tasks",
   "server": "server.mjs",
   "client": "client",
-  "entryTable": "other.task",
+  "entryTable": "other.task", "rowRules": {"other.task": { "kind": "all" }},
   "tables": [{
     "name": "other.task", "label": "Task", "module": "Other", "id_pattern": "prompt",
     "columns": [

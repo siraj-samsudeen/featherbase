@@ -3,7 +3,7 @@
   "platformVersion": "2026-10",
   "name": "ticketsink",
   "title": "Ticket sink (master sync tests)",
-  "entryTable": "ticketsink.ticket",
+  "entryTable": "ticketsink.ticket", "rowRules": {"ticketsink.ticket": { "kind": "all" }},
   "server": "server.mjs",
   "actions": {"version": 2, "operations": {
     "create": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}

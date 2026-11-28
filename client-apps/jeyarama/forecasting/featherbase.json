@@ -1161,6 +1161,12 @@
       "fromVersion": "0.14.0",
       "toVersion": "0.15.0",
       "operations": []
+    },
+    {
+      "id": "row_rules",
+      "fromVersion": "0.15.0",
+      "toVersion": "0.15.1",
+      "operations": []
     }
   ],
   "tables": [
@@ -4202,66 +4208,69 @@
       }
     }
   },
-  "scopedTables": [
-    {
-      "table": "forecasting.forecast_change",
-      "keys": [
-        "run_id",
-        "store_code",
-        "subcategory_name",
-        "subcategory_code",
-        "proposed_by",
-        "change_status"
-      ],
-      "filters": {
+  "rowRules": {
+    "forecasting.number": {
+      "kind": "all"
+    },
+    "forecasting.decision": {
+      "kind": "all"
+    },
+    "forecasting.review_question": {
+      "kind": "all"
+    },
+    "forecasting.idea": {
+      "kind": "all"
+    },
+    "forecasting.idea_history": {
+      "kind": "all"
+    },
+    "forecasting.review_note": {
+      "kind": "all"
+    },
+    "forecasting.forecaster": {
+      "kind": "all"
+    },
+    "forecasting.run_line": {
+      "kind": "all"
+    },
+    "forecasting.reach": {
+      "kind": "all"
+    },
+    "forecasting.explanation": {
+      "kind": "all"
+    },
+    "forecasting.day_explanation": {
+      "kind": "places",
+      "columns": {
         "store": "store_code",
         "subcategory": "subcategory_code"
       }
     },
-    {
-      "table": "forecasting.forecast_line_review",
-      "keys": [
-        "run_id",
-        "store_code",
-        "subcategory_name",
-        "subcategory_code",
-        "reviewer",
-        "forecast_month"
-      ],
-      "filters": {
+    "forecasting.change_reason": {
+      "kind": "all"
+    },
+    "forecasting.forecast_change": {
+      "kind": "places",
+      "columns": {
         "store": "store_code",
         "subcategory": "subcategory_code"
       }
     },
-    {
-      "table": "forecasting.forecast_question",
-      "keys": [
-        "run_id",
-        "store_code",
-        "subcategory_name",
-        "subcategory_code",
-        "asked_by"
-      ],
-      "filters": {
+    "forecasting.forecast_line_review": {
+      "kind": "places",
+      "columns": {
         "store": "store_code",
         "subcategory": "subcategory_code"
       }
     },
-    {
-      "table": "forecasting.day_explanation",
-      "keys": [
-        "run_id",
-        "store_code",
-        "subcategory_name",
-        "subcategory_code",
-        "section_name"
-      ],
-      "filters": {
+    "forecasting.forecast_question": {
+      "kind": "places",
+      "columns": {
         "store": "store_code",
         "subcategory": "subcategory_code"
       }
     }
-  ],
+  },
   "orgChartRoles": [
     "Forecasting Member"
   ]
