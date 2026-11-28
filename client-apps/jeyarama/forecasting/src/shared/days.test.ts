@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { causesFor, causesProblem, directionOf, tagOf } from '../causes'
 import { dayIsOff, daysOf, edgeOf, explanationFor, explanationOf, lineIsOff, loadedTo, subDaysFrom, type ActualsDayRow, type ForecastDayRow } from './days'
 
-const fc = (sub: string, day: number, v: number): ForecastDayRow => ({ store_code: 'S', subcategory_code: sub, forecast_date: `2026-11-${String(day).padStart(2, '0')}`, forecast_value_before_tax: v })
-const sold = (sub: string, day: number, v: number, asOf = '2026-11-03'): ActualsDayRow => ({ store_code: 'S', subcategory_code: sub, sales_date: `2026-11-${String(day).padStart(2, '0')}`, sales_value_before_tax: v, actuals_as_of_date: asOf })
-const lines = [{ name: 'A', code: 'A', category: 'C', section: 'Sec' }, { name: 'B', code: 'B', category: 'C', section: 'Sec' }]
+const fc = (sub: string, day: number, v: number): ForecastDayRow => ({ store_code: 'S', subcategory_name: sub, forecast_date: `2026-11-${String(day).padStart(2, '0')}`, forecast_value_before_tax: v })
+const sold = (sub: string, day: number, v: number, asOf = '2026-11-03'): ActualsDayRow => ({ store_code: 'S', subcategory_name: sub, sales_date: `2026-11-${String(day).padStart(2, '0')}`, sales_value_before_tax: v, actuals_as_of_date: asOf })
+const lines = [{ name: 'A', category: 'C', section: 'Sec' }, { name: 'B', category: 'C', section: 'Sec' }]
 
 describe('the day review (#1425)', () => {
   it('reads how far sales are loaded from the copies', () => {

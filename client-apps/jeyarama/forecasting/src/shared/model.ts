@@ -43,16 +43,18 @@ export interface RunRow { run_id: string; purpose: string; origin_date: string; 
 /** One subcategory's month in the Run: the copy of the warehouse's fb_forecast_explanation_month (data-warehouse #4980). */
 export interface LineMonthRow {
   row_id: string; run_id: string; store_code: string; store_short_code: string; division_name?: string; subdivision_name?: string; category_name: string; subcategory_name: string
-  /** The subcategory's SAP code (material group): the key the copies join on, and the org chart's link. */
-  subcategory_code: string
+  /** The subcategory's SAP code (material group): the org chart's link and the item feeds' key. Null for a line the
+   *  Run merged from several codes. */
+  subcategory_code: string | null
   forecast_value_before_tax: Num; forecast_qty: Num; seasonal_factor: Num; growth_factor: Num
   from_recent_selling: Num; seasonal_step_on_top: Num; from_last_year: Num; adjustments: Num
   rebalanced_within_category?: Num; price_and_rounding?: Num
   own_value_b1: Num; own_value_b2: Num; own_value_b3: Num; own_value_b4: Num; own_value_b5: Num; own_value_b6: Num
   adds_value_b1: Num; adds_value_b2: Num; adds_value_b3: Num; adds_value_b4: Num; adds_value_b5: Num; adds_value_b6: Num
 }
-/** The copies the screen reads beside the Run's lines, keyed by store and subcategory code. */
-interface ByLine { store_code: string; subcategory_code: string }
+/** The copies the screen reads beside the Run's lines, keyed by store and subcategory name: every line feed names its
+ *  lines from the Run's own hierarchy, and a line merged from several codes has no single code (data-warehouse #4980). */
+interface ByLine { store_code: string; subcategory_name: string }
 export interface SalesRow extends ByLine { window_name: string; sales_value_before_tax: Num; sales_qty: Num }
 export interface PlanRow extends ByLine { plan_month: string; plan_value_before_tax: Num; plan_qty: Num }
 /** One day of another model's forecast (fb_other_models), summed per subcategory for the month. */
@@ -63,14 +65,14 @@ const n = (v: Num) => (v == null || v === '' ? 0 : Number(v))
 
 /** The section's lines for one store, built exactly as the prototype's data was (team_leader_tables.py build). */
 export function linesFrom({ lines, sales, plans, others, bands }: CopiedRows, store: string): Line[] {
-  const at = <T extends ByLine>(rows: T[], code: string) => rows.filter(r => r.store_code === store && r.subcategory_code === code)
+  const at = <T extends ByLine>(rows: T[], name: string) => rows.filter(r => r.store_code === store && r.subcategory_name === name)
   return lines.filter(l => l.store_code === store).map(l => {
-    const sub = l.subcategory_name, code = l.subcategory_code
-    const win = Object.fromEntries(at(sales, code).map(s => [s.window_name, s]))
+    const sub = l.subcategory_name, code = l.subcategory_code ?? undefined
+    const win = Object.fromEntries(at(sales, sub).map(s => [s.window_name, s]))
     const v = (w: string) => n(win[w]?.sales_value_before_tax), q = (w: string) => n(win[w]?.sales_qty)
-    const plan = at(plans, code)[0]
+    const plan = at(plans, sub)[0]
     // another model's month: its days summed; a model with no row for the subcategory has no figure
-    const model = (m: string) => at(others, code).filter(o => o.model === m).reduce((t, o) => t + n(o.forecast_value_before_tax), 0)
+    const model = (m: string) => at(others, sub).filter(o => o.model === m).reduce((t, o) => t + n(o.forecast_value_before_tax), 0)
     const row = l as unknown as Record<string, Num>
     const bases = BASIS_CODES.map((code, i): Base => {
       const own = row[`own_value_b${i + 1}`], adds = n(row[`adds_value_b${i + 1}`])
@@ -89,7 +91,7 @@ export function linesFrom({ lines, sales, plans, others, bands }: CopiedRows, st
       n91: v('last_91_days'), y91: v('same_91_days_last_year'),
       aop: n(plan?.plan_value_before_tax), aq: n(plan?.plan_qty), xgb: model('XGBoost'), lgbm: model('LightGBM'),
       r31: l28 * 31 / 28, r31q: l28q * 31 / 28,
-      ...(bands ? { bands: bandsOf(bands, store, code, n(l.forecast_value_before_tax), n(l.forecast_qty)) } : {}),
+      ...(bands ? { bands: (code ? bandsOf(bands, store, code, n(l.forecast_value_before_tax), n(l.forecast_qty)) : []) } : {}),
     }
   })
 }

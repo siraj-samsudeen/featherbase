@@ -6,10 +6,10 @@ import { linesOf, type Direction } from '../causes'
 type Num = number | string | null | undefined
 const n = (v: Num) => (v == null || v === '' ? 0 : Number(v))
 
-export interface ForecastDayRow { store_code: string; subcategory_code: string; forecast_date: string; forecast_value_before_tax: Num }
-export interface ActualsDayRow { store_code: string; subcategory_code: string; sales_date: string; sales_value_before_tax: Num; actuals_as_of_date?: string | null }
-export const FORECAST_DAY_FIELDS = ['store_code', 'subcategory_code', 'forecast_date', 'forecast_value_before_tax']
-export const ACTUALS_DAY_FIELDS = ['store_code', 'subcategory_code', 'sales_date', 'sales_value_before_tax', 'actuals_as_of_date']
+export interface ForecastDayRow { store_code: string; subcategory_name: string; forecast_date: string; forecast_value_before_tax: Num }
+export interface ActualsDayRow { store_code: string; subcategory_name: string; sales_date: string; sales_value_before_tax: Num; actuals_as_of_date?: string | null }
+export const FORECAST_DAY_FIELDS = ['store_code', 'subcategory_name', 'forecast_date', 'forecast_value_before_tax']
+export const ACTUALS_DAY_FIELDS = ['store_code', 'subcategory_name', 'sales_date', 'sales_value_before_tax', 'actuals_as_of_date']
 
 /** A day more than this far off Feather Forecast, either way, wants a reason. */
 export const OFF_POINTS = 10
@@ -24,13 +24,13 @@ export interface DayFigures { day: number; fc: number; sold: number | null; off:
 const pct = (sold: number, fc: number) => (fc ? (sold / fc - 1) * 100 : 0)
 
 /** Each subcategory's month, from the day copies: up to the last loaded day; a loaded day with no sales row sold 0. */
-export function subDaysFrom(lines: { name: string; code: string; category: string; section: string }[], fc: ForecastDayRow[], sold: ActualsDayRow[], store: string, days: number, loadedTo: number): SubDays[] {
+export function subDaysFrom(lines: { name: string; category: string; section: string }[], fc: ForecastDayRow[], sold: ActualsDayRow[], store: string, days: number, loadedTo: number): SubDays[] {
   return lines.map(l => {
     const f = Array(days).fill(0) as number[], s = Array.from({ length: days }, (_, i) => (i < loadedTo ? 0 : null)) as (number | null)[]
-    for (const r of fc) if (r.store_code === store && r.subcategory_code === l.code) f[Number(r.forecast_date.slice(8, 10)) - 1] += n(r.forecast_value_before_tax)
+    for (const r of fc) if (r.store_code === store && r.subcategory_name === l.name) f[Number(r.forecast_date.slice(8, 10)) - 1] += n(r.forecast_value_before_tax)
     for (const r of sold) {
       const d = Number(r.sales_date.slice(8, 10)) - 1
-      if (r.store_code === store && r.subcategory_code === l.code && d < loadedTo) s[d] = (s[d] ?? 0) + n(r.sales_value_before_tax)
+      if (r.store_code === store && r.subcategory_name === l.name && d < loadedTo) s[d] = (s[d] ?? 0) + n(r.sales_value_before_tax)
     }
     return { name: l.name, category: l.category, section: l.section, fc: f, sold: s }
   })

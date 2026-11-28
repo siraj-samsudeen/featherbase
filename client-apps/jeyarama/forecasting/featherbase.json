@@ -2742,12 +2742,12 @@
       "keys": [
         "run_id",
         "store_code",
-        "subcategory_code"
+        "subcategory_name"
       ],
       "rowKey": [
         "run_id",
         "store_code",
-        "subcategory_code"
+        "subcategory_name"
       ],
       "filters": {
         "store": "store_code"
@@ -2833,13 +2833,13 @@
       "keys": [
         "run_id",
         "store_code",
-        "subcategory_code",
+        "subcategory_name",
         "forecast_date"
       ],
       "rowKey": [
         "run_id",
         "store_code",
-        "subcategory_code",
+        "subcategory_name",
         "forecast_date"
       ],
       "filters": {
@@ -2929,13 +2929,13 @@
       "keys": [
         "run_id",
         "store_code",
-        "subcategory_code",
+        "subcategory_name",
         "window_name"
       ],
       "rowKey": [
         "run_id",
         "store_code",
-        "subcategory_code",
+        "subcategory_name",
         "window_name"
       ],
       "filters": {
@@ -3021,14 +3021,14 @@
       "keys": [
         "run_id",
         "store_code",
-        "subcategory_code",
+        "subcategory_name",
         "plan_month",
         "revision_id"
       ],
       "rowKey": [
         "run_id",
         "store_code",
-        "subcategory_code",
+        "subcategory_name",
         "plan_month",
         "revision_id"
       ],
@@ -3120,14 +3120,14 @@
         "official_run_id",
         "model",
         "store_code",
-        "subcategory_code",
+        "subcategory_name",
         "forecast_date"
       ],
       "rowKey": [
         "official_run_id",
         "model",
         "store_code",
-        "subcategory_code",
+        "subcategory_name",
         "forecast_date"
       ],
       "filters": {
@@ -3212,13 +3212,13 @@
       "keys": [
         "run_id",
         "store_code",
-        "subcategory_code",
+        "subcategory_name",
         "sales_date"
       ],
       "rowKey": [
         "run_id",
         "store_code",
-        "subcategory_code",
+        "subcategory_name",
         "sales_date"
       ],
       "filters": {
@@ -3331,13 +3331,13 @@
       "keys": [
         "run_id",
         "store_code",
-        "subcategory_code",
+        "subcategory_name",
         "price_band"
       ],
       "rowKey": [
         "run_id",
         "store_code",
-        "subcategory_code",
+        "subcategory_name",
         "price_band"
       ],
       "filters": {
@@ -3365,7 +3365,7 @@
     {
       "name": "stock_band",
       "source": "warehouse",
-      "query": "select region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, price_band, price_band_order, stock_qty, stock_value_at_cost, items_in_stock, stock_as_of, sales_value_before_tax_28d, sales_qty_28d, avg_daily_qty_28d, days_of_cover, sales_as_of_date from marts_forecasting.main.fb_stock_band",
+      "query": "select region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, price_band, price_band_order, stock_qty, stock_value_at_cost, items_in_stock, stock_as_of, sales_value_before_tax_28d, sales_qty_28d, avg_daily_qty_28d, days_of_cover, sales_as_of_date from marts_forecasting.main.fb_stock_band where subcategory_code is not null",
       "columns": [
         {
           "name": "region",
@@ -3552,14 +3552,14 @@
       "keys": [
         "run_id",
         "store_code",
-        "subcategory_code",
+        "subcategory_name",
         "price_band",
         "item_rank"
       ],
       "rowKey": [
         "run_id",
         "store_code",
-        "subcategory_code",
+        "subcategory_name",
         "price_band",
         "item_rank"
       ],

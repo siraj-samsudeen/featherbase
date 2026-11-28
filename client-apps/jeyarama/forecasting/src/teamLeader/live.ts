@@ -41,7 +41,7 @@ export function orgOf(store: string): Promise<OrgChart> {
   return orgs.get(store)!
 }
 /** A subcategory's section today, by its code: the Section's row id, or null when the org chart places it nowhere. */
-const sectionOf = (org: OrgChart, code: string) => org.subcategories[code]?.section ?? null
+const sectionOf = (org: OrgChart, code: string | null) => (code ? org.subcategories[code]?.section ?? null : null)
 
 /** One section of a store for the landing page: where it is, who reviews it, and how far the review has got. */
 export interface SectionSummary { floor: string; floorOrder: number; section: string; teamLeaders: string[]; subcategories: number; reviewed: number; fc: number }
@@ -92,19 +92,21 @@ export async function loadSection(viewer: Viewer): Promise<Section | null> {
   const at = org.sections.find(s => s.name === section)
   const rows = await listWhere<LineMonthRow & { row_id: string }>('forecasting.forecast_line_month', LINE_FIELDS,
     [['store_short_code', '=', store], ['run_id', 'in', runs.map(r => r.run_id)]])
-  const inSection = (code: string) => (section === NO_SECTION ? !org.sections.some(s => s.id === sectionOf(org, code)) : !!at && sectionOf(org, code) === at.id)
+  const inSection = (code: string | null) => (section === NO_SECTION ? !org.sections.some(s => s.id === sectionOf(org, code)) : !!at && sectionOf(org, code) === at.id)
   const run = runs.find(r => rows.some(l => l.run_id === r.run_id && inSection(l.subcategory_code)))
   if (!run) return null
-  const mine = rows.filter(l => l.run_id === run.run_id && inSection(l.subcategory_code)), storeCode = mine[0].store_code, codes = mine.map(l => l.subcategory_code)
-  const near = [['store_code', '=', storeCode], ['subcategory_code', 'in', codes]] as [string, string, unknown][]
+  const mine = rows.filter(l => l.run_id === run.run_id && inSection(l.subcategory_code)), storeCode = mine[0].store_code, names = mine.map(l => l.subcategory_name)
+  // the line feeds name their lines as the Run does; today's stock is keyed by each item's own code
+  const near = [['store_code', '=', storeCode], ['subcategory_name', 'in', names]] as [string, string, unknown][]
   const ofRun = [...near, ['run_id', '=', run.run_id]] as [string, string, unknown][]
+  const coded = [['store_code', '=', storeCode], ['subcategory_code', 'in', mine.flatMap(l => (l.subcategory_code ? [l.subcategory_code] : []))]] as [string, string, unknown][]
   const [sales, plans, others, mix, stock, items] = await Promise.all([
-    listWhere<SalesRow>('forecasting.sales_reference', ['store_code', 'subcategory_code', 'window_name', 'sales_value_before_tax', 'sales_qty'], ofRun),
-    listWhere<PlanRow>('forecasting.annual_plan_line', ['store_code', 'subcategory_code', 'plan_month', 'plan_value_before_tax', 'plan_qty'], [...ofRun, ['plan_month', '=', run.horizon_from.slice(0, 10)]]),
-    listWhere<OtherModelRow>('forecasting.other_model_day', ['model', 'store_code', 'subcategory_code', 'forecast_value_before_tax'], [...near, ['official_run_id', '=', run.run_id]]),
+    listWhere<SalesRow>('forecasting.sales_reference', ['store_code', 'subcategory_name', 'window_name', 'sales_value_before_tax', 'sales_qty'], ofRun),
+    listWhere<PlanRow>('forecasting.annual_plan_line', ['store_code', 'subcategory_name', 'plan_month', 'plan_value_before_tax', 'plan_qty'], [...ofRun, ['plan_month', '=', run.horizon_from.slice(0, 10)]]),
+    listWhere<OtherModelRow>('forecasting.other_model_day', ['model', 'store_code', 'subcategory_name', 'forecast_value_before_tax'], [...near, ['official_run_id', '=', run.run_id]]),
     // By Price Band: the split over this Run's 28 days, and today's stock
     listWhere<BandMixRow>('forecasting.price_band_mix', MIX_FIELDS, ofRun),
-    listWhere<StockBandRow>('forecasting.stock_band', STOCK_FIELDS, near),
+    listWhere<StockBandRow>('forecasting.stock_band', STOCK_FIELDS, coded),
     listWhere<TopItemRow>('forecasting.price_band_top_item', ITEM_FIELDS, ofRun),
   ])
   const lines = linesFrom({ lines: mine, sales, plans, others, bands: { mix, stock, items } }, storeCode)
@@ -120,7 +122,7 @@ export async function loadFindings(section: Section): Promise<{ findings: Findin
   if (!header.stockAsOf) return null
   // the items' 7/14/28 days end on the store's last complete day (refreshed each morning), not the Run's origin
   const health = await listWhere<ItemHealthRow & { sales_as_of_date: string | null; stock_as_of: string | null }>('forecasting.item_health', [...ITEM_HEALTH_FIELDS, 'sales_as_of_date', 'stock_as_of'],
-    [['store_short_code', 'in', Object.keys(org.stores).length ? Object.keys(org.stores) : [header.store]], ['subcategory_code', 'in', lines.map(l => l.code ?? '')]])
+    [['store_short_code', 'in', Object.keys(org.stores).length ? Object.keys(org.stores) : [header.store]], ['subcategory_code', 'in', lines.flatMap(l => (l.code ? [l.code] : []))]])
   const here = health.filter(r => r.store_code === storeCode), others = health.filter(r => r.store_code !== storeCode)
   if (!here.length) return null
   const month = { name: header.month.name, days: header.month.days, left: daysLeft(header.stockAsOf, header.month) }

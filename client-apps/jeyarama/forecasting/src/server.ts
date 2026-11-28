@@ -357,7 +357,6 @@ export const actions = {}
  *  the review itself asks again (carry.ts). The Store Manager is told once a job can read the org chart (#1428). */
 interface JobContext {
   newLoad: { moves(o: { by: string[]; measure: string; threshold?: number }): Promise<{ group: Record<string, string | null>; before: string | null; after: string | null }[]> } | null
-  datasets: { active(name: string, filters?: Record<string, unknown>): Promise<Record<string, unknown>[]> }
   documents: { list(table: string, args?: { filters?: [string, '=' | 'in', unknown][]; limit?: number }): Promise<Record<string, unknown>[]> }
   people: { list(): Promise<{ person: string; full_name: string | null }[]>; notify(person: string, message: { subject: string; body: string; email?: boolean; path?: string }): Promise<boolean> }
   setResult(s: string): void
@@ -365,20 +364,18 @@ interface JobContext {
 export const jobs = {
   async carry_changes(ctx: JobContext) {
     if (!ctx.newLoad) return
-    const moves = (await ctx.newLoad.moves({ by: ['forecast_month', 'store_code', 'subcategory_code'], measure: 'forecast_value_before_tax', threshold: 10 }))
+    const moves = (await ctx.newLoad.moves({ by: ['forecast_month', 'store_code', 'subcategory_name'], measure: 'forecast_value_before_tax', threshold: 10 }))
       .filter(m => m.before != null && m.after != null)
     if (!moves.length) { ctx.setResult('Nothing moved by more than 10%'); return }
-    const lines = await ctx.datasets.active('forecast_line_month')
-    const names = Object.fromEntries(lines.map(l => [`${String(l.store_code)}:${String(l.subcategory_code)}`, String(l.subcategory_name)]))
     const people = Object.fromEntries((await ctx.people.list()).filter(p => p.full_name).map(p => [p.full_name!, p.person]))
     let told = 0
     for (const month of [...new Set(moves.map(m => String(m.group.forecast_month).slice(0, 10)))]) {
       const mine = moves.filter(m => String(m.group.forecast_month).slice(0, 10) === month)
-        .map(m => ({ store_code: String(m.group.store_code), subcategory_code: String(m.group.subcategory_code), before: Number(m.before), after: Number(m.after) }))
+        .map(m => ({ store_code: String(m.group.store_code), subcategory_name: String(m.group.subcategory_name), before: Number(m.before), after: Number(m.after) }))
       const answers = (await ctx.documents.list('forecasting.forecast_line_review', { filters: [['forecast_month', '=', month],
-        ['subcategory_name', 'in', [...new Set(mine.map(m => names[`${m.store_code}:${m.subcategory_code}`]).filter(Boolean))]]], limit: 50000 }))
+        ['subcategory_name', 'in', [...new Set(mine.map(m => m.subcategory_name))]]], limit: 50000 }))
         .map(r => ({ store_code: String(r.store_code), subcategory_name: String(r.subcategory_name), reviewer: String(r.reviewer), forecast_month: r.forecast_month == null ? null : String(r.forecast_month).slice(0, 10) }))
-      for (const n of noticesFor(mine, names, answers, month, people, {})) if (await ctx.people.notify(n.person, { subject: n.subject, body: n.body, email: false, path: n.path })) told++
+      for (const n of noticesFor(mine, answers, month, people, {})) if (await ctx.people.notify(n.person, { subject: n.subject, body: n.body, email: false, path: n.path })) told++
     }
     ctx.setResult(`${moves.length} subcategories moved by more than 10%; ${told} people told`)
   },
