@@ -87,3 +87,15 @@ describe('the steps after the blend, in two kinds (#1419, 27-Nov-2026)', () => {
     expect(signedShare(-1, 108166)).toBe('0%')
   })
 })
+
+import { shareOf } from './levels'
+describe('Share: a row against its siblings (Siraj, 28-Nov)', () => {
+  it('is a whole-number %, "<1%" under one percent, "—" when the siblings come to nothing', () => {
+    expect(shareOf(30, 100)).toBe('30%')
+    expect(shareOf(100, 100)).toBe('100%')
+    expect(shareOf(0.4, 100)).toBe('<1%')
+    expect(shareOf(0, 100)).toBe('0%')
+    expect(shareOf(-5, 100)).toBe('−5%')
+    expect(shareOf(5, 0)).toBe('—')
+  })
+})
