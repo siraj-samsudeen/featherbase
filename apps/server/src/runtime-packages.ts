@@ -20,7 +20,7 @@ import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
 import { roleDefaultsDeclaration, validateRoleDefaults } from './app-role-bindings'
 import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './app-datasets'
-import { forgetAppCopies, registerAppCopies, syncAppCopies, validateAppCopies } from './read-only-copy'
+import { appCopyTables, forgetAppCopies, registerAppCopies, syncAppCopies, validateAppCopies } from './read-only-copy'
 import { glossaryDeclaration, syncAppGlossary, validateGlossary } from './glossary'
 import { sql, withTransaction, usingTransaction } from './db'
 import { logActivity } from './audit'
@@ -581,7 +581,8 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
       if (!names.has(table) || typeof validator !== 'function')
         throw new Error('Validators must target owned Tables')
       doc_events[table] = { before_validate: (ctx) => usingTransaction(ctx.tx, async () => {
-        const access = callerDocuments(manifest.name, [...names], ctx.user)
+        // #1418: a validator reads the app's read-only copies too (the current load), never writes them.
+        const access = callerDocuments(manifest.name, [...names], ctx.user, appCopyTables(manifest.name))
         try {
           await (validator as Validator)({
             row: ctx.row, old: ctx.old, user: ctx.user, roles: await callerRoles(ctx.user), isNew: ctx.isNew,

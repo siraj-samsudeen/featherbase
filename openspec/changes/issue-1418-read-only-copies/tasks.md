@@ -25,6 +25,7 @@
 - [x] 5.1 `onNewLoad`: queue the app's job with the two loads; `ctx.newLoad.moves()` in its context
 - [x] 5.2 `ctx.datasets.active()` reads a copy through the reader's places
 - [x] 5.3 `notify_people`: an app job tells a person in the bell, and by email when asked (Siraj, 28-Nov-2026, for Forecasting's moved lines)
+- [x] 5.4 The app's own code (validators, actions, reads) reads its read-only copies like a linked Table, the current load; writes stay refused
 
 ## 6. Hand-off
 
