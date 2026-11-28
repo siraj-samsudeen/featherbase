@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import fixture from '../../fixtures/team-leader-december.json'
 import { linesFrom, monthOfRun, type CopiedRows } from './model'
-import { NO_BAND, bandsOf, coverOf, daysLeft, isShort, notSelling, shortBands, stockAsOf, type Band, type BandRows, type StockBandRow } from './bands'
+import { GAP_POINTS, NO_BAND, bandsOf, coverOf, gapOf, gapTone, sells, daysLeft, isShort, notSelling, shortBands, stockAsOf, type Band, type BandRows, type StockBandRow } from './bands'
 
 const lines = linesFrom({ lines: fixture.forecast_line_month, sales: fixture.sales_reference, plans: fixture.annual_plan_line, others: fixture.other_model_line,
   bands: { mix: fixture.price_band_mix, stock: fixture.stock_band, items: fixture.price_band_top_item } } as unknown as CopiedRows, 'LKS')
 const december = monthOfRun('2026-12-01')
-const band = (over: Partial<Band>): Band => ({ name: '₹500–600', order: 1, fc: 0, fq: 0, share: 0, stock: 0, sold: 0, n50: null, n70: null, items: [], ...over })
+const band = (over: Partial<Band>): Band => ({ name: '₹500–600', order: 1, fc: 0, fq: 0, share: 0, stock: 0, q28: 0, shareSales: null, shareStock: null, sold: 0, n50: null, n70: null, items: [], ...over })
 
 describe('By Price Band (#1419, 28-Nov-2026)', () => {
   it("splits each subcategory's forecast by its bands' share of the last 28 days, cheapest band first", () => {
@@ -53,5 +53,26 @@ describe('By Price Band (#1419, 28-Nov-2026)', () => {
     const top = lines[0].bands![1].items
     expect(top).toHaveLength(5)
     expect(top.map(i => i.value)).toEqual([...top.map(i => i.value)].sort((a, b) => b - a))
+  })
+
+  it('gives shares of sales and of stock in pieces, over the bands that sell only', () => {
+    const row = (price_band: string, sales_qty: number) => ({ store_code: 'S', subcategory_name: 'X', price_band, price_band_order: 1, sales_value_before_tax: sales_qty * 10, sales_qty,
+      items_sold: 1, value_share: 0, qty_share: 0, items_to_50_pct: 1, items_to_70_pct: 1 })
+    const stock = (price_band: string, stock_qty: number) => ({ store_code: 'S', subcategory_name: 'X', price_band, price_band_order: 1, stock_qty, items_in_stock: 1, stock_as_of: '2026-11-27' })
+    const bands = bandsOf({ mix: [row('cheap', 30), row('dear', 70), row(NO_BAND, 50)],
+      stock: [stock('cheap', 10), stock('dear', 90), stock('Never sold (90 d)', 400), stock(NO_BAND, 5)], items: [] }, 'S', 'X', 1000, 100)
+    const by = (name: string) => bands.find(b => b.name === name)!
+    expect([by('cheap').shareSales, by('cheap').shareStock, by('dear').shareSales, by('dear').shareStock]).toEqual([30, 10, 70, 90])
+    expect(sells(by(NO_BAND))).toBe(false)
+    expect([by(NO_BAND).shareSales, by('Never sold (90 d)').shareStock]).toEqual([null, null])
+  })
+
+  it(`marks a gap of more than ${GAP_POINTS} points: short when stock lags its sales share, over when it leads`, () => {
+    // Jean ≤₹500 in the prototype: 14% of sales, 3% of stock
+    expect(Math.round(gapOf(band({ shareSales: 13.8, shareStock: 3.4 }))!)).toBe(-10)
+    expect(gapTone(-10.4)).toBe('short')
+    expect(gapTone(5)).toBeNull()
+    expect(gapTone(8)).toBe('over')
+    expect(gapOf(band({}))).toBeNull()
   })
 })

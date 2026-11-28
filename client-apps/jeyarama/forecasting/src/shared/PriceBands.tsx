@@ -3,7 +3,7 @@
 import { Fragment, useState } from 'react'
 import { ChevronRight, Notice, cx } from '@featherbase/shop-floor'
 import { count, day, inr, type Line } from './model'
-import { coverOf, daysLeft, isShort, notSelling, shortBands, type Band } from './bands'
+import { GAP_POINTS, coverOf, daysLeft, gapOf, gapTone, isShort, notSelling, shortBands, type Band } from './bands'
 import type { Header } from './review'
 
 /** "6 days" (red when the band runs out before the month ends), "Not selling", or — with no forecast. */
@@ -11,6 +11,16 @@ function Lasts({ b, month, left }: { b: Band; month: Header['month']; left: numb
   const c = coverOf(b, month.days)
   if (c == null) return notSelling(b) ? <span className="fr-dim">Not selling</span> : <>—</>
   return <span className={cx(isShort(b, month.days, left) && 'fr-short')}>{count(Math.round(c))} {Math.round(c) === 1 ? 'day' : 'days'}</span>
+}
+
+const pct = (v: number | null) => (v == null ? '—' : `${Math.round(v)}%`)
+
+/** Share of stock − share of sales, signed, in points: red when stock is well short of its sales share, purple when well over. */
+function Gap({ b }: { b: Band }) {
+  const g = gapOf(b), tone = gapTone(g)
+  if (g == null) return <td>—</td>
+  const r = Math.round(g)
+  return <td className={cx(tone === 'short' && 'fr-short', tone === 'over' && 'fr-over')}>{r > 0 ? '+' : r < 0 ? '−' : ''}{Math.abs(r)} pts</td>
 }
 
 function TopItems({ b }: { b: Band }) {
@@ -39,7 +49,7 @@ export function PriceBands({ line, header, open: openFromPage, onOpen }: { line:
     <section className="fr-bands" data-testid="price-bands">
       <h4>By Price Band <span className="fr-dim fr-sub">{m.name}'s forecast split like the last 28 days' sales; stock as of {asOf}</span></h4>
       <table className="fr-mini fr-band-table">
-        <thead><tr><th>Price band</th><th>Forecast</th><th>Pieces</th><th>Share, last 28 days</th><th>Stock, pieces</th><th>Lasts, at {m.name}'s pace</th><th>Items sold</th></tr></thead>
+        <thead><tr><th>Price band</th><th>Forecast</th><th>Pieces</th><th title="The band's share of the subcategory's pieces sold in the last 28 days">Share of sales</th><th title="The band's share of the subcategory's stock, in pieces">Share of stock</th><th title="Share of stock minus share of sales, in points">Gap</th><th>Stock, pieces</th><th>Lasts, at {m.name}'s pace</th><th>Items sold</th></tr></thead>
         <tbody>{line.bands.map(b => {
           const isOpen = open === b.name
           return (
@@ -47,14 +57,14 @@ export function PriceBands({ line, header, open: openFromPage, onOpen }: { line:
               <tr className="fr-band-row" data-band={b.name} onClick={e => { e.stopPropagation(); toggle(b.name) }}>
                 <td><span className="fr-name"><span className="fr-twisty" aria-hidden><ChevronRight size={14} className={cx('transition-transform motion-reduce:transition-none', isOpen && 'rotate-90')} /></span>
                   <button type="button" className="fr-band-name" aria-expanded={isOpen} onClick={e => { e.stopPropagation(); toggle(b.name) }}>{b.name}</button></span></td>
-                <td>{b.fc ? inr(b.fc) : '—'}</td><td>{b.fq ? count(Math.round(b.fq)) : '—'}</td><td>{Math.round(b.share * 100)}%</td>
+                <td>{b.fc ? inr(b.fc) : '—'}</td><td>{b.fq ? count(Math.round(b.fq)) : '—'}</td><td>{pct(b.shareSales)}</td><td>{pct(b.shareStock)}</td><Gap b={b} />
                 <td>{count(b.stock)}</td><td><Lasts b={b} month={m} left={left} /></td><td>{b.sold ? count(b.sold) : '—'}</td>
               </tr>
-              {isOpen && <tr className="fr-band-open"><td colSpan={7}><TopItems b={b} /></td></tr>}
+              {isOpen && <tr className="fr-band-open"><td colSpan={9}><TopItems b={b} /></td></tr>}
             </Fragment>)
         })}</tbody>
       </table>
-      <p className="fr-dim fr-foot">Red: stock runs out before {m.days}-{m.name.slice(0, 3)} ({left} days from {asOf}) at {m.name}'s forecast pace. Click a band for its top five items.</p>
+      <p className="fr-dim fr-foot">Red: stock runs out before {m.days}-{m.name.slice(0, 3)} ({left} days from {asOf}) at {m.name}'s forecast pace. Share of sales and share of stock are in pieces, over the bands that sell; “Never sold (90 d)” and bands without a published price are left out so they don't distort the shares. Stock should follow sales: a gap of more than {GAP_POINTS} points is red when stock is short of its sales share and purple when it holds too much. Click a band for its top five items.</p>
     </section>
   )
 }

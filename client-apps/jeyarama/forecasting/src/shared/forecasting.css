@@ -156,3 +156,5 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 .fr-bands .fr-foot { font-size: 12px; margin-top: 6px; }
 .fr-short { color: var(--color-negative); font-weight: 600; }
 .fr-short-list { margin: 6px 0 0; padding: 0; list-style: none; line-height: 1.9; }
+/* stock well above its sales share: the group rail's purple */
+.fr-over { color: var(--fr-group); font-weight: 600; }

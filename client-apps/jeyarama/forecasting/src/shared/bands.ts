@@ -26,6 +26,10 @@ export interface Band {
   /** Its share of the last 28 days' sales value, 0 to 1. */
   share: number
   stock: number; sold: number
+  /** Pieces it sold in the 28 days. */
+  q28: number
+  /** Its share, in %, of the selling bands' pieces sold and of their stock; null for a band that does not sell. */
+  shareSales: number | null; shareStock: number | null
   /** How many of its best sellers make 50% and 70% of its sales; null when it sold nothing. */
   n50: number | null; n70: number | null
   items: TopItem[]
@@ -40,19 +44,44 @@ export function bandsOf(rows: BandRows, store: string, sub: string, fc: number, 
   const mine = <T extends BandKey>(r: T[]) => r.filter(x => x.store_code === store && x.subcategory_name === sub)
   const mix = mine(rows.mix), stock = mine(rows.stock), items = mine(rows.items)
   const names = [...new Set([...mix, ...stock].map(r => r.price_band))]
-  return names.map((name): Band => {
+  const bands = names.map((name): Band => {
     const m = mix.find(r => r.price_band === name), s = stock.find(r => r.price_band === name)
     const share = n(m?.value_share), shareQ = n(m?.qty_share)
     return {
       name, order: n((m ?? s)!.price_band_order), fc: Math.round(fc * share), fq: Math.round(fq * shareQ * 10) / 10, share,
-      stock: Math.round(n(s?.stock_qty)), sold: n(m?.items_sold),
+      stock: Math.round(n(s?.stock_qty)), q28: n(m?.sales_qty), shareSales: null, shareStock: null, sold: n(m?.items_sold),
       n50: m?.items_to_50_pct == null || m.items_to_50_pct === '' ? null : n(m.items_to_50_pct),
       n70: m?.items_to_70_pct == null || m.items_to_70_pct === '' ? null : n(m.items_to_70_pct),
       items: items.filter(i => i.price_band === name).sort((a, b) => n(a.item_rank) - n(b.item_rank))
         .map(i => ({ code: i.item_code, name: i.item_name || i.item_code, qty: n(i.sales_qty), value: n(i.sales_value_before_tax), stock: n(i.stock_qty) })),
     }
   }).sort((a, b) => a.order - b.order)
+  return withShares(bands)
 }
+
+/** Bands that are not price bands: an item sold but not on the board, or with no band published. */
+const NOT_A_BAND = [NO_BAND, 'No price band published']
+
+/** A band that sells: it sold pieces in the 28 days and is a real price band (not Never sold, not a data gap).
+ *  Only these get a share, so dead stock and unpriced items don't distort the shares. */
+export const sells = (b: Band) => b.q28 > 0 && !NOT_A_BAND.includes(b.name) && !b.name.startsWith('Never sold')
+
+/** Each selling band's share of the selling bands' pieces sold and of their stock, in %, to one decimal. */
+function withShares(bands: Band[]): Band[] {
+  const selling = bands.filter(sells)
+  const sold = selling.reduce((t, b) => t + b.q28, 0), held = selling.reduce((t, b) => t + b.stock, 0)
+  const one = (x: number) => Math.round(x * 10) / 10
+  return bands.map(b => (sells(b) ? { ...b, shareSales: one(sold ? b.q28 / sold * 100 : 0), shareStock: one(held ? b.stock / held * 100 : 0) } : b))
+}
+
+/** Stock should follow sales: more than this many points apart is marked. */
+export const GAP_POINTS = 5
+
+/** Share of stock − share of sales, in points; null for a band that does not sell. */
+export const gapOf = (b: Band) => (b.shareSales == null || b.shareStock == null ? null : b.shareStock - b.shareSales)
+
+/** 'short' when stock is well below its sales share, 'over' when well above, else null. */
+export const gapTone = (gap: number | null) => (gap == null ? null : gap < -GAP_POINTS ? 'short' : gap > GAP_POINTS ? 'over' : null)
 
 /** The day the stock was counted, the newest across the rows (YYYY-MM-DD); null with no stock rows. */
 export const stockAsOf = (rows: StockBandRow[]) => rows.reduce<string | null>((at, r) => (r.stock_as_of && (!at || r.stock_as_of > at) ? r.stock_as_of.slice(0, 10) : at), null)
