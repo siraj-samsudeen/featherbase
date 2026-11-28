@@ -19,7 +19,7 @@ import '../shared/forecasting.css'
 
 const groupKey = (g: Group) => `group:${g.index}`
 
-export function TeamLeaderReview({ header, lines, storeStep, state, actions, hrefFor, openLine: initialLine, onOpenLine, switcher }: {
+export function TeamLeaderReview({ header, lines, storeStep, state, actions, hrefFor, openLine: initialLine, openBand, onOpenLine, switcher }: {
   header: Header
   lines: Line[]
   /** The store's usual December rise, for a group's sentences (a subcategory has its own). */
@@ -30,6 +30,8 @@ export function TeamLeaderReview({ header, lines, storeStep, state, actions, hre
   hrefFor: (line: Line) => string
   /** A subcategory to open on arrival (a link to it, or a jump from My questions). */
   openLine?: string | null
+  /** The price band to open under it on arrival (a Needs Your Attention finding). */
+  openBand?: string | null
   onOpenLine?: (line: string | null) => void
   /** A way to another section, in the header (the app's SectionSwitcher); none in the story. */
   switcher?: ReactNode
@@ -38,7 +40,7 @@ export function TeamLeaderReview({ header, lines, storeStep, state, actions, hre
   const [tab, setTab] = useState('review')
   const [query, setQuery] = useState('')
   const [open, setOpenState] = useState<string | null>(initialLine ?? null)
-  const [band, setBand] = useState<string | null>(null)
+  const [band, setBand] = useState<string | null>(initialLine ? openBand ?? null : null)
   const [help, setHelp] = useState<{ at: HelpTopic | null; from: string | null }>({ at: null, from: null })
   const [flash, setFlash] = useState<{ key: string; n: number } | null>(initialLine ? { key: initialLine, n: 0 } : null)
 

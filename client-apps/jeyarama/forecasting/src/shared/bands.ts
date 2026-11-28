@@ -26,8 +26,8 @@ export interface Band {
   /** Its share of the last 28 days' sales value, 0 to 1. */
   share: number
   stock: number; sold: number
-  /** Pieces it sold in the 28 days. */
-  q28: number
+  /** Pieces it sold in the 28 days, and their value before tax. */
+  q28: number; v28: number
   /** Its share, in %, of the selling bands' pieces sold and of their stock; null for a band that does not sell. */
   shareSales: number | null; shareStock: number | null
   /** How many of its best sellers make 50% and 70% of its sales; null when it sold nothing. */
@@ -49,7 +49,7 @@ export function bandsOf(rows: BandRows, store: string, sub: string, fc: number, 
     const share = n(m?.value_share), shareQ = n(m?.qty_share)
     return {
       name, order: n((m ?? s)!.price_band_order), fc: Math.round(fc * share), fq: Math.round(fq * shareQ * 10) / 10, share,
-      stock: Math.round(n(s?.stock_qty)), q28: n(m?.sales_qty), shareSales: null, shareStock: null, sold: n(m?.items_sold),
+      stock: Math.round(n(s?.stock_qty)), q28: n(m?.sales_qty), v28: n(m?.sales_value_before_tax), shareSales: null, shareStock: null, sold: n(m?.items_sold),
       n50: m?.items_to_50_pct == null || m.items_to_50_pct === '' ? null : n(m.items_to_50_pct),
       n70: m?.items_to_70_pct == null || m.items_to_70_pct === '' ? null : n(m.items_to_70_pct),
       items: items.filter(i => i.price_band === name).sort((a, b) => n(a.item_rank) - n(b.item_rank))

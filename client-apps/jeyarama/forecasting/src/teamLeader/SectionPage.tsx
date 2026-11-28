@@ -1,5 +1,6 @@
 // My Section (#1419): the Team Leader review of the viewer's own section, on the app's tables. The line open
-// is kept in the address (?line=), so a link to a line, or a Comment's "take me to the place", opens it here.
+// is kept in the address (?line=), so a link to a line, or a Comment's "take me to the place", opens it here; a
+// Needs Your Attention finding links with #open=<subcategory>&band=<price band>.
 import { useCallback, useEffect, useState } from 'react'
 import { Button, Card, EmptyState, RecordPagesProvider, Skeleton } from '@featherbase/shop-floor'
 import { liveActions, loadSection, loadState, loadStore, type Section, type SectionSummary, type StoreSummary, type Viewer } from './live'
@@ -32,7 +33,10 @@ export function SectionPage({ viewer, href, sectionHref, storeHref }: {
   if (!section) return <Card><EmptyState title="No section to review yet"
     body={viewer.place.includes(' · ') ? `Feather Forecast's next official Run for ${viewer.place} is not loaded yet. It opens here once it is.` : `${viewer.name} reviews ${viewer.place}, not one section. My Section is the Team Leader's review.`} /></Card>
 
-  const line = new URLSearchParams(window.location.search).get('line')
+  // a line opens from ?line=, or from #open=<subcategory>&band=<price band> (a Needs Your Attention finding)
+  const hash = new URLSearchParams(window.location.hash.slice(1))
+  const line = hash.get('open') ?? new URLSearchParams(window.location.search).get('line')
+  const band = hash.get('open') ? hash.get('band') : null
   const byRow = new Map(section.lines.map(l => [l.rowId, l.name]))
   return (
     <RecordPagesProvider pageFor={(table, rowId) => (table === 'forecasting.forecast_line_month' && byRow.has(rowId) ? href(byRow.get(rowId)!) : undefined)}>
@@ -40,7 +44,7 @@ export function SectionPage({ viewer, href, sectionHref, storeHref }: {
         actions={liveActions(section, viewer.name, () => void refresh())} hrefFor={l => href(l.name)}
         switcher={store && sectionHref && storeHref ? <SectionSwitcher store={store.store} current={section.header.section} sections={store.sections}
           href={s => sectionHref(store.store, s)} storeHref={storeHref(store.store)} /> : undefined}
-        openLine={line && section.lines.some(l => l.name === line) ? line : null}
+        openLine={line && section.lines.some(l => l.name === line) ? line : null} openBand={band}
         onOpenLine={name => {
           const q = new URLSearchParams(window.location.search)
           if (name) q.set('line', name); else q.delete('line')

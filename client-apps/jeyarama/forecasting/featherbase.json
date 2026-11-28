@@ -1502,6 +1502,392 @@
         {
           "kind": "addTable",
           "table": {
+            "name": "forecasting.item_health",
+            "label": "Item Health",
+            "module": "Forecasting",
+            "description": "One row per item of a subcategory at a store that holds stock now or sold in the 28 days before the Run: its stock here and in the warehouse, how it sold here over 7, 14 and 28 days, and how the same item sold at the region's other stores. Needs Your Attention reads it. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+            "columns": [
+              {
+                "column_name": "run_id",
+                "label": "Run",
+                "column_type": "Data",
+                "reqd": true,
+                "description": "The official Run whose sales window (the 28 days to its Sales Up To) this split is read over.",
+                "read_only": true
+              },
+              {
+                "column_name": "store_code",
+                "label": "Store Code",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The store, by its SAP code.",
+                "read_only": true
+              },
+              {
+                "column_name": "division_name",
+                "label": "Division",
+                "column_type": "Data",
+                "read_only": true
+              },
+              {
+                "column_name": "subdivision_name",
+                "label": "Subdivision",
+                "column_type": "Data",
+                "read_only": true
+              },
+              {
+                "column_name": "category_name",
+                "label": "Category",
+                "column_type": "Data",
+                "reqd": true,
+                "read_only": true
+              },
+              {
+                "column_name": "subcategory_name",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "read_only": true
+              },
+              {
+                "column_name": "price_band",
+                "label": "Price Band",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The warehouse's own price band for the subcategory at this store (its 90-day selling price against the band edges), or Never Sold (90 d), or No Band for an item sold but not on the board.",
+                "read_only": true
+              },
+              {
+                "column_name": "price_band_order",
+                "label": "Band Order",
+                "column_type": "Int",
+                "description": "Where the band comes in the subcategory's list, cheapest first.",
+                "read_only": true
+              },
+              {
+                "column_name": "item_code",
+                "label": "Item Code",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The item's SAP code.",
+                "read_only": true
+              },
+              {
+                "column_name": "item_name",
+                "label": "Item",
+                "column_type": "Data",
+                "in_list_view": true,
+                "description": "The item's name.",
+                "read_only": true
+              },
+              {
+                "column_name": "stock_qty",
+                "label": "Stock, Pieces",
+                "column_type": "Float",
+                "description": "Pieces on hand at the store.",
+                "read_only": true
+              },
+              {
+                "column_name": "warehouse_qty",
+                "label": "Warehouse Stock",
+                "column_type": "Float",
+                "description": "Pieces available in the warehouse.",
+                "read_only": true
+              },
+              {
+                "column_name": "last_sold_date",
+                "label": "Last Sold",
+                "column_type": "Date",
+                "description": "The last day it sold at the store.",
+                "read_only": true
+              },
+              {
+                "column_name": "days_since_movement",
+                "label": "Days Since Movement",
+                "column_type": "Int",
+                "description": "Days since it last sold or was received at the store.",
+                "read_only": true
+              },
+              {
+                "column_name": "is_dead",
+                "label": "Dead Stock",
+                "column_type": "Check",
+                "description": "The warehouse counts it as dead stock at the store.",
+                "read_only": true
+              },
+              {
+                "column_name": "sales_qty_7_days",
+                "label": "Pieces, Last 7 Days",
+                "column_type": "Float",
+                "description": "Pieces sold in the last 7 days before the Run.",
+                "read_only": true
+              },
+              {
+                "column_name": "sales_value_7_days",
+                "label": "Sales, Last 7 Days",
+                "column_type": "Currency",
+                "description": "What it sold in the last 7 days, before tax.",
+                "read_only": true
+              },
+              {
+                "column_name": "sales_qty_14_days",
+                "label": "Pieces, Last 14 Days",
+                "column_type": "Float",
+                "description": "Pieces sold in the last 14 days.",
+                "read_only": true
+              },
+              {
+                "column_name": "sales_qty",
+                "label": "Pieces, Last 28 Days",
+                "column_type": "Float",
+                "description": "Pieces sold in the last 28 days.",
+                "read_only": true
+              },
+              {
+                "column_name": "sales_value_before_tax",
+                "label": "Sales, Last 28 Days",
+                "column_type": "Currency",
+                "description": "What it sold in the last 28 days, before tax.",
+                "read_only": true
+              },
+              {
+                "column_name": "selling_price",
+                "label": "Selling Price",
+                "column_type": "Currency",
+                "description": "Its realised selling price over 90 days, for an item that did not sell in the 28 days.",
+                "read_only": true
+              },
+              {
+                "column_name": "other_stores_selling",
+                "label": "Other Stores Selling",
+                "column_type": "Int",
+                "description": "Other stores in the region where it sold in the 28 days.",
+                "read_only": true
+              },
+              {
+                "column_name": "other_stores_qty",
+                "label": "Pieces at Other Stores",
+                "column_type": "Float",
+                "description": "Pieces it sold at the region's other stores in the 28 days.",
+                "read_only": true
+              },
+              {
+                "column_name": "other_stores_qty_14_days",
+                "label": "Pieces at Other Stores, 14 Days",
+                "column_type": "Float",
+                "description": "Pieces it sold at the region's other stores in the last 14 days.",
+                "read_only": true
+              },
+              {
+                "column_name": "best_store_code",
+                "label": "Best Store",
+                "column_type": "Data",
+                "description": "The other store in the region where it sold most in the 28 days, by its SAP code.",
+                "read_only": true
+              },
+              {
+                "column_name": "best_store_short_code",
+                "label": "Best Store Code",
+                "column_type": "Data",
+                "description": "That store's short code, such as MOT.",
+                "read_only": true
+              },
+              {
+                "column_name": "best_store_name",
+                "label": "Best Store Name",
+                "column_type": "Data",
+                "description": "That store's name.",
+                "read_only": true
+              },
+              {
+                "column_name": "best_store_qty",
+                "label": "Pieces at Best Store",
+                "column_type": "Float",
+                "description": "Pieces it sold there in the 28 days.",
+                "read_only": true
+              },
+              {
+                "column_name": "stock_as_of",
+                "label": "Stock As Of",
+                "column_type": "Date",
+                "description": "The day the stock was counted.",
+                "read_only": true
+              }
+            ],
+            "title_column": "item_name"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.merchandise_people",
+            "label": "Merchandise People",
+            "module": "Forecasting",
+            "description": "Who to ask about a subcategory: its buyer and its category head, as Merchandise Assignment names them today in the store's region. Needs Your Attention puts them in its actions. Copied from Merchandise Assignment; people only read it here.",
+            "columns": [
+              {
+                "column_name": "operating_region",
+                "label": "Region",
+                "column_type": "Data",
+                "reqd": true,
+                "description": "Kerala or Tamil Nadu.",
+                "read_only": true
+              },
+              {
+                "column_name": "subcategory_code",
+                "label": "Subcategory Code",
+                "column_type": "Data",
+                "reqd": true,
+                "description": "The subcategory's SAP code (material group).",
+                "read_only": true
+              },
+              {
+                "column_name": "subcategory_name",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "read_only": true
+              },
+              {
+                "column_name": "category_head_code",
+                "label": "Category Head Code",
+                "column_type": "Data",
+                "description": "The category head's employee code.",
+                "read_only": true
+              },
+              {
+                "column_name": "category_head",
+                "label": "Category Head",
+                "column_type": "Data",
+                "in_list_view": true,
+                "description": "The category head's name.",
+                "read_only": true
+              },
+              {
+                "column_name": "buyer_code",
+                "label": "Buyer Code",
+                "column_type": "Data",
+                "description": "The buyer's employee code.",
+                "read_only": true
+              },
+              {
+                "column_name": "buyer",
+                "label": "Buyer",
+                "column_type": "Data",
+                "in_list_view": true,
+                "description": "The buyer's name.",
+                "read_only": true
+              },
+              {
+                "column_name": "source_key",
+                "label": "Source",
+                "column_type": "Data",
+                "description": "Where and when the names were read, such as Merchandise Assignment on 28-Nov-2026.",
+                "read_only": true
+              }
+            ],
+            "title_column": "subcategory_name"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.item_other_stores",
+            "label": "Item at Other Stores",
+            "module": "Forecasting",
+            "description": "The same items at the region's other stores: stock on hand today (every store, refreshed daily) and pieces sold over the Run's 28 days. One row per item and other store that holds it or sold it. Needs Your Attention reads it for transfers. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+            "columns": [
+              {
+                "column_name": "run_id",
+                "label": "Run",
+                "column_type": "Data",
+                "reqd": true,
+                "description": "The official Run whose sales window (the 28 days to its Sales Up To) this split is read over.",
+                "read_only": true
+              },
+              {
+                "column_name": "store_code",
+                "label": "Store Code",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The store being reviewed, by its SAP code.",
+                "read_only": true
+              },
+              {
+                "column_name": "subcategory_name",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "read_only": true
+              },
+              {
+                "column_name": "item_code",
+                "label": "Item Code",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The item's SAP code.",
+                "read_only": true
+              },
+              {
+                "column_name": "other_store_code",
+                "label": "Other Store",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The other store, by its SAP code.",
+                "read_only": true
+              },
+              {
+                "column_name": "other_store_short_code",
+                "label": "Other Store Code",
+                "column_type": "Data",
+                "description": "Its short code, such as MOT.",
+                "read_only": true
+              },
+              {
+                "column_name": "other_store_name",
+                "label": "Other Store Name",
+                "column_type": "Data",
+                "in_list_view": true,
+                "description": "Its name.",
+                "read_only": true
+              },
+              {
+                "column_name": "other_stock_qty",
+                "label": "Stock There",
+                "column_type": "Float",
+                "description": "Pieces on hand there today.",
+                "read_only": true
+              },
+              {
+                "column_name": "other_sales_qty",
+                "label": "Sold There, 28 Days",
+                "column_type": "Float",
+                "description": "Pieces sold there over the Run's 28 days.",
+                "read_only": true
+              },
+              {
+                "column_name": "stock_as_of",
+                "label": "Stock As Of",
+                "column_type": "Date",
+                "description": "The day the stock was counted.",
+                "read_only": true
+              }
+            ],
+            "title_column": "item_code"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
             "name": "forecasting.change_reason",
             "label": "Change Reason",
             "module": "Forecasting",
@@ -3555,6 +3941,383 @@
       "title_column": "item_name"
     },
     {
+      "name": "forecasting.item_health",
+      "label": "Item Health",
+      "module": "Forecasting",
+      "description": "One row per item of a subcategory at a store that holds stock now or sold in the 28 days before the Run: its stock here and in the warehouse, how it sold here over 7, 14 and 28 days, and how the same item sold at the region's other stores. Needs Your Attention reads it. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+      "columns": [
+        {
+          "column_name": "run_id",
+          "label": "Run",
+          "column_type": "Data",
+          "reqd": true,
+          "description": "The official Run whose sales window (the 28 days to its Sales Up To) this split is read over.",
+          "read_only": true
+        },
+        {
+          "column_name": "store_code",
+          "label": "Store Code",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The store, by its SAP code.",
+          "read_only": true
+        },
+        {
+          "column_name": "division_name",
+          "label": "Division",
+          "column_type": "Data",
+          "read_only": true
+        },
+        {
+          "column_name": "subdivision_name",
+          "label": "Subdivision",
+          "column_type": "Data",
+          "read_only": true
+        },
+        {
+          "column_name": "category_name",
+          "label": "Category",
+          "column_type": "Data",
+          "reqd": true,
+          "read_only": true
+        },
+        {
+          "column_name": "subcategory_name",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "read_only": true
+        },
+        {
+          "column_name": "price_band",
+          "label": "Price Band",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The warehouse's own price band for the subcategory at this store (its 90-day selling price against the band edges), or Never Sold (90 d), or No Band for an item sold but not on the board.",
+          "read_only": true
+        },
+        {
+          "column_name": "price_band_order",
+          "label": "Band Order",
+          "column_type": "Int",
+          "description": "Where the band comes in the subcategory's list, cheapest first.",
+          "read_only": true
+        },
+        {
+          "column_name": "item_code",
+          "label": "Item Code",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The item's SAP code.",
+          "read_only": true
+        },
+        {
+          "column_name": "item_name",
+          "label": "Item",
+          "column_type": "Data",
+          "in_list_view": true,
+          "description": "The item's name.",
+          "read_only": true
+        },
+        {
+          "column_name": "stock_qty",
+          "label": "Stock, Pieces",
+          "column_type": "Float",
+          "description": "Pieces on hand at the store.",
+          "read_only": true
+        },
+        {
+          "column_name": "warehouse_qty",
+          "label": "Warehouse Stock",
+          "column_type": "Float",
+          "description": "Pieces available in the warehouse.",
+          "read_only": true
+        },
+        {
+          "column_name": "last_sold_date",
+          "label": "Last Sold",
+          "column_type": "Date",
+          "description": "The last day it sold at the store.",
+          "read_only": true
+        },
+        {
+          "column_name": "days_since_movement",
+          "label": "Days Since Movement",
+          "column_type": "Int",
+          "description": "Days since it last sold or was received at the store.",
+          "read_only": true
+        },
+        {
+          "column_name": "is_dead",
+          "label": "Dead Stock",
+          "column_type": "Check",
+          "description": "The warehouse counts it as dead stock at the store.",
+          "read_only": true
+        },
+        {
+          "column_name": "sales_qty_7_days",
+          "label": "Pieces, Last 7 Days",
+          "column_type": "Float",
+          "description": "Pieces sold in the last 7 days before the Run.",
+          "read_only": true
+        },
+        {
+          "column_name": "sales_value_7_days",
+          "label": "Sales, Last 7 Days",
+          "column_type": "Currency",
+          "description": "What it sold in the last 7 days, before tax.",
+          "read_only": true
+        },
+        {
+          "column_name": "sales_qty_14_days",
+          "label": "Pieces, Last 14 Days",
+          "column_type": "Float",
+          "description": "Pieces sold in the last 14 days.",
+          "read_only": true
+        },
+        {
+          "column_name": "sales_qty",
+          "label": "Pieces, Last 28 Days",
+          "column_type": "Float",
+          "description": "Pieces sold in the last 28 days.",
+          "read_only": true
+        },
+        {
+          "column_name": "sales_value_before_tax",
+          "label": "Sales, Last 28 Days",
+          "column_type": "Currency",
+          "description": "What it sold in the last 28 days, before tax.",
+          "read_only": true
+        },
+        {
+          "column_name": "selling_price",
+          "label": "Selling Price",
+          "column_type": "Currency",
+          "description": "Its realised selling price over 90 days, for an item that did not sell in the 28 days.",
+          "read_only": true
+        },
+        {
+          "column_name": "other_stores_selling",
+          "label": "Other Stores Selling",
+          "column_type": "Int",
+          "description": "Other stores in the region where it sold in the 28 days.",
+          "read_only": true
+        },
+        {
+          "column_name": "other_stores_qty",
+          "label": "Pieces at Other Stores",
+          "column_type": "Float",
+          "description": "Pieces it sold at the region's other stores in the 28 days.",
+          "read_only": true
+        },
+        {
+          "column_name": "other_stores_qty_14_days",
+          "label": "Pieces at Other Stores, 14 Days",
+          "column_type": "Float",
+          "description": "Pieces it sold at the region's other stores in the last 14 days.",
+          "read_only": true
+        },
+        {
+          "column_name": "best_store_code",
+          "label": "Best Store",
+          "column_type": "Data",
+          "description": "The other store in the region where it sold most in the 28 days, by its SAP code.",
+          "read_only": true
+        },
+        {
+          "column_name": "best_store_short_code",
+          "label": "Best Store Code",
+          "column_type": "Data",
+          "description": "That store's short code, such as MOT.",
+          "read_only": true
+        },
+        {
+          "column_name": "best_store_name",
+          "label": "Best Store Name",
+          "column_type": "Data",
+          "description": "That store's name.",
+          "read_only": true
+        },
+        {
+          "column_name": "best_store_qty",
+          "label": "Pieces at Best Store",
+          "column_type": "Float",
+          "description": "Pieces it sold there in the 28 days.",
+          "read_only": true
+        },
+        {
+          "column_name": "stock_as_of",
+          "label": "Stock As Of",
+          "column_type": "Date",
+          "description": "The day the stock was counted.",
+          "read_only": true
+        }
+      ],
+      "title_column": "item_name"
+    },
+    {
+      "name": "forecasting.merchandise_people",
+      "label": "Merchandise People",
+      "module": "Forecasting",
+      "description": "Who to ask about a subcategory: its buyer and its category head, as Merchandise Assignment names them today in the store's region. Needs Your Attention puts them in its actions. Copied from Merchandise Assignment; people only read it here.",
+      "columns": [
+        {
+          "column_name": "operating_region",
+          "label": "Region",
+          "column_type": "Data",
+          "reqd": true,
+          "description": "Kerala or Tamil Nadu.",
+          "read_only": true
+        },
+        {
+          "column_name": "subcategory_code",
+          "label": "Subcategory Code",
+          "column_type": "Data",
+          "reqd": true,
+          "description": "The subcategory's SAP code (material group).",
+          "read_only": true
+        },
+        {
+          "column_name": "subcategory_name",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "read_only": true
+        },
+        {
+          "column_name": "category_head_code",
+          "label": "Category Head Code",
+          "column_type": "Data",
+          "description": "The category head's employee code.",
+          "read_only": true
+        },
+        {
+          "column_name": "category_head",
+          "label": "Category Head",
+          "column_type": "Data",
+          "in_list_view": true,
+          "description": "The category head's name.",
+          "read_only": true
+        },
+        {
+          "column_name": "buyer_code",
+          "label": "Buyer Code",
+          "column_type": "Data",
+          "description": "The buyer's employee code.",
+          "read_only": true
+        },
+        {
+          "column_name": "buyer",
+          "label": "Buyer",
+          "column_type": "Data",
+          "in_list_view": true,
+          "description": "The buyer's name.",
+          "read_only": true
+        },
+        {
+          "column_name": "source_key",
+          "label": "Source",
+          "column_type": "Data",
+          "description": "Where and when the names were read, such as Merchandise Assignment on 28-Nov-2026.",
+          "read_only": true
+        }
+      ],
+      "title_column": "subcategory_name"
+    },
+    {
+      "name": "forecasting.item_other_stores",
+      "label": "Item at Other Stores",
+      "module": "Forecasting",
+      "description": "The same items at the region's other stores: stock on hand today (every store, refreshed daily) and pieces sold over the Run's 28 days. One row per item and other store that holds it or sold it. Needs Your Attention reads it for transfers. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+      "columns": [
+        {
+          "column_name": "run_id",
+          "label": "Run",
+          "column_type": "Data",
+          "reqd": true,
+          "description": "The official Run whose sales window (the 28 days to its Sales Up To) this split is read over.",
+          "read_only": true
+        },
+        {
+          "column_name": "store_code",
+          "label": "Store Code",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The store being reviewed, by its SAP code.",
+          "read_only": true
+        },
+        {
+          "column_name": "subcategory_name",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "read_only": true
+        },
+        {
+          "column_name": "item_code",
+          "label": "Item Code",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The item's SAP code.",
+          "read_only": true
+        },
+        {
+          "column_name": "other_store_code",
+          "label": "Other Store",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The other store, by its SAP code.",
+          "read_only": true
+        },
+        {
+          "column_name": "other_store_short_code",
+          "label": "Other Store Code",
+          "column_type": "Data",
+          "description": "Its short code, such as MOT.",
+          "read_only": true
+        },
+        {
+          "column_name": "other_store_name",
+          "label": "Other Store Name",
+          "column_type": "Data",
+          "in_list_view": true,
+          "description": "Its name.",
+          "read_only": true
+        },
+        {
+          "column_name": "other_stock_qty",
+          "label": "Stock There",
+          "column_type": "Float",
+          "description": "Pieces on hand there today.",
+          "read_only": true
+        },
+        {
+          "column_name": "other_sales_qty",
+          "label": "Sold There, 28 Days",
+          "column_type": "Float",
+          "description": "Pieces sold there over the Run's 28 days.",
+          "read_only": true
+        },
+        {
+          "column_name": "stock_as_of",
+          "label": "Stock As Of",
+          "column_type": "Date",
+          "description": "The day the stock was counted.",
+          "read_only": true
+        }
+      ],
+      "title_column": "item_code"
+    },
+    {
       "name": "forecasting.change_reason",
       "label": "Change Reason",
       "module": "Forecasting",
@@ -4057,6 +4820,21 @@
     },
     {
       "table": "forecasting.price_band_top_item",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.item_health",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.merchandise_people",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.item_other_stores",
       "role": "All",
       "can_read": true
     },

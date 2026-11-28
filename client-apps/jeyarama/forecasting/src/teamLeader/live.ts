@@ -4,7 +4,8 @@
 // (server.ts). The answer to a question is the newest Comment on it.
 import { getRow, listWhere, saveRow } from '../api'
 import { day, linesFrom, monthOfRun, type LineMonthRow, type OtherModelRow, type PlanRow, type RunRow, type SalesRow, type Line } from '../shared/model'
-import { ITEM_FIELDS, MIX_FIELDS, STOCK_FIELDS, stockAsOf, type BandMixRow, type StockBandRow, type TopItemRow } from '../shared/bands'
+import { ITEM_HEALTH_FIELDS, OTHER_STORE_FIELDS, PEOPLE_FIELDS, needsAttention, type Finding, type ItemHealthRow, type OtherStoreRow, type PeopleRow } from '../shared/findings'
+import { ITEM_FIELDS, MIX_FIELDS, STOCK_FIELDS, daysLeft, stockAsOf, type BandMixRow, type StockBandRow, type TopItemRow } from '../shared/bands'
 import type { Answer, Header, Proposal, Question, ReviewActions, ReviewState } from '../shared/review'
 
 export interface Viewer { name: string; role: string; place: string }
@@ -93,6 +94,23 @@ export async function loadSection(viewer: Viewer): Promise<Section | null> {
   const lines = linesFrom({ lines: mine, sales, plans, others, bands: { mix, stock, items } }, storeCode)
   const header: Header = { store: mine[0].store_name, section, person: viewer.name, role: viewer.role, cutOff: day(run.origin_date), month: monthOfRun(run.horizon_from), stockAsOf: stockAsOf(stock) }
   return { run, storeCode, header, lines, state: await loadState(run.run_id, storeCode, viewer.name) }
+}
+
+/** Needs Your Attention for a section: every item's health, who to ask, and the same items at the region's other
+ *  stores, read only for this page. None when the Run's copies carry no item health. */
+export async function loadFindings(section: Section): Promise<{ findings: Finding[]; othersAsOf: string | null } | null> {
+  const { run, storeCode, header, lines } = section
+  if (!header.stockAsOf) return null
+  const at = [['run_id', '=', run.run_id], ['store_code', '=', storeCode], ['subcategory_name', 'in', lines.map(l => l.name)]] as [string, string, unknown][]
+  const [health, people, others] = await Promise.all([
+    listWhere<ItemHealthRow>('forecasting.item_health', ITEM_HEALTH_FIELDS, at),
+    listWhere<PeopleRow>('forecasting.merchandise_people', PEOPLE_FIELDS, [['subcategory_name', 'in', lines.map(l => l.name)]]),
+    listWhere<OtherStoreRow & { stock_as_of: string | null }>('forecasting.item_other_stores', [...OTHER_STORE_FIELDS, 'stock_as_of'], at),
+  ])
+  if (!health.length) return null
+  const month = { name: header.month.name, days: header.month.days, left: daysLeft(header.stockAsOf, header.month) }
+  return { findings: needsAttention(lines, health, people, month, storeCode, others),
+    othersAsOf: others.reduce<string | null>((a, r) => (r.stock_as_of && (!a || r.stock_as_of > a) ? r.stock_as_of.slice(0, 10) : a), null) }
 }
 
 /** The person's answers and questions on this Run at this store. */
