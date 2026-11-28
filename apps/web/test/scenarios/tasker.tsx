@@ -22,6 +22,7 @@ import { localDay } from '../../../../example-apps/tasker/src/storeWork'
 import { setSession } from '../../src/lib/api'
 import { taskerClient } from '../../../server/test/tasker-client'
 import { expect, screenSession } from '../pg-test'
+import { AppSidebarRows, rowNamed } from '../app-sidebar-rows'
 
 export type Row = { row_id: string; updated_at: string; [field: string]: unknown }
 type CreateUser = (options: { roles: string[]; fullName: string }) => Promise<TestClient>
@@ -240,7 +241,7 @@ export class TaskerWorld {
     cleanup()
     location.hash = ''
     setSession(member.token!, { row_id: member.user!, email: member.user!, full_name: null })
-    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TaskManagementPage /></QueryClientProvider>)
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><><TaskManagementPage /><AppSidebarRows label="Task views" /></></QueryClientProvider>)
     this.viewer = who
     return new TaskerPage(userEvent.setup())
   }
@@ -269,13 +270,13 @@ export class TaskerPage {
 
   // --- getting around ---------------------------------------------------------
 
-  // By pattern: a view's button also shows its count.
+  // By pattern: a view's row also shows its count.
   async sidebarView(name: RegExp) {
-    await this.user.click(await screen.findByRole('button', { name }))
+    await this.user.click(await screen.findByRole('link', { name }))
   }
 
   async openProject(name: string) {
-    await this.session.clickButton(name)
+    await this.user.click(await screen.findByRole('link', { name: rowNamed(name) }))
     await screen.findByRole('heading', { name })
   }
 

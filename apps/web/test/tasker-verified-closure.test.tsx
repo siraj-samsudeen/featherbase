@@ -14,6 +14,7 @@ import { deleteStored } from 'server/src/storage'
 import { getDoc, saveDoc } from 'server/src/document'
 import { sql } from 'server/src/db'
 import { pickedFile, useNodeMultipart } from './node-multipart'
+import { AppSidebarRows, rowNamed } from './app-sidebar-rows'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -33,13 +34,13 @@ async function team(createUser: (options: { roles: string[]; fullName: string })
 
 function renderTasker(as: TestClient) {
   setSession(as.token!, { row_id: as.user!, email: as.user!, full_name: null })
-  return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TaskManagementPage /></QueryClientProvider>)
+  return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><><TaskManagementPage /><AppSidebarRows label="Task views" /></></QueryClientProvider>)
 }
 
 const read = (as: TestClient, task: Row) => as.get<Row>(`/api/table/tasker.task/${task.row_id}`)
 
 async function openTask(user: ReturnType<typeof userEvent.setup>, project = 'Diwali readiness') {
-  await user.click(await screen.findByRole('button', { name: project }))
+  await user.click(await screen.findByRole('link', { name: rowNamed(project) }))
   await user.click(await screen.findByRole('link', { name: 'Fix the billing counter lights' }))
   return screen.findByRole('region', { name: 'Task detail content' })
 }
@@ -70,7 +71,7 @@ test('the verifier finds the task on To verify, returns it with a reason, then a
   const submitted = await ravi.post<Row>('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: task.updated_at, task_state: SUBMITTED, evidence_note: 'Replaced both tube lights' } })
   const first = renderTasker(meena)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: /^To verify/ }))
+  await user.click(await screen.findByRole('link', { name: /^To Verify/ }))
   const page = await screen.findByRole('region', { name: 'To verify' })
   expect(await within(page).findByText('Replaced both tube lights')).toBeInTheDocument()
   await user.click(within(page).getByRole('link', { name: 'Fix the billing counter lights' }))
@@ -85,7 +86,7 @@ test('the verifier finds the task on To verify, returns it with a reason, then a
   expect(submitted.row_id).toBe(task.row_id)
   first.unmount(); location.hash = ''
   renderTasker(meena)
-  await user.click(await screen.findByRole('button', { name: /^To verify/ }))
+  await user.click(await screen.findByRole('link', { name: /^To Verify/ }))
   await user.click(await within(await screen.findByRole('region', { name: 'To verify' })).findByRole('link', { name: 'Fix the billing counter lights' }))
   const reopened = await screen.findByRole('region', { name: 'Task detail content' })
   await user.click(await within(reopened).findByRole('button', { name: 'Accept and close' }))
@@ -110,7 +111,7 @@ test('cancelling from the task row asks for a reason first', async ({ createUser
   const { meena, task } = await team(createUser)
   renderTasker(meena)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: 'Diwali readiness' }))
+  await user.click(await screen.findByRole('link', { name: /^Diwali readiness(?:\d+)?$/ }))
   await user.selectOptions(await screen.findByRole('combobox', { name: 'State for Fix the billing counter lights' }), 'Cancelled')
   expect((await read(meena, task)).task_state).toBe('Not started')
   await user.type(await screen.findByRole('textbox', { name: 'Reason for cancelling' }), 'Lights replaced under warranty')
@@ -123,7 +124,7 @@ test('a project names its default verifier and task details change a task’s ve
   const { meena, ravi, project, task } = await team(createUser)
   renderTasker(meena)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: 'Diwali readiness' }))
+  await user.click(await screen.findByRole('link', { name: /^Diwali readiness(?:\d+)?$/ }))
   // People's names arrive after the task list; until then the options read "Former member".
   const defaultVerifier = await screen.findByRole('combobox', { name: 'Default verifier' })
   await within(defaultVerifier).findByRole('option', { name: 'Meena' })
@@ -250,7 +251,7 @@ test('Never mind on the task row keeps the task when cancelling is abandoned', a
   const { meena, task } = await team(createUser)
   renderTasker(meena)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: 'Diwali readiness' }))
+  await user.click(await screen.findByRole('link', { name: /^Diwali readiness(?:\d+)?$/ }))
   await user.selectOptions(await screen.findByRole('combobox', { name: 'State for Fix the billing counter lights' }), 'Cancelled')
   await user.click(await screen.findByRole('button', { name: 'Never mind' }))
   expect(screen.queryByRole('textbox', { name: 'Reason for cancelling' })).not.toBeInTheDocument()
@@ -261,7 +262,7 @@ test('the default verifier says why it was not saved when someone changed the pr
   const { meena, project } = await team(createUser)
   renderTasker(meena)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: 'Diwali readiness' }))
+  await user.click(await screen.findByRole('link', { name: /^Diwali readiness(?:\d+)?$/ }))
   const defaultVerifier = await screen.findByRole('combobox', { name: 'Default verifier' })
   await within(defaultVerifier).findByRole('option', { name: 'Meena' })
   await meena.post('/api/save_row', { table: 'tasker.project', row: { row_id: project.row_id, updated_at: project.updated_at, description: 'Lights and counters before Diwali' } })

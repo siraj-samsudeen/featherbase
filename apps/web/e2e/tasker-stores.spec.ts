@@ -27,7 +27,7 @@ test('tasker_store_summary: a store’s overdue count opens its late task, and t
 
   await session
     .visit('/tasker/')
-    .within('.tasker-nav-stores', tab => tab.click('Stores'))
+    .within('[data-sidebar-item="stores"]', tab => tab.click('Stores'))
     .assertHas('table[aria-label="Work by store"]', { text: storeName })
     .clickButton(`${storeName}: 1 overdue task`)
     .within(`section[aria-label="${storeName} · Overdue"]`, list => list

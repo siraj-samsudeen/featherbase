@@ -10,6 +10,7 @@ import { TaskManagementPage } from '../../../example-apps/tasker/src/TaskManagem
 import { Discussion } from '../../../example-apps/tasker/src/Discussion'
 import { setSession } from '../src/lib/api'
 import { test, expect } from './pg-test'
+import { AppSidebarRows } from './app-sidebar-rows'
 
 test('a reply needs review, reading does not resolve it, and reopening asks for a new reply', async ({ createUser }) => {
   expect(await discoverPackages([resolve('../..', 'example-apps/tasker')])).toEqual([])
@@ -51,7 +52,7 @@ test('Attention opens and focuses the exact question inside the task inspector',
   const question = await asker.post<{ row_id: string }>('/api/save_row', { table: 'tasker.discussion', row: { task: task.row_id, kind: 'Question', body: 'Which entrance?', reply_needed_from: respondent.user } })
   const other = await asker.post<{ row_id: string }>('/api/save_row', { table: 'tasker.discussion', row: { task: task.row_id, kind: 'Question', body: 'Who will unload?', reply_needed_from: respondent.user } })
   setSession(respondent.token!, { row_id: respondent.user!, email: null, full_name: 'Ravi' })
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TaskManagementPage /></QueryClientProvider>)
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><><TaskManagementPage /><AppSidebarRows label="Task views" /></></QueryClientProvider>)
   try {
     await userEvent.click(await screen.findByRole('button', { name: 'Which entrance?' }))
     await screen.findByRole('complementary', { name: 'Task details' })

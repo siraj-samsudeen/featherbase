@@ -461,8 +461,11 @@ describe('Dash against the real platform', () => {
     history.replaceState(null, '', '/dash/?store=9901&report=sales')
     await open()
     await waitForDive()
-    const links = [...document.querySelectorAll('[data-testid=report-link]')]
-    expect(links.map(a => [a.textContent, a.getAttribute('aria-current'), a.getAttribute('href')])).toEqual([
+    // #1385 (slice 4): the page gives the rows to Featherbase's shared sidebar, which draws them.
+    const { readSidebarRows } = await import('@featherbase/shop-floor/sidebar')
+    const rows = readSidebarRows()!
+    const reports = rows.sections.find(section => section.id === 'reports')!.items
+    expect(reports.map(a => [a.label, [rows.current].flat().includes(a.address) ? 'page' : null, a.address])).toEqual([
       ['Sales versus target', 'page', '?store=9901&report=sales'],
       // The reader is a Team Leader: the whole-stores report isn't theirs to open, so it isn't listed (#967 point 1).
       ['Vendor sales by city', null, '?store=9901&report=vendor_sales'],

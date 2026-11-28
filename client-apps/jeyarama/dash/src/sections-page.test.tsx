@@ -41,7 +41,23 @@ beforeAll(() => {
   teardown = () => { for (const key of added) delete (globalThis as Record<string, unknown>)[key]; dom.window.close() }
 })
 afterAll(() => teardown())
-beforeEach(() => { calls.length = 0; answers = {}; document.body.innerHTML = '' })
+beforeEach(() => { calls.length = 0; answers = {}; document.body.innerHTML = ''; delete (window as unknown as Record<string, unknown>).__featherbaseSidebarRows })
+
+/** #1385 (slice 4): the rows the page gave Featherbase's shared sidebar (which draws them), by their id, each with
+ *  whether it is the open one. */
+async function sidebarRows() {
+  const { mergeSidebarSections, readSidebarRows } = await import('@featherbase/shop-floor/sidebar')
+  const manifest = (await import('../featherbase.json')).default as unknown as { sidebar: { sections: import('@featherbase/shop-floor/sidebar').SidebarSection[] } }
+  const rows = readSidebarRows()
+  const open = [rows?.current ?? []].flat()
+  return mergeSidebarSections(manifest.sidebar.sections, rows?.sections ?? [])
+    .map(section => ({ ...section, items: section.items.map(item => ({ ...item, current: open.includes(item.address) })) }))
+}
+async function sidebarRow(id: string) {
+  return (await sidebarRows()).flatMap(section => section.items).find(item => item.id === id)
+}
+/** A row's words as the sidebar reads them: its label, then its count. */
+const said = (row: { label: string; count?: number } | undefined) => row && `${row.label}${row.count !== undefined ? ` (${row.count})` : ''}`
 
 const ETHNIC = { division: 'Women', subdivision: 'Ethnic Wear', category: 'Sarees and Blouses' }
 const job = {
@@ -245,12 +261,12 @@ describe('Your sections', () => {
   it('offers the approvals page only when something waits', async () => {
     answers.my_sections = { state: 'ok', name: 'Asha', jobs: [], proposals: [], waiting_for_me: 0 }
     let page = await render('YourSections')
-    expect(page.q('approvals-link')).toBeNull()
+    expect(await sidebarRow('approvals')).toBeUndefined()
     expect(page.q('approvals-notice')).toBeNull()
     await page.done()
     answers.my_sections = { state: 'ok', name: 'Asha', jobs: [], proposals: [], waiting_for_me: 1 }
     page = await render('YourSections')
-    expect(page.q('approvals-link')?.textContent).toContain('Waiting for you (1)')
+    expect(said(await sidebarRow('approvals'))).toBe('Waiting For You (1)')
     // #1223 (UX standard §8): the count beside a Review button that opens Waiting for you.
     expect(page.q('approvals-label')?.textContent).toBe('1 change is waiting for your approval')
     expect(page.q('approvals-notice')?.textContent).toBe('Review')
@@ -334,11 +350,11 @@ describe('Waiting for your approval', () => {
   it('the sidebar count follows the list', async () => {
     answers.approvals = { state: 'ok', proposals: [move, { ...move, id: 'p2' }] }
     const page = await render('Approvals')
-    expect(page.q('approvals-link')?.textContent).toContain('(2)')
+    expect((await sidebarRow('approvals'))?.count).toBe(2)
     answers.approvals = { state: 'ok', proposals: [{ ...move, id: 'p2' }] }
     answers.decide = { ...pending, state: 'Applied' }
     await page.click('Approve move')
-    expect(page.q('approvals-link')?.textContent).toContain('(1)')
+    expect((await sidebarRow('approvals'))?.count).toBe(1)
     await page.done()
   })
 
@@ -363,7 +379,7 @@ describe('Not in any section', () => {
     const page = await render('Unplaced')
     expect(page.q('unplaced-store')?.textContent).toContain('Lakeside')
     expect(page.q('unplaced-row')?.textContent).toBe('SareesOut of Ladies Wear since 10-Nov-2026 · reviewedIts removal is reviewed. A Team Leader adds it back.')
-    expect(page.q('unplaced-link')).toBeTruthy()
+    expect(await sidebarRow('unplaced')).toBeTruthy()
     await page.done()
   })
 
@@ -382,7 +398,7 @@ describe('Not in any section', () => {
 // #967's UI checklist: the Reports group lists what the reader may open.
 describe("Dash's sidebar", () => {
   const REPORTS = [{ key: 'sales', name: 'Sales versus target', takes_store: true, takes_month: true }, { key: 'whole', name: 'Store target month to date', takes_store: false, takes_month: false }]
-  const links = () => [...document.querySelectorAll('[data-testid=report-link]')]
+  const links = async () => (await sidebarRows()).find(section => section.id === 'reports')?.items ?? []
   async function sidebar(address: string, current: 'report' | 'sections' = 'report') {
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
@@ -395,38 +411,47 @@ describe("Dash's sidebar", () => {
     return container
   }
 
-  it('lists each report by name, above Your sections', async () => {
+  it('places the shared sidebar and draws no row of its own', async () => {
     answers = { reports: REPORTS }
     const container = await sidebar('/dash/')
-    const texts = [...container.querySelectorAll('featherbase-sidebar > *')].map(e => e.textContent)
-    expect(texts).toEqual(['Reports', 'Sales versus target', 'Store target month to date', 'Your work', 'Your Sections'])
+    expect(container.querySelector('featherbase-sidebar')?.childNodes.length).toBe(0)
+  })
+
+  it('lists each report by name, above Your Sections', async () => {
+    answers = { reports: REPORTS }
+    await sidebar('/dash/')
+    expect((await sidebarRows()).flatMap(section => [section.title, ...section.items.map(item => item.label)]))
+      .toEqual(['Reports', 'Sales versus target', 'Store target month to date', 'Your Work', 'Your Sections'])
+    // #1248: the reports share one icon, so the rail shows each one's initials.
+    expect((await links()).every(report => report.icon === 'report' && report.initials)).toBe(true)
   })
 
   it('marks the first report when the address names none, and the one it names otherwise', async () => {
     answers = { reports: REPORTS }
     await sidebar('/dash/')
-    expect(links().map(a => a.getAttribute('aria-current'))).toEqual(['page', null])
+    expect((await links()).map(a => a.current)).toEqual([true, false])
     document.body.innerHTML = ''
     await sidebar('/dash/?report=whole')
-    expect(links().map(a => a.getAttribute('aria-current'))).toEqual([null, 'page'])
+    expect((await links()).map(a => a.current)).toEqual([false, true])
   })
 
   it('keeps the store chosen in each report\'s address', async () => {
     answers = { reports: REPORTS }
     await sidebar('/dash/?store=9901&report=sales')
-    expect(links().map(a => a.getAttribute('href'))).toEqual(['?store=9901&report=sales', '?store=9901&report=whole'])
+    expect((await links()).map(a => a.address)).toEqual(['?store=9901&report=sales', '?store=9901&report=whole'])
   })
 
   it('marks no report on another page, and leaves that page behind in the address', async () => {
     answers = { reports: REPORTS }
     await sidebar('/dash/?view=sections', 'sections')
-    expect(links().map(a => [a.getAttribute('aria-current'), a.getAttribute('href')])).toEqual([[null, '?report=sales'], [null, '?report=whole']])
+    expect((await links()).map(a => [a.current, a.address])).toEqual([[false, '?report=sales'], [false, '?report=whole']])
+    expect(await sidebarRow('sections')).toMatchObject({ current: true })
   })
 
   it('draws no Reports group for someone with none', async () => {
     answers = { reports: [] }
     await sidebar('/dash/')
-    expect(document.querySelector('[data-testid=reports-group]')).toBeNull()
+    expect((await sidebarRows()).map(section => section.id)).toEqual(['your-work'])
   })
 })
 
@@ -437,15 +462,14 @@ describe('a Department Manager on Your sections (#1195)', () => {
     const page = await render('YourSections')
     expect(page.q('department-job')?.textContent).toContain("A Department Manager's report shows their department's sections.")
     expect(page.q('department-job')?.querySelector('a')?.getAttribute('href')).toBe('?view=department')
-    expect(page.q('department-link')?.getAttribute('href')).toBe('?view=department')
-    expect(page.q('department-link')?.getAttribute('aria-current')).toBeNull()
+    expect(await sidebarRow('department')).toMatchObject({ address: '?view=department', current: false })
     await page.done()
   })
   it('offers no Your department to anyone else', async () => {
     answers.my_sections = { state: 'ok', name: 'Asha', jobs: [job], proposals: [], waiting_for_me: 0 }
     answers.holds_department_job = false
     const page = await render('YourSections')
-    expect(page.q('department-link')).toBeNull()
+    expect(await sidebarRow('department')).toBeUndefined()
     await page.done()
   })
 })
@@ -539,7 +563,7 @@ describe('apply now, review after (#1191)', () => {
     answers.decide = { ...applied, state: 'Confirmed' }
     const page = await render('Approvals')
     expect(page.container.querySelector('h1')?.textContent).toBe('Waiting for you')
-    expect(page.q('approvals-link')?.textContent).toContain('Waiting for you (2)')
+    expect(said(await sidebarRow('approvals'))).toBe('Waiting For You (2)')
     expect(page.q('to-review-heading')?.textContent).toBe('Already done · check and confirm, or undo')
     expect(page.q('to-approve-heading')?.textContent).toBe('Waiting for your approval · nothing changes until you approve')
     const [done] = page.container.querySelectorAll('[data-testid="approval"]')

@@ -17,7 +17,6 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--color-focus); o
 .fc-shell { display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: calc(100vh - var(--featherbase-bar-height, 48px)); }
 .fc-page { width: 100%; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
 .fc-title { margin: 0; font-size: 20px; line-height: 1.2; font-weight: 700; }
-.fc-sidebar-group { display: block; padding: 12px 12px 4px; font-size: 12px; font-weight: 600; color: var(--color-ink-muted); }
 @media (max-width: 640px) { .fc-shell { display: block; } .fc-page { padding: 8px; } }
 
 /* Charts (charts.tsx): blue raw base, orange final, green actual, as in the weekly pack, stepped so the

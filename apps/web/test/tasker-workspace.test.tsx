@@ -11,6 +11,7 @@ import { Recurrence } from '../../../example-apps/tasker/src/RecurrenceControls'
 import { Discussion } from '../../../example-apps/tasker/src/Discussion'
 import { TaskActions } from '../../../example-apps/tasker/src/TaskActions'
 import { Subtasks } from '../../../example-apps/tasker/src/Subtasks'
+import { AppSidebarRows } from './app-sidebar-rows'
 
 const source = resolve('../..', 'example-apps/tasker')
 const clientOptions = { defaultOptions: { queries: { retry: false } } }
@@ -204,7 +205,7 @@ test('a task link can be retried once its creator deliberately shares the work',
   setSession(teammate.token!, { row_id: teammate.user!, email: null, full_name: null })
   location.hash = `#task=${task.row_id}`
   const { TaskManagementPage } = await import('../../../example-apps/tasker/src/TaskManagement')
-  render(<QueryClientProvider client={new QueryClient(clientOptions)}><TaskManagementPage /></QueryClientProvider>)
+  render(<QueryClientProvider client={new QueryClient(clientOptions)}><><TaskManagementPage /><AppSidebarRows label="Task views" /></></QueryClientProvider>)
   try {
     const retry = await screen.findByRole('button', { name: 'Try again' })
     expect(screen.queryByRole('heading', { name: 'Shared after the link arrived' })).not.toBeInTheDocument()

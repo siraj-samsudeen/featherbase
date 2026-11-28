@@ -4,6 +4,7 @@
 // picked beside "Viewing as" and kept in the address (?month=), as Dash's top-bar Month picker keeps it.
 import { UNNAMED_TL, officialRuns } from './teamLeader/live'
 import { createElement, useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useSidebarRows, type SidebarIcon } from '@featherbase/shop-floor/sidebar'
 import { Button, Card, EmptyState, Field, PersonLabel, Select, Skeleton } from '@featherbase/shop-floor'
 import { listAll, readOp, saveRow } from './api'
 import { PEOPLE, person, type Person } from './madeUp'
@@ -59,22 +60,22 @@ export interface Data { explanations: ExplanationRow[]; numbers: NumberRow[]; de
 export interface Ctx { data: Data; viewer: Person; month: Month; reload: () => Promise<void>; save: typeof saveRow }
 
 const VIEWS = [
-  { key: 'sections', label: 'Sections', group: 'Forecasts', icon: 'M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1' },
-  { key: 'section', label: 'My Section', group: 'Forecasts', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z' },
-  { key: 'attention', label: 'Needs Your Attention', group: 'Forecasts', icon: 'M12 9v4M12 17h.01M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z' },
-  { key: 'days', label: 'Day Review', group: 'Forecasts', icon: 'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z' },
-  { key: 'unassigned', label: 'No Section', group: 'Forecasts', icon: 'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z' },
-  { key: 'store-review', label: 'Store Manager Review', group: 'Forecasts', icon: 'M3 10 12 3l9 7v11H3zM9 21v-7h6v7' },
-  { key: 'category-review', label: 'Category Review', group: 'Forecasts', icon: 'M3 3h18v18H3zM3 9h18M9 9v12' },
-  { key: 'rb-review', label: 'RB Review', group: 'Forecasts', icon: 'M3 3v18h18M8 17v-4m5 4V9m5 8V6' },
-  { key: 'forecasts', label: 'Workspace', group: 'Forecasts', icon: 'M3 3h18v18H3zM3 9h18M9 3v18' },
-  { key: 'numbers', label: 'Ledger', group: 'Forecasts', icon: 'M20 6 9 17l-5-5' },
-  { key: 'mine', label: 'My Numbers', group: 'Forecasts', icon: 'M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10' },
-  { key: 'runs', label: 'Runs & Targets', group: 'Forecasts', icon: 'M4 6h16M4 12h16M4 18h10' },
-  { key: 'results', label: 'Results', group: 'Learning', icon: 'M3 3v18h18M7 14v3m5-8v8m5-12v12' },
-  { key: 'charts', label: 'Charts', group: 'Learning', icon: 'M3 3v18h18M7 16l4-5 4 3 5-7' },
-  { key: 'review', label: 'Review', group: 'Learning', icon: 'M8 10h8M8 14h5M21 12a9 9 0 1 1-4-7.5L21 3v6h-6' },
-  { key: 'ideas', label: 'Idea Register', group: 'Learning', icon: 'M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2' },
+  { key: 'sections', label: 'Sections', group: 'Forecasts', icon: 'building' as SidebarIcon },
+  { key: 'section', label: 'My Section', group: 'Forecasts', icon: 'grid' as SidebarIcon },
+  { key: 'attention', label: 'Needs Your Attention', group: 'Forecasts', icon: 'alert' as SidebarIcon },
+  { key: 'days', label: 'Day Review', group: 'Forecasts', icon: 'calendar' as SidebarIcon },
+  { key: 'unassigned', label: 'No Section', group: 'Forecasts', icon: 'warning' as SidebarIcon },
+  { key: 'store-review', label: 'Store Manager Review', group: 'Forecasts', icon: 'store' as SidebarIcon },
+  { key: 'category-review', label: 'Category Review', group: 'Forecasts', icon: 'table' as SidebarIcon },
+  { key: 'rb-review', label: 'RB Review', group: 'Forecasts', icon: 'chart' as SidebarIcon },
+  { key: 'forecasts', label: 'Workspace', group: 'Forecasts', icon: 'table' as SidebarIcon },
+  { key: 'numbers', label: 'Ledger', group: 'Forecasts', icon: 'check' as SidebarIcon },
+  { key: 'mine', label: 'My Numbers', group: 'Forecasts', icon: 'person' as SidebarIcon },
+  { key: 'runs', label: 'Runs & Targets', group: 'Forecasts', icon: 'rows' as SidebarIcon },
+  { key: 'results', label: 'Results', group: 'Learning', icon: 'chart' as SidebarIcon },
+  { key: 'charts', label: 'Charts', group: 'Learning', icon: 'trend' as SidebarIcon },
+  { key: 'review', label: 'Review', group: 'Learning', icon: 'refresh' as SidebarIcon },
+  { key: 'ideas', label: 'Idea Register', group: 'Learning', icon: 'idea' as SidebarIcon },
 ] as const
 type View = typeof VIEWS[number]['key']
 
@@ -143,17 +144,24 @@ const reachInAddress = (): Reach | null => {
 }
 const reachParams = (r: Reach | null): Record<string, string> => (!r ? {} : r.kind === 'store' ? { reach: 'store', store: r.store } : { reach: 'region', region: r.region })
 
+// #1385 (slice 4): the pages are rows the shared sidebar draws from data, in its Forecasts and Learning sections.
 function Sidebar({ current, waiting, news }: { current: View; waiting: number; news: number }) {
   const groups = ['Forecasts', 'Learning'].filter(g => SHOWN.some(v => v.group === g))
-  return createElement('featherbase-sidebar', { 'aria-label': 'Forecasting navigation' },
-    ...groups.flatMap(group => [
-      <span key={group} className="fc-sidebar-group">{group}</span>,
-      ...SHOWN.filter(v => v.group === group).map(v => (
-        <a key={v.key} href={v.key === 'attention' || v.key === 'days' ? address(v.key, reachInAddress() ? reachParams(reachInAddress()) : sectionInAddress()) : address(v.key)} {...(current === v.key ? { 'aria-current': 'page' as const } : {})}>
-          <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d={v.icon} /></svg>
-          <span data-testid={`nav-${v.key}`}>{v.label}{v.key === 'numbers' && waiting ? ` (${waiting})` : ''}{v.key === 'mine' && news ? ` (${news} new)` : ''}</span>
-        </a>)),
-    ]))
+  const where = (key: View) => key === 'attention' || key === 'days' ? address(key, reachInAddress() ? reachParams(reachInAddress()) : sectionInAddress()) : address(key)
+  const rows = groups.map(group => ({
+    id: group.toLowerCase(),
+    title: group,
+    items: SHOWN.filter(v => v.group === group).map(v => ({
+      id: v.key,
+      label: v.label,
+      address: where(v.key),
+      icon: v.icon,
+      ...(v.key === 'numbers' && waiting > 0 && { count: waiting }),
+      ...(v.key === 'mine' && news > 0 && { count: news }),
+    })),
+  }))
+  useSidebarRows({ current: where(current), sections: rows })
+  return createElement('featherbase-sidebar', { 'aria-label': 'Forecasting navigation' })
 }
 
 /** Made-up people only: the baseline shows each one's view without separate sign-ins. The month sits beside it. */
@@ -208,7 +216,8 @@ function useInAppNavigation() {
     const moved = () => setMoves(n => n + 1)
     const click = (e: MouseEvent) => {
       if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
-      const a = (e.target as Element).closest?.('a[href]') as HTMLAnchorElement | null
+      // the shared sidebar's rows are in its shadow root: the click's first target is the link's own part
+      const a = (e.composedPath()[0] as Element).closest?.('a[href]') as HTMLAnchorElement | null
       if (!a || (a.target && a.target !== '_self')) return
       const to = new URL(a.href, location.href)
       if (to.origin !== location.origin || to.pathname !== location.pathname) return

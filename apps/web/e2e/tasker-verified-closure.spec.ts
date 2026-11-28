@@ -38,7 +38,7 @@ test('tasker_verified_closure: the doer submits, the verifier returns it with a 
 
   await session
     .visit('/tasker/')
-    .within('.tasker-nav-verify', tab => tab.click('To verify'))
+    .within('[data-sidebar-item="verify"]', tab => tab.click('To Verify'))
     .within('section[aria-labelledby="verify-heading"]', list => list
       .assertText('Replaced both tube lights')
       .click(title))
@@ -57,7 +57,7 @@ test('tasker_verified_closure: the doer submits, the verifier returns it with a 
 
   await session.step('the verifier accepts the second submission', async ({ page }) => {
     await page.goto('/tasker/')
-    await page.locator('.tasker-nav-verify').click()
+    await page.locator('[data-sidebar-item="verify"]').click()
     await page.getByRole('region', { name: 'To verify' }).getByRole('link', { name: title }).click()
     const detail = page.getByRole('region', { name: 'Task detail content' })
     await expect(detail.locator('.tasker-evidence-note')).toHaveText('Replaced the starter too')

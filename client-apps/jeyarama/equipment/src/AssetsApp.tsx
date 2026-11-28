@@ -1,4 +1,5 @@
 import { createElement, useEffect, useState } from 'react'
+import { useSidebarRows, type SidebarItem } from '@featherbase/shop-floor/sidebar'
 import { AssetPage } from './AssetPage'
 import { AssetsList } from './AssetsList'
 import { CountPage, CountsPage, ReviewPage } from './Counts'
@@ -30,18 +31,11 @@ function readRoute(): Route {
   return { page: 'jobs' }
 }
 
-const NAV: { page: Route['page']; label: string; hash: string }[] = [
-  { page: 'jobs', label: 'Repair jobs', hash: '#jobs' },
-  { page: 'assets', label: 'Assets', hash: '#assets' },
-  { page: 'counts', label: 'Counts', hash: '#counts' },
-  { page: 'custody', label: 'Custody', hash: '#custody' },
-  { page: 'transfers', label: 'Transfers', hash: '#transfers' },
-  { page: 'labels', label: 'Tags and labels', hash: '#labels' },
-  { page: 'setup', label: 'Pilot setup', hash: '#setup' },
-]
-const FINANCE_NAV: { page: Route['page']; label: string; hash: string; roles: string[] }[] = [
-  { page: 'sap', label: 'SAP matching', hash: '#sap', roles: ['Assets Accountant'] },
-  { page: 'exceptions', label: 'Exceptions', hash: '#exceptions', roles: ['Assets Accountant', 'Assets Finance Controller', 'Assets Manager', 'System Manager'] },
+// #1385 (slice 4): the pages everyone here opens are declared in featherbase.json (`sidebar`); the finance
+// pages, which only some roles open, are given at run time. The shared sidebar draws both.
+const FINANCE_NAV: (SidebarItem & { roles: string[] })[] = [
+  { label: 'SAP Matching', address: '#sap', icon: 'link', roles: ['Assets Accountant'] },
+  { label: 'Exceptions', address: '#exceptions', icon: 'warning', roles: ['Assets Accountant', 'Assets Finance Controller', 'Assets Manager', 'System Manager'] },
 ]
 
 export function AssetsApp({ roles }: { roles: string[] }) {
@@ -53,13 +47,14 @@ export function AssetsApp({ roles }: { roles: string[] }) {
   }, [])
   const current = route.page === 'count' || route.page === 'review' ? 'counts' : route.page === 'transfer' ? 'transfers' : route.page
 
-  // Featherbase's shared sidebar, as every app uses (app-navigation spec).
+  useSidebarRows({
+    current: `#${current}`,
+    sections: [{ id: 'finance', items: FINANCE_NAV.filter(item => item.roles.some(role => roles.includes(role))).map(({ roles: _, ...item }) => item) }],
+  })
+
+  // Featherbase's shared sidebar, as every app uses (app-navigation spec): placed here, drawn by the platform.
   return <div className="assets-shell">
-    {createElement('featherbase-sidebar', { className: 'assets-nav', 'aria-label': 'Assets pages' }, <>
-      {NAV.map(item => <a key={item.page} href={item.hash} aria-current={current === item.page ? 'page' : undefined}>{item.label}</a>)}
-      {FINANCE_NAV.filter(item => item.roles.some(role => roles.includes(role))).map(item => <a key={item.page} href={item.hash} aria-current={current === item.page ? 'page' : undefined}>{item.label}</a>)}
-      <a className="assets-nav-admin" href="/featherbase/admin/table/equipment.asset">Edit the register in Featherbase ↗</a>
-    </>)}
+    {createElement('featherbase-sidebar', { className: 'assets-nav', 'aria-label': 'Assets pages' })}
     <main className="assets-main">
       {route.page === 'jobs' && <JobsBoard roles={roles} />}
       {route.page === 'assets' && <AssetsList />}

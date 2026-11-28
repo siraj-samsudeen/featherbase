@@ -1,10 +1,10 @@
 // tickets-workspace (#941), each fenced scenario of
 // openspec/specs/tickets-workspace/spec.md step by step: Tickets' own page
-// rendered in jsdom against the real in-process server. Tickets fills the
-// shared app navigation (`<featherbase-sidebar>`) with its views and types;
+// rendered in jsdom against the real in-process server. Tickets gives the
+// shared app navigation its views and types as rows (#1385), drawn beside it;
 // the shared top bar is the platform's, drawn around the page when it is
 // served, so it is not part of this page.
-import { screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { scenarioFor } from 'server/test/scenario'
@@ -14,7 +14,8 @@ import { openTickets, sidebar } from '../tickets-page'
 
 const test = base.extend(pinning)
 const scenario = scenarioFor(test, 'tickets-workspace')
-const SIDEBAR = 'featherbase-sidebar'
+// The shared sidebar, and the rows Tickets gives it drawn beside the page (tickets-page.ts).
+const SIDEBAR = 'featherbase-sidebar, [data-testid=app-sidebar-rows]'
 const BAR = 'featherbase-bar'
 const NO_CONNECTIONS = "none of Tickets' outside connections is set up"
 const SETTINGS_LINK = /\/featherbase\/admin\/table\/app-setting/
@@ -34,7 +35,7 @@ const navRow = (name: RegExp) => [...sidebar().querySelectorAll(':scope > :is(bu
 function ownText() {
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
     acceptNode: node => node.nodeType === 1
-      ? ((node as Element).matches(`${BAR}, ${SIDEBAR}, script, style`) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP)
+      ? ((node as Element).matches(`${BAR}, ${SIDEBAR}, .connection-status, script, style`) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP)
       : NodeFilter.FILTER_ACCEPT,
   })
   const parts: string[] = []
@@ -59,9 +60,11 @@ function header(title: string) {
     .filter(b => b.getAttribute('role') !== 'tab' && !b.closest('[role=tablist]') && !b.disabled).map(b => b.textContent?.trim()) : []
   return { heading: heading!, box: named ? box! : null, actions }
 }
+/** The connection status, beside the queue's toolbar. */
+const connectionStatus = () => within(screen.getByRole('main')).getByRole('status')
 async function statusLinks() {
-  await waitFor(() => expect(within(sidebar()).getByText(/not set up/i)).toBeInTheDocument())
-  return [...sidebar().querySelectorAll('a')].map(a => a.getAttribute('href') ?? '')
+  await waitFor(() => expect(connectionStatus()).toHaveTextContent(/not set up/i))
+  return [...connectionStatus().querySelectorAll('a')].map(a => a.getAttribute('href') ?? '')
 }
 
 describe('tickets-workspace', () => {
@@ -79,7 +82,7 @@ describe('tickets-workspace', () => {
     })
     await step("Tickets' views are listed in the shared app navigation", async () => {
       expect(sidebar(), 'the page draws the shared app navigation').toBeTruthy()
-      for (const view of [/^\s*All tickets/, /^\s*My requests/, /^\s*Assigned to me/])
+      for (const view of [/^\s*All Tickets/, /^\s*My Requests/, /^\s*Assigned To Me/])
         await waitFor(() => expect(navRow(view), `the shared navigation lists ${view}`).toBeTruthy())
     })
     await step('Tickets shows no navigation or account controls of its own', () => {
@@ -87,8 +90,7 @@ describe('tickets-workspace', () => {
       expect(own.map(el => el.outerHTML.slice(0, 80)), 'Tickets draws navigation of its own').toEqual([])
       expect(ownText(), 'Tickets draws account controls of its own').not.toMatch(/Signed in|Sign out|Support workspace|Requester workspace/)
     })
-    await step('the user chooses the view of tickets assigned to them', () =>
-      session.within(SIDEBAR, (nav) => nav.clickButton('Assigned to me')))
+    await step('the user chooses the view of tickets assigned to them', () => { void session; fireEvent.click(navRow(/^Assigned To Me/)!) })
     await step('the queue shows only the tickets assigned to the user', () => expectQueue(mine, theirs))
   })
 
@@ -105,8 +107,8 @@ describe('tickets-workspace', () => {
       dataQuality = { ...t.ticket, title }
     })
     await step('the user chooses the access request type in the shared app navigation', async () => {
-      const { session } = await openTickets(t.people.Support!)
-      await session.within(SIDEBAR, (nav) => nav.clickButton('Access'))
+      await openTickets(t.people.Support!)
+      fireEvent.click(await waitFor(() => { const row = navRow(/^Access/); expect(row, 'the shared navigation lists the access type').toBeTruthy(); return row! }))
     })
     await step('the queue shows the access request and not the data quality issue', () => expectQueue(access, dataQuality))
   })
@@ -143,8 +145,8 @@ describe('tickets-workspace', () => {
     const t = new Tickets(admin, createUser)
     await step(NO_CONNECTIONS, () => t.choose('Support'))
     await step('the user opens Tickets', () => openTickets(t.people.Support!))
-    await step('a short status in the navigation says the connections are not set up', async () => {
-      const status = await waitFor(() => within(sidebar()).getByText(/not set up/i))
+    await step("a short status beside the queue's toolbar says the connections are not set up", async () => {
+      const status = await waitFor(() => { expect(connectionStatus()).toHaveTextContent(/not set up/i); return connectionStatus() })
       expect((status.textContent ?? '').trim().length, 'the connection status is short').toBeLessThanOrEqual(80)
     })
     await step('no connections banner is shown above the queue', () =>

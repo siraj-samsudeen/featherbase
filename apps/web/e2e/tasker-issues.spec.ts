@@ -28,7 +28,7 @@ test('tasker_issue_closure: an issue is raised in the UI, acknowledged and submi
 
   await session.visit('/tasker/')
   await session.step('raise the issue', async ({ page }) => {
-    await page.locator('.tasker-nav-issues').click()
+    await page.locator('[data-sidebar-item="issues"]').click()
     await page.getByRole('button', { name: 'Raise an issue' }).click()
     const form = page.getByRole('form', { name: 'Raise an issue' })
     await form.getByRole('textbox', { name: 'What happened' }).fill(title)
@@ -54,7 +54,7 @@ test('tasker_issue_closure: an issue is raised in the UI, acknowledged and submi
 
   await session.step('the verifier sees the log and accepts', async ({ page }) => {
     await page.goto('/tasker/')
-    await page.locator('.tasker-nav-issues').click()
+    await page.locator('[data-sidebar-item="issues"]').click()
     await page.getByRole('list', { name: 'Open issues' }).getByRole('link', { name: title }).click()
     const detail = page.getByRole('region', { name: 'Issue detail' })
     const log = detail.getByRole('list', { name: 'Escalation log' })

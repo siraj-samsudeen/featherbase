@@ -61,9 +61,6 @@ code {
   font-variant-ligatures: none;
 }
 
-/* The group label above the reader's reports in the sidebar. */
-.fd-sidebar-group { display: block; padding: 12px 12px 4px; font-size: 12px; font-weight: 600; color: var(--color-ink-muted); }
-
 /* #1240: "Report an issue": a button on the header's line, right, and a side panel over the right
    edge of the report, so the figure being reported stays in view. */
 .fd-head-row { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 8px; }

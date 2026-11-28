@@ -7,6 +7,7 @@ import {
 } from 'react'
 import { createRoot } from 'react-dom/client'
 import { THEME_CHANGE_EVENT, paintTheme } from '@featherbase/shop-floor/theme'
+import { useSidebarRows, type SidebarIcon, type SidebarItem } from '@featherbase/shop-floor/sidebar'
 import {
   action,
   read,
@@ -23,20 +24,26 @@ import { StatePill, isDone, tone } from './ticket-state'
 import { CreateTicket } from './CreateTicket'
 import { CaseFile, SETTINGS_HREF } from './CaseFile'
 
-/** #1233: a sidebar count; none reads quieter than some. */
-// #1248: a count the shared sidebar shows as a badge on its icon when it is a rail.
-const Count = ({ n }: { n: number }) => <span className={n ? 'count' : 'count zero'} data-sidebar-count>{n}</span>
+// #1385 (slice 4): the views and types are rows the shared sidebar draws from data. Each has an address on
+// this page (#view=mine&type=it), so a row is a link and the list follows the address.
+const VIEW_ICON: Record<string, SidebarIcon> = { all: 'inbox', mine: 'person', assigned: 'person-check' }
+const VIEW_KEYS = ['all', 'mine', 'assigned']
 
-/** The sidebar's icons (#1248): collapsed to a rail, each view is its icon. */
-const VIEW_ICON: Record<string, string> = {
-  all: 'M3 13h5l1.5 3h5L16 13h5M5 5h14l2 8v6H3v-6z',
-  mine: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4 20a8 8 0 0 1 16 0',
-  assigned: 'M10 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M3 20a7 7 0 0 1 12-4.9M16 18l2 2 4-4',
-  types: 'M2 11V3h8l9 9-8 8zM14 3l8 8-6 6M6.5 7h.01',
+/** The address of a view and a type on this page. */
+export function listAddress(view: string, kind: string): string {
+  const hash = new URLSearchParams()
+  hash.set('view', view)
+  if (kind) hash.set('type', kind)
+  return `#${hash}`
 }
-const SidebarIcon = ({ name }: { name: string }) => (
-  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={VIEW_ICON[name]} /></svg>
-)
+
+/** The view and type the page's address names. */
+function listInHash(): { view: string; kind: string } {
+  const hash = new URLSearchParams(window.location.hash.slice(1))
+  const view = hash.get('view') ?? ''
+  return { view: VIEW_KEYS.includes(view) ? view : 'all', kind: hash.get('type') ?? '' }
+}
+
 /** #1233: what an empty view says, to the person it belongs to. "Assigned to me" lists open work only
  *  (its count and its default filter agree), so its empty state speaks of what is still to do. */
 const EMPTY: Record<string, [string, string]> = {
@@ -55,9 +62,9 @@ function App() {
   // #1001: an emailed link opens its ticket.
   const [selected, setSelected] = useState(() => new URLSearchParams(window.location.search).get('ticket') ?? ''),
     [search, setSearch] = useState(''),
-    [kind, setKind] = useState(''),
+    [kind, setKind] = useState(() => listInHash().kind),
     [state, setState] = useState(''),
-    [view, setView] = useState('all')
+    [view, setView] = useState(() => listInHash().view)
   const [error, setError] = useState(''),
     [loading, setLoading] = useState(true),
     [detailLoading, setDetailLoading] = useState(false),
@@ -212,11 +219,11 @@ function App() {
         ? ticket.assigned_to === userId && !isDone(ticket)
         : true
   const views = [
-    ['all', 'All tickets'],
-    ['mine', 'My requests'],
-    ...(session?.capabilities.support ? [['assigned', 'Assigned to me']] : []),
+    ['all', 'All Tickets'],
+    ['mine', 'My Requests'],
+    ...(session?.capabilities.support ? [['assigned', 'Assigned To Me']] : []),
   ] as const
-  const viewName = views.find(([key]) => key === view)?.[1] ?? 'All tickets'
+  const viewName = views.find(([key]) => key === view)?.[1] ?? 'All Tickets'
   const typeCounts = new Map<string, number>()
   for (const ticket of everything)
     if (inView(ticket, view))
@@ -247,6 +254,58 @@ function App() {
   const unconfigured = Object.entries(connections)
     .filter(([, status]) => status !== 'configured')
     .map(([key]) => connectionNames[key] ?? stateLabel(key))
+  // The address leads: a row's link moves it, and the list follows (a type's row again clears the type).
+  useEffect(() => {
+    const follow = () => {
+      const named = listInHash()
+      setView(named.view)
+      setKind(named.kind)
+    }
+    window.addEventListener('hashchange', follow)
+    return () => window.removeEventListener('hashchange', follow)
+  }, [])
+  const viewRows: SidebarItem[] = views.map(([key, name]) => ({
+    id: key,
+    label: name,
+    address: listAddress(key, kind),
+    icon: VIEW_ICON[key] ?? 'list',
+    count: everything.filter((ticket) => inView(ticket, key)).length,
+  }))
+  const typeRows: SidebarItem[] = typeKeys.map((key) => ({
+    id: `type-${key}`,
+    label: kindLabel(key),
+    address: listAddress(view, kind === key ? '' : key),
+    icon: 'tag',
+    count: typeCounts.get(key) ?? 0,
+  }))
+  useSidebarRows({
+    current: [listAddress(view, kind), ...(kind ? [listAddress(view, '')] : [])],
+    sections: [
+      { id: 'views', items: viewRows },
+      // #1248: in the rail, Types folds into one icon whose menu lists them.
+      { id: 'types', title: 'Types', icon: 'tag', items: typeRows },
+    ],
+  })
+  const connectionStatus = session && (
+    <span
+      className="connection-status"
+      role="status"
+      title={
+        unconfigured.length
+          ? `Not set up: ${unconfigured.join(', ')}. Tickets works by hand until they are.`
+          : 'All connections are set up.'
+      }
+    >
+      <span className={`dot ${unconfigured.length ? 'tone-caution' : 'tone-positive'}`} aria-hidden="true" />
+      {unconfigured.length ? 'Connections Not Set Up' : 'Connections Ready'}
+      {unconfigured.length > 0 && session.canManage && (
+        <>
+          {' · '}
+          <a href={SETTINGS_HREF}>Set Up</a>
+        </>
+      )}
+    </span>
+  )
   const newTicket = (
     <button
       className="primary"
@@ -258,66 +317,7 @@ function App() {
   )
   return (
     <div className="tickets-shell">
-      {createElement(
-        'featherbase-sidebar',
-        { className: 'tickets-sidebar', 'aria-label': 'Ticket views' },
-        <>
-          {views.map(([key, name]) => (
-            <button
-              key={key}
-              type="button"
-              aria-current={view === key ? 'page' : undefined}
-              onClick={() => setView(key)}
-            >
-              <SidebarIcon name={key} />
-              <span>{name}</span>
-              <Count n={everything.filter((ticket) => inView(ticket, key)).length} />
-            </button>
-          ))}
-          {typeKeys.length > 0 && (
-            // #1248: in the rail, Types folds into one icon whose menu lists them.
-            <div className="sidebar-heading" id="ticket-types-heading" data-rail-fold>
-              <SidebarIcon name="types" />
-              <span>Types</span>
-            </div>
-          )}
-          {typeKeys.map((key) => (
-            <button
-              key={key}
-              type="button"
-              data-depth="1"
-              aria-current={kind === key ? 'page' : undefined}
-              onClick={() => setKind((current) => (current === key ? '' : key))}
-            >
-              <span>{kindLabel(key)}</span>
-              <Count n={typeCounts.get(key) ?? 0} />
-            </button>
-          ))}
-          {session && (
-            <div
-              className="connection-status"
-              role="status"
-              title={
-                unconfigured.length
-                  ? `Not set up: ${unconfigured.join(', ')}. Tickets works by hand until they are.`
-                  : 'All connections are set up.'
-              }
-            >
-              <span
-                className={`dot ${unconfigured.length ? 'tone-caution' : 'tone-positive'}`}
-                aria-hidden="true"
-              />
-              {unconfigured.length ? 'Connections not set up' : 'Connections ready'}
-              {unconfigured.length > 0 && session.canManage && (
-                <>
-                  {' · '}
-                  <a href={SETTINGS_HREF}>Set up</a>
-                </>
-              )}
-            </div>
-          )}
-        </>,
-      )}
+      {createElement('featherbase-sidebar', { className: 'tickets-sidebar', 'aria-label': 'Ticket views' })}
       <main className="tickets-main">
         <div className="toolbar">
           <h1>
@@ -348,7 +348,7 @@ function App() {
               </option>
             ))}
           </select>
-          <span className="toolbar-end">{newTicket}</span>
+          <span className="toolbar-end">{connectionStatus}{newTicket}</span>
         </div>
         {error && (
           <div role="alert" className="error banner">

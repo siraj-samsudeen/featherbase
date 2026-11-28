@@ -32,9 +32,9 @@ describe('tickets-configurable-types', () => {
       ;({ session } = await openTickets(t.people.Anjali))
     })
     await step('that type is listed under Request types and offered in the new-ticket form', async () => {
-      await session.within('featherbase-sidebar', (nav) => nav.assertText('Data Quality Issue'))
-      // A button, by role: the DSL has no verb for "this button is offered".
-      expect(within(sidebar()).getByRole('button', { name: /Data Quality Issue/ })).toBeInTheDocument()
+      await session.within('[data-testid=app-sidebar-rows]', (nav) => nav.assertText('Data Quality Issue'))
+      // A row, by role: the DSL has no verb for "this link is offered".
+      expect(within(sidebar()).getByRole('link', { name: /Data Quality Issue/ })).toBeInTheDocument()
       await openNewTicket(session, x.key).within('dialog', (form) => form.assertText('Urgency *'))
     })
   })

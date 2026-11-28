@@ -9,6 +9,9 @@ import { AssetsApp } from '../../../client-apps/jeyarama/equipment/src/AssetsApp
 import { version } from '../../../client-apps/jeyarama/equipment/package.json'
 import { setSession } from '../src/lib/api'
 import { test, expect } from './pg-test'
+import { AppSidebarRows } from './app-sidebar-rows'
+import type { SidebarSection } from 'shared'
+import MANIFEST from '../../../client-apps/jeyarama/equipment/featherbase.json'
 
 type Row = { row_id: string; updated_at: string; [field: string]: unknown }
 
@@ -30,6 +33,7 @@ function renderAssets(as: TestClient, roles: string[], hash = '') {
   location.hash = hash
   return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
     <AssetsApp roles={roles} />
+    <AppSidebarRows label="Assets pages" declared={MANIFEST.sidebar.sections as SidebarSection[]} />
   </QueryClientProvider>)
 }
 
@@ -78,7 +82,7 @@ test('from an asset page the Repair jobs link opens the board, where a reported 
   await manager.post('/api/save_row', { table: 'equipment.job', row: { asset: voltas.row_id, problem: 'Not cooling', priority: 'Urgent' } })
   renderAssets(manager, ['Assets Manager'], `#asset=${voltas.row_id}`)
   expect(await screen.findByRole('heading', { name: 'Voltas 2-ton split AC' })).toBeInTheDocument()
-  await userEvent.setup().click(screen.getByRole('link', { name: 'Repair jobs' }))
+  await userEvent.setup().click(screen.getByRole('link', { name: 'Repair Jobs' }))
   const reported = await screen.findByRole('region', { name: 'Reported' })
   expect(await within(reported).findByText('Not cooling')).toBeInTheDocument()
 })

@@ -154,7 +154,8 @@
     {"id": "records_to_fix_words", "fromVersion": "0.2.19", "toVersion": "0.2.20", "operations": []},
     {"id": "live_person_names", "fromVersion": "0.2.20", "toVersion": "0.2.21", "operations": [{"kind": "relabelTable", "table": "tickets.member", "from": "Tickets member", "to": "Person in Tickets"}]},
     {"id": "no_refused_person_reads", "fromVersion": "0.2.21", "toVersion": "0.2.22", "operations": []},
-    {"id": "sub_tickets", "fromVersion": "0.2.22", "toVersion": "0.2.23", "operations": [{"kind": "addColumn", "table": "tickets.ticket", "column": {"column_name": "parent_ticket", "label": "Part of", "column_type": "Reference", "reference_table": "tickets.ticket"}}]}
+    {"id": "sub_tickets", "fromVersion": "0.2.22", "toVersion": "0.2.23", "operations": [{"kind": "addColumn", "table": "tickets.ticket", "column": {"column_name": "parent_ticket", "label": "Part of", "column_type": "Reference", "reference_table": "tickets.ticket"}}]},
+    {"id": "declared_sidebar", "fromVersion": "0.2.23", "toVersion": "0.2.24", "operations": []}
   ],
   "baseTables": {"read": {"Data Quality Row": ["ticket", "affected_table", "affected_row", "fixed_on", "note"]}},
   "permissions": [

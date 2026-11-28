@@ -1,6 +1,8 @@
 import { Attention } from './Attention'
 import { Button, cardClasses } from '@featherbase/shop-floor'
 import { createElement, useEffect, useRef, useState } from 'react'
+import { useSidebarRows, type SidebarIcon, type SidebarItem } from '@featherbase/shop-floor/sidebar'
+import { TaskerIcon } from './TaskerIcon'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser, listAllResources } from './api'
 import { listVisiblePeople, peopleWithTaskResponsibility, personName, PEOPLE_LIMITED_NOTICE, type PersonOption } from './people'
@@ -20,7 +22,6 @@ import {
 } from './taskViews'
 import { TASK_FIELDS, type Project, type Task } from './taskRows'
 import { hashSavedViewId, hashTaskId, sameDocumentHash, savedViewHash } from './taskHash'
-import { TaskerIcon, type TaskerIconName } from './TaskerIcon'
 import { Empty } from './Empty'
 import { TaskDetail, type DetailMode, type TaskComment } from './TaskDetail'
 import { TaskList } from './TaskList'
@@ -28,6 +29,22 @@ import { TaskViewToolbar } from './TaskViewToolbar'
 import { SavedViewDirectory, savedViewUnavailableReason, scopeLabel } from './SavedViewDirectory'
 
 type View = 'inbox' | 'work' | 'verify' | 'issues' | 'together' | 'stores' | 'projects' | 'personal' | 'views'
+const VIEWS: readonly View[] = ['inbox', 'work', 'verify', 'issues', 'together', 'stores', 'projects', 'personal', 'views']
+
+/** #1385 (slice 4): each of Tasker's pages has an address of its own, which its row in the shared sidebar opens:
+ *  #page=inbox, or #page=projects&project=<id> for one project. (#view= names a saved view, #task= a task.) */
+export function pageAddress(view: View, project = ''): string {
+  const params = new URLSearchParams({ page: view })
+  if (project) params.set('project', project)
+  return `#${params}`
+}
+
+/** The page the address opens, if it names one. */
+function pageInHash(): { view: View; project: string } | null {
+  const params = new URLSearchParams(location.hash.slice(1))
+  const view = params.get('page') as View | null
+  return view && VIEWS.includes(view) ? { view, project: params.get('project') ?? '' } : null
+}
 
 const FOCUS_SETTINGS = 'Task Management Focus'
 const PROJECT_SETTINGS = 'tasker.projects'
@@ -38,11 +55,11 @@ export function TaskManagementPage() {
   const queryClient = useQueryClient()
   const session = getSessionUser()
   const me = session?.row_id ?? ''
-  const [view, setView] = useState<View>(() => hashSavedViewId() ? 'views' : new URLSearchParams(location.hash.slice(1)).has('issue') ? 'issues' : 'work')
+  const [view, setView] = useState<View>(() => pageInHash()?.view ?? (hashSavedViewId() ? 'views' : new URLSearchParams(location.hash.slice(1)).has('issue') ? 'issues' : 'work'))
   const [capture, setCapture] = useState('')
   const [projectName, setProjectName] = useState('')
   const [projectTask, setProjectTask] = useState('')
-  const [selectedProject, setSelectedProject] = useState('')
+  const [selectedProject, setSelectedProject] = useState(() => pageInHash()?.project ?? '')
   const personalOwner = me
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -57,6 +74,12 @@ export function TaskManagementPage() {
 
   useEffect(() => {
     const change = () => {
+      // A sidebar row opens its page by its address.
+      const page = pageInHash()
+      if (page) {
+        leaveSavedView(page.view, page.view === 'projects' ? page.project : undefined, false)
+        return
+      }
       setSelectedTask(hashTaskId())
       const savedViewId = hashSavedViewId()
       setActiveSavedViewId(savedViewId)
@@ -66,6 +89,14 @@ export function TaskManagementPage() {
     window.addEventListener('hashchange', change)
     return () => window.removeEventListener('hashchange', change)
   }, [])
+
+  // A page the page itself opens (a project created, a project's card) keeps the address that names a page in
+  // step, so its sidebar row opens it again.
+  useEffect(() => {
+    if (!pageInHash()) return
+    const here = pageAddress(view, view === 'projects' ? selectedProject : '')
+    if (location.hash !== here) history.replaceState(history.state, '', here)
+  }, [view, selectedProject])
 
   const tasks = useQuery({
     queryKey: ['task-management', 'tasks'],
@@ -206,12 +237,13 @@ export function TaskManagementPage() {
     location.hash = savedViewHash(savedView.id)
   }
 
-  function leaveSavedView(nextView: View, projectId?: string) {
+  function leaveSavedView(nextView: View, projectId?: string, clearHash = true) {
     if (projectId !== undefined) setSelectedProject(projectId)
     setActiveSavedViewId(null)
+    setSelectedTask(null)
     setTaskViewSetup(emptyTaskViewSetup())
     setView(nextView)
-    location.hash = ''
+    if (clearHash) location.hash = ''
   }
 
   useEffect(() => {
@@ -444,20 +476,27 @@ export function TaskManagementPage() {
     }
   }
 
-  const primaryTabs: { id: View; label: string; icon: TaskerIconName; count?: number }[] = [
-    { id: 'inbox', label: 'Inbox', icon: 'inbox', count: inbox.length },
-    { id: 'work', label: 'My Work', icon: 'work', count: myWork.length },
-    { id: 'verify', label: 'To verify', icon: 'verify', count: toVerify.length },
-    { id: 'issues', label: 'Issues', icon: 'issues', count: openIssues },
-    { id: 'together', label: 'Together', icon: 'together' },
-    { id: 'stores', label: 'Stores', icon: 'stores' },
+  // #1385 (slice 4): Tasker's rows in the shared sidebar, as data: the platform draws them.
+  const row = (view: View, label: string, icon: SidebarIcon, count?: number): SidebarItem =>
+    ({ id: view, label, address: pageAddress(view), icon, ...(count !== undefined && { count }) })
+  const sidebarRows: SidebarItem[] = [
+    row('inbox', 'Inbox', 'inbox', inbox.length),
+    row('work', 'My Work', 'person', myWork.length),
+    row('verify', 'To Verify', 'check-circle', toVerify.length),
+    row('issues', 'Issues', 'warning', openIssues),
+    row('together', 'Together', 'people'),
+    row('stores', 'Stores', 'store'),
+    row('personal', 'Personal Tasks', 'clipboard', allTasks.filter((task) => !task.shared && task.personal_tasks_owner === me).length),
+    row('views', 'Views', 'filter', savedViews.length > 0 ? savedViews.length : undefined),
     {
-      id: 'personal',
-      label: 'Personal tasks',
-      icon: 'personal',
-      count: allTasks.filter((task) => !task.shared && task.personal_tasks_owner === me).length,
+      ...row('projects', 'Projects', 'folder'),
+      children: allProjects.map((project) => ({ label: project.project_name, address: pageAddress('projects', project.row_id), count: projectTaskCounts.get(project.row_id)! })),
     },
   ]
+  useSidebarRows({
+    current: pageAddress(view, view === 'projects' ? selectedProject : ''),
+    sections: [{ id: 'tasks', items: sidebarRows }],
+  })
   const filteredInbox = filterTasks(inbox, taskViewSetup)
   const filteredMyWork = filterTasks(myWork, taskViewSetup)
   const filteredTogether = filterTasks(activeTogetherTasks, taskViewSetup)
@@ -506,36 +545,7 @@ export function TaskManagementPage() {
   return (
     <StoresContext.Provider value={allStores}>
     <div className="tasker-shell" data-view={view} data-testid="task-management-page">
-      {createElement('featherbase-sidebar', { className: 'tasker-sidebar', 'aria-label': 'Task views' }, <>
-        {primaryTabs.map((tab) => (
-          <Button
-            key={tab.id}
-            type="button"
-            onClick={() => leaveSavedView(tab.id)}
-            aria-current={view === tab.id ? 'page' : undefined}
-            className={`tasker-nav-item tasker-nav-${tab.id}`}
-          >
-            <TaskerIcon name={tab.icon} />
-            <span>{tab.label}</span>
-            {tab.count != null && <span className="tasker-count">{tab.count}</span>}
-          </Button>
-        ))}
-        <Button type="button" onClick={() => leaveSavedView('views')} aria-current={view === 'views' ? 'page' : undefined} className="tasker-nav-item tasker-nav-views">
-          <TaskerIcon name="views" />
-          <span>Views</span>
-          {savedViews.length > 0 && <span className="tasker-count">{savedViews.length}</span>}
-        </Button>
-        <Button type="button" onClick={() => leaveSavedView('projects', '')} aria-current={view === 'projects' && !selectedProject ? 'page' : undefined} className="tasker-nav-item tasker-nav-projects">
-          <TaskerIcon name="projects" />
-          <span>Projects</span>
-        </Button>
-          {allProjects.map((project) => (
-              <Button key={project.row_id} type="button" data-depth="1" className="tasker-sidebar-project-name" aria-label={project.project_name} aria-current={view === 'projects' && selectedProject === project.row_id ? 'page' : undefined} onClick={() => leaveSavedView('projects', project.row_id)}>
-                <span>{project.project_name}</span>
-                <span className="tasker-count">{projectTaskCounts.get(project.row_id)!}</span>
-              </Button>
-          ))}
-      </>)}
+      {createElement('featherbase-sidebar', { className: 'tasker-sidebar', 'aria-label': 'Task views' })}
       <main className="tasker-main">
       {starredProjectIds.length > 0 && (
         <div className="tasker-project-tabs" aria-label="Starred projects">

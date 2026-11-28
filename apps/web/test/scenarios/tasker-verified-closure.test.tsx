@@ -172,12 +172,12 @@ describe('tasker-verified-closure', () => {
     await step('it shows "Waiting for Meena to verify"', () => rowShows(tasker, 'Waiting for Meena to verify'))
     await step('it is on Meena\'s "To verify" page', async () => {
       const page = await tasker.as('Meena')
-      await page.sidebarView(/^To verify/)
+      await page.sidebarView(/^To Verify/)
       await within(await screen.findByRole('region', { name: 'To verify' })).findByRole('link', { name: TITLE })
     })
     await step('Meena accepts it', async () => {
       const page = await tasker.as('Meena')
-      await page.sidebarView(/^To verify/)
+      await page.sidebarView(/^To Verify/)
       await page.session.within('[aria-labelledby="verify-heading"]', (list) => list.clickLink(TITLE))
       const detail = await screen.findByRole('region', { name: 'Task detail content' })
       await within(detail).findByRole('heading', { name: TITLE })
@@ -216,7 +216,7 @@ describe('tasker-verified-closure', () => {
     })
     await step('Meena returns it with the reason "Left counter still flickers"', async () => {
       const page = await tasker.as('Meena')
-      await page.sidebarView(/^To verify/)
+      await page.sidebarView(/^To Verify/)
       await page.session.within('[aria-labelledby="verify-heading"]', (list) => list.clickLink(TITLE))
       const detail = await screen.findByRole('region', { name: 'Task detail content' })
       await within(detail).findByRole('heading', { name: TITLE })

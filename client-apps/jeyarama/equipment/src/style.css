@@ -14,7 +14,6 @@ h1 { margin: 0; font-size: 24px; font-weight: 700; }
 h2 { margin: 0 0 8px; font-size: 15px; font-weight: 650; }
 
 .assets-shell { display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: calc(100vh - var(--featherbase-bar-height, 48px)); }
-.assets-nav .assets-nav-admin { margin-top: auto; font-size: 13px; }
 .assets-main { min-width: 0; padding: 28px; }
 @media (max-width: 700px) {
   .assets-shell { grid-template-columns: auto minmax(0, 1fr); }

@@ -15,6 +15,7 @@ import { test, expect } from './pg-test'
 import { taskerClient } from '../../server/test/tasker-client'
 import { deleteStored } from 'server/src/storage'
 import { pickedFile, useNodeMultipart } from './node-multipart'
+import { AppSidebarRows } from './app-sidebar-rows'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -35,7 +36,7 @@ async function team(createUser: (options: { roles: string[]; fullName: string })
 
 function renderTasker(as: TestClient) {
   setSession(as.token!, { row_id: as.user!, email: as.user!, full_name: null })
-  return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TaskManagementPage /></QueryClientProvider>)
+  return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><><TaskManagementPage /><AppSidebarRows label="Task views" /></></QueryClientProvider>)
 }
 
 const issueFields = { issue_title: 'Dairy chiller 2 at 9°C', category: 'Equipment failure', severity: 'High', owner_function: 'Facilities' }
@@ -59,7 +60,7 @@ test('a member raises an issue and sees it on the Issues page with its deadlines
   const { meena, suresh } = await team(createUser)
   renderTasker(meena)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: /^Issues/ }))
+  await user.click(await screen.findByRole('link', { name: /^Issues/ }))
   await user.click(await screen.findByRole('button', { name: 'Raise an issue' }))
   const form = await screen.findByRole('form', { name: 'Raise an issue' })
   await user.type(within(form).getByRole('textbox', { name: 'What happened' }), 'Dairy chiller 2 at 9°C')
@@ -87,7 +88,7 @@ test('the owner acknowledges an issue and its log shows each step', async ({ cre
   const issue = await meena.post<Row>('/api/save_row', { table: ISSUE, row: { ...issueFields, store: store.row_id, owner: suresh.user } })
   renderTasker(suresh)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: /^Issues/ }))
+  await user.click(await screen.findByRole('link', { name: /^Issues/ }))
   await user.click(await within(await screen.findByRole('list', { name: 'Open issues' })).findByRole('link', { name: 'Dairy chiller 2 at 9°C' }))
   const detail = await screen.findByRole('region', { name: 'Issue detail' })
   expect(within(detail).getByRole('group', { name: 'Response clock' })).toHaveTextContent(/Respond by/)
@@ -103,7 +104,7 @@ test('a breached issue shows in red, counts as breached, and its log names who w
   await breachedIssue(meena, { store: store.row_id, owner: suresh.user })
   renderTasker(meena)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: /^Issues/ }))
+  await user.click(await screen.findByRole('link', { name: /^Issues/ }))
   const counts = await screen.findByRole('group', { name: 'Issue counts' })
   await waitFor(() => expect(within(counts).getByText('Breached').closest('div')).toHaveTextContent('1'))
   const row = within(screen.getByRole('list', { name: 'Open issues' })).getByRole('listitem', { name: 'Dairy chiller 2 at 9°C' })
@@ -120,7 +121,7 @@ test('waiting for a vendor needs the store manager’s approval, then closure go
   const issue = await meena.post<Row>('/api/save_row', { table: ISSUE, row: { ...issueFields, store: store.row_id, owner: suresh.user, verifier: meena.user } })
   const owner = renderTasker(suresh)
   let user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: /^Issues/ }))
+  await user.click(await screen.findByRole('link', { name: /^Issues/ }))
   await user.click(await within(await screen.findByRole('list', { name: 'Open issues' })).findByRole('link', { name: 'Dairy chiller 2 at 9°C' }))
   let detail = await screen.findByRole('region', { name: 'Issue detail' })
   await user.click(within(detail).getByRole('button', { name: 'Waiting for vendor' }))
@@ -133,7 +134,7 @@ test('waiting for a vendor needs the store manager’s approval, then closure go
 
   const manager = renderTasker(meena)
   user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: /^Issues/ }))
+  await user.click(await screen.findByRole('link', { name: /^Issues/ }))
   await user.click(await within(await screen.findByRole('list', { name: 'Open issues' })).findByRole('link', { name: 'Dairy chiller 2 at 9°C' }))
   detail = await screen.findByRole('region', { name: 'Issue detail' })
   await user.click(await within(detail).findByRole('button', { name: 'Approve pause' }))
@@ -150,7 +151,7 @@ test('waiting for a vendor needs the store manager’s approval, then closure go
   // Meena opens Tasker again to see the submission.
   manager.unmount(); location.hash = ''
   renderTasker(meena)
-  await user.click(await screen.findByRole('button', { name: /^Issues/ }))
+  await user.click(await screen.findByRole('link', { name: /^Issues/ }))
   await user.click(await within(await screen.findByRole('list', { name: 'Open issues' })).findByRole('link', { name: 'Dairy chiller 2 at 9°C' }))
   detail = await screen.findByRole('region', { name: 'Issue detail' })
   await user.click(await within(detail).findByRole('button', { name: 'Accept and close' }))
@@ -162,7 +163,7 @@ test('corrective tasks are added from the issue and the SLA rules page sets time
   const issue = await meena.post<Row>('/api/save_row', { table: ISSUE, row: { ...issueFields, store: store.row_id, owner: suresh.user } })
   renderTasker(meena)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: /^Issues/ }))
+  await user.click(await screen.findByRole('link', { name: /^Issues/ }))
   await user.click(await within(await screen.findByRole('list', { name: 'Open issues' })).findByRole('link', { name: 'Dairy chiller 2 at 9°C' }))
   const detail = await screen.findByRole('region', { name: 'Issue detail' })
   await user.type(within(detail).getByRole('textbox', { name: 'New corrective task' }), 'Call Blue Star for a compressor check{Enter}')
@@ -188,7 +189,7 @@ test('corrective tasks are added from the issue and the SLA rules page sets time
 async function openIssues(as: TestClient) {
   renderTasker(as)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: /^Issues/ }))
+  await user.click(await screen.findByRole('link', { name: /^Issues/ }))
   return user
 }
 

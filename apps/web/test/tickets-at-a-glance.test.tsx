@@ -199,7 +199,7 @@ describe('Assigned to me speaks to support (#1233)', () => {
     await t.complaint()
     const { session } = await openTickets(t.people.Support!)
     void session
-    fireEvent.click([...document.querySelectorAll('featherbase-sidebar > button')].find(b => /Assigned to me/.test(b.textContent ?? ''))!)
+    fireEvent.click(screen.getByRole('link', { name: /^Assigned To Me/ }))
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Nothing assigned to you right now' })).toBeInTheDocument())
     expect(screen.getByText('Tickets assigned to you show here until they are done.')).toBeInTheDocument()
     expect(screen.queryByText('Create a request when you need a hand.')).toBeNull()
@@ -210,7 +210,7 @@ describe('Assigned to me speaks to support (#1233)', () => {
     const t = new Tickets(admin, createUser)
     await t.complaint()
     await openTickets(t.people.Support!)
-    fireEvent.click([...document.querySelectorAll('featherbase-sidebar > button')].find(b => /My requests/.test(b.textContent ?? ''))!)
+    fireEvent.click(screen.getByRole('link', { name: /^My Requests/ }))
     await waitFor(() => expect(screen.getByRole('heading', { name: "You haven't raised a ticket yet" })).toBeInTheDocument())
     expect(screen.getByText('Create a request when you need a hand.')).toBeInTheDocument()
   })

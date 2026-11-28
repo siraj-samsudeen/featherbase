@@ -180,7 +180,7 @@ describe('app-navigation', () => {
       await waitFor(() => expect(sidebar()).not.toBeNull(), WAIT)
       expect(barView.queryByTestId('open-admin')).toBeNull()
       expect(screen.queryByTestId('open-admin')).toBeNull()
-      expect(within(sidebar()).queryAllByRole('link', { name: /Featherbase|Admin/ })).toHaveLength(0)
+      expect(within(barView.getByTestId('sidebar-slot-sections')).queryAllByRole('link', { name: /Featherbase|Admin/ })).toHaveLength(0)
     })
   })
 
@@ -212,16 +212,19 @@ describe('app-navigation', () => {
         await tasker.post('/api/save_row', { table: 'tasker.task', row: { task_title, project: row_id } })
     })
     await step('the user opens September stock review through the shared navigation', async () => {
-      await openAppPage(reader, 'tasker', '/tasker/')
-      await page().within('featherbase-sidebar', (nav) => nav.clickButton('September stock review'))
+      // #1385 (slice 4): the app's rows are the platform's, in the sidebar's shadow.
+      const nav = await openAppPage(reader, 'tasker', '/tasker/')
+      await userEvent.click(await nav.findByRole('link', { name: /^September stock review/ }, WAIT))
       await loading
     })
     await step("the project's two tasks are shown", async () => {
       for (const name of ['Count the blue shirts', 'Review the missing sizes'])
         expect(await screen.findByRole('link', { name }, WAIT)).toBeInTheDocument()
     })
-    await step('the shared navigation identifies September stock review as current', () =>
-      page().within('featherbase-sidebar button[aria-label="September stock review"]', (project) => project.assertAttribute('aria-current', 'page')))
+    await step('the shared navigation identifies September stock review as current', async () => {
+      const nav = within(sidebar().shadowRoot as unknown as HTMLElement)
+      await waitFor(() => expect(nav.getByRole('link', { name: /^September stock review/ })).toHaveAttribute('aria-current', 'page'), WAIT)
+    })
   })
 
   scenario('Dash keeps the selected store', async ({ admin, createUser, seed }, step) => {
@@ -240,9 +243,9 @@ describe('app-navigation', () => {
       await waitFor(async () => expect(await storePicker()).toHaveTextContent('Lakeside'), WAIT)
     })
     await step('the user opens the report through the shared navigation', async () => {
-      await page()
-        .until('the shared navigation lists the report', () => within(sidebar()).queryByRole('link', { name: 'Sales versus target' }))
-        .within('featherbase-sidebar', (nav) => nav.clickLink('Sales versus target'))
+      // #1385 (slice 4): the app's rows are the platform's, in the sidebar's shadow.
+      const nav = within(sidebar().shadowRoot as unknown as HTMLElement)
+      await userEvent.click(await nav.findByRole('link', { name: 'Sales versus target' }, WAIT))
       await loading
       barView = within(bar!.host.shadowRoot as unknown as HTMLElement)
     })

@@ -42,6 +42,14 @@ beforeAll(() => {
 afterAll(() => teardown())
 beforeEach(() => { calls.length = 0; answers = {}; document.body.innerHTML = '' })
 
+/** #1385 (slice 4): a row the page gave Featherbase's shared sidebar, by its id, with whether it is the open one. */
+async function sidebarRow(id: string) {
+  const { readSidebarRows } = await import('@featherbase/shop-floor/sidebar')
+  const rows = readSidebarRows()
+  const item = rows?.sections.flatMap(section => section.items).find(row => row.id === id)
+  return item && { ...item, current: [rows!.current ?? []].flat().includes(item.address) }
+}
+
 async function render(page: 'YourDepartment' | 'Approvals') {
   const { act } = await import('react')
   const { createRoot } = await import('react-dom/client')
@@ -134,7 +142,7 @@ describe('Your department', () => {
     answers.department_setup = answer
     const page = await render('YourDepartment')
     expect(page.q(testid)?.textContent).toContain(text)
-    expect(page.q('department-link')?.getAttribute('aria-current')).toBe('page')
+    expect(await sidebarRow('department')).toMatchObject({ current: true })
     await page.done()
   })
   it('offers Try again when it cannot load', async () => {
@@ -340,7 +348,7 @@ describe('Waiting for your approval: set-ups', () => {
     const page = await render('Approvals')
     expect(page.q('setup-ask')?.textContent).toBe('Set up “Ladies Ethnic” at Lakeside')
     expect(page.q('setup-sections')?.textContent).toBe('Sarees · Team Leader AshaSilk · no Team Leader')
-    expect(page.q('approvals-link')?.textContent).toContain('(1)')
+    expect((await sidebarRow('approvals'))?.count).toBe(1)
     expect(page.q('nothing-waiting')).toBeNull()
     answers.department_approvals = []
     await page.click('Keep it')

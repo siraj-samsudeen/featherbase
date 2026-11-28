@@ -2,6 +2,7 @@
 // what to do next when it has nothing to show. The rules are the server's: my-sections.ts.
 import { BuyerSectionApprovals, type BuyerMoveToDecide } from './buyer-sections-page'
 import { createElement, useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useSidebarRows, type SidebarItem } from '@featherbase/shop-floor/sidebar'
 import { Button, Card, EmptyState, Field, fmtDate, Notice, Select, Skeleton, StatusPill, TextInput, touchLinkClasses, type StatusTone, buttonClasses } from '@featherbase/shop-floor'
 import { HierarchyGroups, HierarchyPath, HierarchyPicker, type HierarchyLeaf, type HierarchyNode } from '@featherbase/shop-floor/hierarchy'
 import { act, read } from './api'
@@ -167,73 +168,39 @@ export function DashSidebar({ current, count, refresh = 0 }: { current: DashView
   // #1223: Your store / floor / categories, to whoever manages one; the read names the page.
   const [area, setArea] = useState<string | null>(null)
   useEffect(() => { let live = true; read<unknown>('manages_area').then(answer => { if (live) setArea(typeof answer === 'string' && answer ? answer : null) }, () => {}); return () => { live = false } }, [])
-  const here = (view: DashView) => (current === view ? { 'aria-current': 'page' as const } : {})
-  return createElement('featherbase-sidebar', { 'aria-label': 'Dash navigation' },
-    reports.length > 0 && <span className="fd-sidebar-group" data-testid="reports-group">Reports</span>,
-    ...reports.map(report => (
-      // #1248: every report shares one chart icon, so in the rail each shows its initials.
-      <a key={report.key} href={reportAddress(report.key, window.location.search)} data-testid="report-link" data-rail-initials {...(shown === report.key ? { 'aria-current': 'page' as const } : {})}>
-        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18M7 14v3m5-8v8m5-12v12" /></svg>
-        <span>{report.name}</span>
-      </a>
-    )),
-    // UX standard §4: the pages about a person's own work sit in their own group, apart from Reports.
-    <span className="fd-sidebar-group" data-testid="your-work-group">Your work</span>,
-    <a href={SECTIONS_ADDRESS} {...here('sections')}>
-      <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
-      <span>Your Sections</span>
-    </a>,
-    (waiting > 0 || current === 'approvals') && (
-      <a href={APPROVALS_ADDRESS} {...here('approvals')} data-testid="approvals-link">
-        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6 9 17l-5-5" /></svg>
-        <span className="max-sm:hidden">Waiting for you{waiting > 0 ? ` (${waiting})` : ''}</span>
-        <span className="sm:hidden">To do{waiting > 0 ? ` (${waiting})` : ''}</span>
-      </a>
-    ),
-    (departmentJob || current === 'department') && (
-      <a href={DEPARTMENT_ADDRESS} {...here('department')} data-testid="department-link">
-        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6" /></svg>
-        <span>Your department</span>
-      </a>
-    ),
-    (area || current === 'store') && (
-      <a href={STORE_ADDRESS} {...here('store')} data-testid="store-link">
-        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l1.5-5h15L21 9M4 9v11h16V9M3 9h18M9 20v-6h6v6" /></svg>
-        <span>{area ?? 'Your store'}</span>
-      </a>
-    ),
-    (area || masterData || current === 'coverage') && (
-      <a href={COVERAGE_ADDRESS} {...here('coverage')} data-testid="coverage-link">
-        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v18M3 12h18M5 5l14 14M19 5 5 19" /></svg>
-        <span>What they cover</span>
-      </a>
-    ),
-    (masterData || current === 'unplaced') && (
-      <a href={UNPLACED_ADDRESS} {...here('unplaced')} data-testid="unplaced-link">
-        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8v4m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0" /></svg>
-        <span>Not in any section</span>
-      </a>
-    ),
-    (manages || current === 'access') && (
-      <a href={ACCESS_ADDRESS} {...here('access')} data-testid="access-link">
-        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8m13 10v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" /></svg>
-        <span>Report Access</span>
-      </a>
-    ),
+  // #1385 (slice 4): the rows are data; the shared sidebar draws them. The manifest declares the Reports and Your
+  // Work sections (and Your Sections); the rows this person's roles and reads give come here, with the open one.
+  const shownAddress = shown ? reportAddress(shown, window.location.search) : null
+  const work: SidebarItem[] = [
+    ...(waiting > 0 || current === 'approvals' ? [{ id: 'approvals', label: 'Waiting For You', address: APPROVALS_ADDRESS, icon: 'check' as const, ...(waiting > 0 && { count: waiting }) }] : []),
+    ...(departmentJob || current === 'department' ? [{ id: 'department', label: 'Your Department', address: DEPARTMENT_ADDRESS, icon: 'building' as const }] : []),
+    ...(area || current === 'store' ? [{ id: 'store', label: area ?? 'Your Store', address: STORE_ADDRESS, icon: 'store' as const }] : []),
+    ...(area || masterData || current === 'coverage' ? [{ id: 'coverage', label: 'What They Cover', address: COVERAGE_ADDRESS, icon: 'grid' as const }] : []),
+    ...(masterData || current === 'unplaced' ? [{ id: 'unplaced', label: 'Not In Any Section', address: UNPLACED_ADDRESS, icon: 'alert' as const }] : []),
+    ...(manages || current === 'access' ? [{ id: 'access', label: 'Report Access', address: ACCESS_ADDRESS, icon: 'people' as const }] : []),
     ...(managesRoles ? [
-      <a key="explain" href="?view=explain" {...here('explain')} data-testid="explain-link">
-        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8m-7 9a7 7 0 0 1 14 0" /></svg>
-        <span>Explain A Person</span>
-      </a>,
-      <a key="changes" href="?view=changes" {...here('changes')} data-testid="changes-link">
-        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M7 7h13l-4-4M17 17H4l4 4" /></svg>
-        <span>Who Would Gain Or Lose Access</span>
-      </a>,
+      { id: 'explain', label: 'Explain A Person', address: '?view=explain', icon: 'person' as const },
+      { id: 'changes', label: 'Who Would Gain Or Lose Access', address: '?view=changes', icon: 'swap' as const },
       // #1340: the business roles themselves are set up in Featherbase, on its own pages.
-      <a key="roles" href="/featherbase/admin/table/dash.business_role" data-testid="roles-link">
-        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z" /></svg>
-        <span>Business Roles ↗</span>
-      </a>] : []))
+      { id: 'roles', label: 'Business Roles ↗', address: '/featherbase/admin/table/dash.business_role', icon: 'shield' as const },
+    ] : []),
+  ]
+  useSidebarRows({
+    current: current === 'report' ? (shownAddress ?? []) : (VIEW_ADDRESS[current] ?? []),
+    sections: [
+      // #1248: every report shares one chart icon, so in the rail each shows its initials.
+      { id: 'reports', items: reports.map(report => ({ id: 'report', label: report.name, address: reportAddress(report.key, window.location.search), icon: 'report' as const, initials: true })) },
+      // UX standard §4: the pages about a person's own work sit in their own group, apart from Reports.
+      { id: 'your-work', items: work },
+    ],
+  })
+  return createElement('featherbase-sidebar', { 'aria-label': 'Dash navigation' })
+}
+
+/** Each of Dash's own pages, by the address its sidebar row opens. */
+const VIEW_ADDRESS: Partial<Record<DashView, string>> = {
+  sections: SECTIONS_ADDRESS, approvals: APPROVALS_ADDRESS, department: DEPARTMENT_ADDRESS, store: STORE_ADDRESS,
+  coverage: COVERAGE_ADDRESS, unplaced: UNPLACED_ADDRESS, access: ACCESS_ADDRESS, explain: '?view=explain', changes: '?view=changes',
 }
 
 /** `refresh`: a page that changes what waits elsewhere bumps it, so the sidebar's count is read again (#1219). */

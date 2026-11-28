@@ -13,8 +13,6 @@ button:disabled { cursor: default; opacity: .48; }
 
 .tasker-shell { display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: calc(100vh - var(--featherbase-bar-height, 48px)); }
 .tasker-nav-icon { width: 18px; height: 18px; flex-shrink: 0; }
-.tasker-nav-item > span:not(.tasker-count), .tasker-sidebar-project-name > span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.tasker-count { display: inline-flex; min-width: 23px; height: 23px; align-items: center; justify-content: center; color: inherit; font-size: 12px; font-variant-numeric: tabular-nums; }
 
 .tasker-main { align-self: start; width: 100%; max-width: 1240px; margin: 0 auto; padding: 38px 40px 64px; }
 .tasker-project-tabs { display: flex; gap: 8px; margin: 0 0 26px; overflow-x: auto; scrollbar-width: thin; }

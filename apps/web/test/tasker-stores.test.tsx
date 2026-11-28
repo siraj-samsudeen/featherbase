@@ -11,6 +11,7 @@ import { localDay } from '../../../example-apps/tasker/src/storeWork'
 import { setSession } from '../src/lib/api'
 import { test as base, expect } from './pg-test'
 import { taskerClient } from '../../server/test/tasker-client'
+import { AppSidebarRows } from './app-sidebar-rows'
 
 const test = base.extend<{ admin: TestClient }>({
   admin: async ({ admin }, use) => use(taskerClient(admin)),
@@ -33,7 +34,7 @@ async function install() {
 
 function renderTasker(as: TestClient) {
   setSession(as.token!, { row_id: as.user!, email: as.user!, full_name: null })
-  return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TaskManagementPage /></QueryClientProvider>)
+  return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><><TaskManagementPage /><AppSidebarRows label="Task views" /></></QueryClientProvider>)
 }
 
 async function storeWork(admin: TestClient) {
@@ -59,7 +60,7 @@ test('task details set a store and dates, and the task row shows them', async ({
   const task = await admin.post<Row>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Reconcile stock variance' } })
   renderTasker(admin)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: /^Inbox/ }))
+  await user.click(await screen.findByRole('link', { name: /^Inbox/ }))
   await user.click(await screen.findByRole('link', { name: 'Reconcile stock variance' }))
   const detail = await screen.findByRole('region', { name: 'Task detail content' })
   await user.selectOptions(await within(detail).findByRole('combobox', { name: 'Task store' }), 'Keelkattalai Store')
@@ -78,7 +79,7 @@ test('task details say why a due date before the start date is refused', async (
   await admin.post<Row>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Reconcile stock variance', start_date: day(4) } })
   renderTasker(admin)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: /^Inbox/ }))
+  await user.click(await screen.findByRole('link', { name: /^Inbox/ }))
   await user.click(await screen.findByRole('link', { name: 'Reconcile stock variance' }))
   const detail = await screen.findByRole('region', { name: 'Task detail content' })
   expect(await within(detail).findByText(/^Scheduled/)).toBeInTheDocument()
@@ -91,7 +92,7 @@ test('the Stores page counts each store’s work and opens the tasks behind a nu
   await storeWork(admin)
   renderTasker(admin)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: 'Stores' }))
+  await user.click(await screen.findByRole('link', { name: 'Stores' }))
   const table = await screen.findByRole('table', { name: 'Work by store' })
   const cells = (name: string) => within(within(table).getByRole('rowheader', { name }).closest('tr')!).getAllByRole('cell').map(cell => cell.textContent)
   await waitFor(() => expect(cells('Keelkattalai Store')).toEqual(['5', '2', '1', '1', '1']))
@@ -109,7 +110,7 @@ test('a member adds a store from the Stores page', async ({ admin }) => {
   await install()
   renderTasker(admin)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: 'Stores' }))
+  await user.click(await screen.findByRole('link', { name: 'Stores' }))
   await user.type(await screen.findByRole('textbox', { name: 'New store' }), 'Manimangalam WH')
   await user.selectOptions(screen.getByRole('combobox', { name: 'Store type' }), 'Warehouse')
   await user.click(screen.getByRole('button', { name: 'Add store' }))
@@ -124,7 +125,7 @@ test('adding a store whose name is taken says why it was refused', async ({ admi
   await admin.post<Row>('/api/save_row', { table: 'tasker.store', row: { store_name: 'Avadi Store' } })
   renderTasker(admin)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: 'Stores' }))
+  await user.click(await screen.findByRole('link', { name: 'Stores' }))
   await user.type(await screen.findByRole('textbox', { name: 'New store' }), 'Avadi Store')
   await user.click(screen.getByRole('button', { name: 'Add store' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('Duplicate value for store_name')
@@ -137,7 +138,7 @@ test('task details set a start date', async ({ admin }) => {
   const task = await admin.post<Row>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Diwali display change-over' } })
   renderTasker(admin)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: /^Inbox/ }))
+  await user.click(await screen.findByRole('link', { name: /^Inbox/ }))
   await user.click(await screen.findByRole('link', { name: 'Diwali display change-over' }))
   const detail = await screen.findByRole('region', { name: 'Task detail content' })
   await waitFor(() => expect(within(detail).getByLabelText('Start date')).toBeEnabled())
@@ -151,7 +152,7 @@ test('task details say when a task is due today', async ({ admin }) => {
   await admin.post<Row>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Price-tag audit', due_date: day(0) } })
   renderTasker(admin)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: /^Inbox/ }))
+  await user.click(await screen.findByRole('link', { name: /^Inbox/ }))
   await user.click(await screen.findByRole('link', { name: 'Price-tag audit' }))
   const detail = await screen.findByRole('region', { name: 'Task detail content' })
   expect(await within(detail).findByText('Due today', { selector: '.tasker-due-note' })).toBeInTheDocument()
@@ -162,7 +163,7 @@ test('removing the store and due filters brings their tasks back', async ({ admi
   await storeWork(admin)
   renderTasker(admin)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: 'September stock review' }))
+  await user.click(await screen.findByRole('link', { name: /^September stock review(?:\d+)?$/ }))
   const printer = (await screen.findByRole('link', { name: 'Fix the billing printer' })).closest('article')!
   await waitFor(() => expect(printer).toHaveTextContent('Avadi Store'))
   await user.click(screen.getByRole('button', { name: /^Filter/ }))
@@ -183,7 +184,7 @@ test('task filters narrow a list by store and by when tasks are due', async ({ a
   const { project } = await storeWork(admin)
   renderTasker(admin)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: 'September stock review' }))
+  await user.click(await screen.findByRole('link', { name: /^September stock review(?:\d+)?$/ }))
   const printer = (await screen.findByRole('link', { name: 'Fix the billing printer' })).closest('article')!
   await waitFor(() => expect(printer).toHaveTextContent('Avadi Store'))
   await user.click(screen.getByRole('button', { name: /^Filter/ }))

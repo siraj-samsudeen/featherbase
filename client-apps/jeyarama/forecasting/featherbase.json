@@ -1161,6 +1161,12 @@
       "fromVersion": "0.14.0",
       "toVersion": "0.15.0",
       "operations": []
+    },
+    {
+      "id": "declared_sidebar",
+      "fromVersion": "0.15.0",
+      "toVersion": "0.15.1",
+      "operations": []
     }
   ],
   "tables": [
