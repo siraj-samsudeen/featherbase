@@ -84,6 +84,13 @@ type Revertable = { migrations: { id: string }[]; tables?: { name: string; decid
  *  role's two columns back on its list, and no setup runs or access decisions. It comes off before all the others. */
 export const RUN_TABLES = ['dash.setup_run', 'dash.access_decision']
 export function revertRolesInFeatherbase(manifest: Revertable) {
+  // #1459's 0.13.49 (each Table says who reads which of its rows) changes no Table and comes off first. The earlier
+  // version written from here still says the rule of each Table it has, or the platform would close them all: the
+  // rules are read when the manifest is written, for the Tables it holds by then.
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'row_rules', fromVersion: '0.13.48', operations: [] })
+  const rules = (manifest as { rowRules?: Record<string, unknown> }).rowRules ?? {}
+  Object.defineProperty(manifest, 'rowRules', { enumerable: true, configurable: true,
+    get: () => Object.fromEntries(Object.entries(rules).filter(([name]) => manifest.tables?.some(table => table.name === name))) })
   // #1418's 0.13.48 (its one dataset stays a JSON snapshot) changes no Table and comes off first.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'datasets_kept_as_json', fromVersion: '0.13.47', operations: [] })
   // #1423's 0.13.47 (a refused report says why, and is logged) changes no Table and comes off next.
