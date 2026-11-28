@@ -28,7 +28,9 @@ interface CommentRow { ref_name: string; content: string; created_at: string }
 /** The official Runs people review, newest month first. Made-up Runs (a local instance's fixture) are left out
  *  whenever a real one is loaded, so a real store never shares the screen with the made-up one. */
 export async function officialRuns(): Promise<(RunRow & { model?: string })[]> {
-  const runs = (await listWhere<RunRow & { model?: string }>('forecasting.forecast_run', ['run_id', 'model', 'purpose', 'origin_date', 'horizon_from', 'horizon_to'], [['purpose', '=', 'official']]))
+  // through the scoped read like every copy (#1454); a Run names no store, so everyone with a place reads them all
+  const runs = (await listCopy<RunRow & { model?: string }>('forecasting.forecast_run', ['run_id', 'model', 'purpose', 'origin_date', 'horizon_from', 'horizon_to'], []))
+    .filter(r => r.purpose === 'official')
     // newest month first; of two Runs of a month, the newer one (the copies hold only the newest, but say so here too)
     .sort((a, b) => b.horizon_from.localeCompare(a.horizon_from) || String(b.origin_date).localeCompare(String(a.origin_date)))
   const real = runs.filter(r => r.model !== 'made_up')
@@ -147,7 +149,8 @@ export async function loadFindings(section: Section): Promise<{ findings: Findin
   const { storeCode, header, lines, org } = section
   if (!header.stockAsOf) return null
   // the items' 7/14/28 days end on the store's last complete day (refreshed each morning), not the Run's origin
-  const health = await listCopy<ItemHealthRow & { sales_as_of_date: string | null; stock_as_of: string | null }>('forecasting.item_health', [...ITEM_HEALTH_FIELDS, 'sales_as_of_date', 'stock_as_of'],
+  // the region's stores' rows of these subcategories: the stock copy any reader may ask about other stores (#1454)
+  const health = await listCopy<ItemHealthRow & { sales_as_of_date: string | null; stock_as_of: string | null }>('forecasting.item_stock', [...ITEM_HEALTH_FIELDS, 'sales_as_of_date', 'stock_as_of'],
     [['store_short_code', 'in', Object.keys(org.stores).length ? Object.keys(org.stores) : [header.store]], ['subcategory_code', 'in', lines.flatMap(l => (l.code ? [l.code] : []))]])
   const here = health.filter(r => r.store_code === storeCode), others = health.filter(r => r.store_code !== storeCode)
   if (!here.length) return null

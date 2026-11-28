@@ -17,9 +17,10 @@ describe('loadStore', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     api.readOp.mockResolvedValue(org)
-    api.listWhere.mockImplementation(async (table: string) => (table === 'forecasting.forecast_run' ? [run('kl_dec'), run('tn_dec')] : []))
+    api.listWhere.mockResolvedValue([])
     api.listReview.mockResolvedValue([])
     api.listCopy.mockImplementation(async (table: string, fields: string[], filters: [string, string, unknown][]) => {
+      if (table === 'forecasting.forecast_run') return [run('kl_dec'), run('tn_dec')]
       if (table !== 'forecasting.forecast_line_month') return []
       // the store count reads one column; the chosen store's read names it
       if (fields.length === 1) return [...rowsOf('BIG', 9), ...rowsOf('SMALL', 4), { store_short_code: null }]
@@ -37,8 +38,8 @@ describe('loadStore', () => {
     expect(whole).toHaveLength(1)
     expect(whole[0][2]).toEqual([['store_short_code', '=', 'BIG'], ['run_id', 'in', ['kl_dec', 'tn_dec']]])
     expect(s.sections).toMatchObject([{ section: 'Oils', subcategories: 2, fc: 150 }])
-    // nothing reads a copy around the scoped read
-    expect(api.listWhere.mock.calls.filter(c => c[0] !== 'forecasting.forecast_run')).toEqual([])
+    // nothing reads a copy around the scoped read, the Runs included
+    expect(api.listWhere.mock.calls.filter(c => String(c[0]).startsWith('forecasting.'))).toEqual([])
   })
 
   it('reads the store named when the month has it', async () => {

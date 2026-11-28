@@ -1,5 +1,5 @@
 import { version } from '../package.json'
-import { NOT_A_LEAD } from './scoped'
+import { NO_PLACES } from './scoped'
 
 export class ApiError extends Error {
   constructor(message: string, readonly status?: number) { super(message) }
@@ -67,7 +67,7 @@ export async function listWhereAll<T>(table: string, fields: string[], filters: 
 // ---- #1454: the reads scoped by the org chart (server.ts `copy` and `review`, scoped.ts) ------------------------
 
 /** Whether a read was refused because the person may not read Forecasting's data at all. */
-export const refusedAccess = (e: unknown) => (e as { status?: number } | null)?.status === 403 || (e instanceof Error && e.message.includes(NOT_A_LEAD))
+export const refusedAccess = (e: unknown) => (e as { status?: number } | null)?.status === 403 || (e instanceof Error && e.message.includes(NO_PLACES))
 
 /** The filters as the scoped reads take them, each column one value or a list, all of which must hold; null when a
  *  list is empty, so nothing can match. Only = and in. */
@@ -87,23 +87,29 @@ export async function listCopy<T>(table: string, fields: string[], filters: Filt
   if (!where) return []
   return (await readOp<{ at: string | null; rows: T[] }>('copy', { dataset: table.replace(/^forecasting\./, ''), filters: where, fields })).rows
 }
-/** A review Table's rows (answers, changes, questions, day explanations) that the person may see: within their places
- *  on the org chart; for someone the org chart gives none (the forecast team at head office), as their own grants on the
- *  Table allow, which for anyone else is the rows they wrote. */
+/** A review Table's rows (answers, changes, questions, day explanations) that the person may see: those within their
+ *  places on the org chart, and whatever their own grants on the Table allow, which for a member is the rows they wrote
+ *  (the forecast team at head office reads them all). */
 export async function listReview<T>(table: string, fields: string[], filters: Filter[], orderBy = 'row_id asc',
   /** Sub-table columns the scoped read brings with each row (a plain Table read does not). */
   subTables: string[] = []): Promise<T[]> {
   const where = keyed(filters)
   if (!where) return []
   const [column, direction] = orderBy.split(/\s+/)
+  // the person's own rows, always (their own-rows grant): a row whose line is merged from several subcategories, or a
+  // section's day, carries no code a section place can match, but its writer still sees it
+  const own = listWhere<Record<string, unknown>>(table, [...new Set([...fields, column])], filters, orderBy).catch(() => [] as Record<string, unknown>[])
+  let scoped: Record<string, unknown>[]
   try {
-    const rows = await readOp<Record<string, unknown>[]>('review', { table, filters: where, fields: [...new Set([...fields, ...subTables, column])] })
-    const sign = direction === 'desc' ? -1 : 1
-    return rows.sort((a, b) => (String(a[column] ?? '') < String(b[column] ?? '') ? -sign : String(a[column] ?? '') > String(b[column] ?? '') ? sign : 0)) as T[]
+    scoped = await readOp<Record<string, unknown>[]>('review', { table, filters: where, fields: [...new Set([...fields, ...subTables, column])] })
   } catch (e) {
-    if (refusedAccess(e)) return listWhere<T>(table, fields, filters, orderBy)
-    throw e
+    if (!refusedAccess(e)) throw e
+    scoped = []
   }
+  const byId = new Map<string, Record<string, unknown>>((await own).map(r => [String(r.row_id), r]))
+  for (const r of scoped) byId.set(String(r.row_id), r) // the scoped row, which carries any Sub-table asked for
+  const sign = direction === 'desc' ? -1 : 1
+  return [...byId.values()].sort((a, b) => (String(a[column] ?? '') < String(b[column] ?? '') ? -sign : String(a[column] ?? '') > String(b[column] ?? '') ? sign : 0)) as T[]
 }
 
 /** One row, with its sub-table rows. */

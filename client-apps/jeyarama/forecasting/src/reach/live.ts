@@ -156,7 +156,8 @@ export async function loadStoreFindings(s: ReachStore, regionStores: string[]): 
   const others = [...new Set([...regionStores, ...Object.keys(org.stores)])].filter(x => x !== s.store)
   const codes = [...wanted], theirs: (ItemHealthRow & { stock_as_of: string | null })[] = []
   for (let i = 0; i < codes.length && others.length; i += 150)
-    theirs.push(...await listCopy<ItemHealthRow & { stock_as_of: string | null }>('forecasting.item_health', [...ITEM_HEALTH_FIELDS, 'stock_as_of'],
+    // other stores' rows of these items: the stock copy any reader may ask about other stores (#1454)
+    theirs.push(...await listCopy<ItemHealthRow & { stock_as_of: string | null }>('forecasting.item_stock', [...ITEM_HEALTH_FIELDS, 'stock_as_of'],
       [['store_short_code', 'in', others], ['item_code', 'in', codes.slice(i, i + 150)]]))
   const theirsBy = new Map<string, ItemHealthRow[]>()
   for (const r of theirs) (theirsBy.get(r.item_code) ?? theirsBy.set(r.item_code, []).get(r.item_code)!).push(r)

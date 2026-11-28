@@ -54,7 +54,7 @@ export function validateScopedTables(app: string, tables: readonly { name: strin
 const asDataset = (declaration: ScopedTableDeclaration) => ({ name: declaration.table, keys: declaration.keys, filters: declaration.filters }) as unknown as DatasetDeclaration
 
 export interface ScopedListOptions {
-  /** The columns to answer, besides row_id and updated_at; all of the row's own columns when absent. A Sub-table
+  /** The columns to answer, besides row_id and updated_at; every column of the row itself when absent. A Sub-table
    *  column named here comes with its rows (each child row's own columns), in their order. */
   fields?: string[]
 }
@@ -79,17 +79,21 @@ export function scopedTables(declarations: readonly ScopedTableDeclaration[], pl
       const where = datasetWhere(asDataset(declaration), places, filters)
       const meta = await getMeta(table)
       const subTables = meta.columns.filter((c) => c.column_type === 'Sub-table' && options.fields?.includes(c.column_name))
-      const fields = options.fields ? [...new Set(['row_id', 'updated_at', ...options.fields.filter((f) => !subTables.some((c) => c.column_name === f))])] : undefined
+      // without fields, every column of the row itself (a Sub-table only when named)
+      const own = meta.columns.filter((c) => !['Sub-table', 'Section Break', 'Column Break'].includes(c.column_type)).map((c) => c.column_name)
+      const fields = [...new Set(['row_id', 'updated_at', ...(options.fields ? options.fields.filter((f) => !subTables.some((c) => c.column_name === f)) : own)])]
       const rows = new Map<string, Record<string, unknown>>()
       for (const group of where.any) {
         // A place's own filters and the read's, all of which must hold.
         const conditions = [...group, ...where.all].map(({ column, values }) => [column, 'in', values] as [string, string, unknown])
-        for (let start = 0; ; start += PAGE) {
-          const page = (await getList(table, { filters: conditions, ...(fields ? { fields } : {}), order_by: 'row_id asc',
-            limit_start: start, limit_page_length: PAGE })).data as Record<string, unknown>[]
+        // by row_id, after the last one read, so a row saved meanwhile neither shifts a page nor is read twice
+        for (let after: string | null = null; ;) {
+          const page = (await getList(table, { filters: [...conditions, ...(after === null ? [] : [['row_id', '>', after] as [string, string, unknown]])],
+            fields, order_by: 'row_id asc', limit_page_length: PAGE })).data as Record<string, unknown>[]
           for (const row of page) rows.set(String(row.row_id), row)
           if (rows.size > SCOPED_LIST_LIMIT) throw new AppError('ValidationError', `More than ${SCOPED_LIST_LIMIT} rows of ${table}: narrow the read by its keys`)
           if (page.length < PAGE) break
+          after = String(page[page.length - 1].row_id)
         }
       }
       const answer = [...rows.values()].sort((a, b) => (String(a.row_id) < String(b.row_id) ? -1 : 1))

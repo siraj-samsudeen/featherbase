@@ -1,7 +1,7 @@
 // How a hosted instance without the legacy Run (forecasting.run_line) opens (#1419): on the read-only copies once an
 // official Run is loaded; "No Run" when the copy is readable but empty; and, when the read is refused, that they have
-// no access, never a misleading "No Run" (Siraj, 28-Nov). Refused is: no Forecasting Member role, no place on the org
-// chart, or places below a Team Leader's (#1454).
+// no access, never a misleading "No Run" (Siraj, 28-Nov). Refused is: no Forecasting Member role, or no place on the org
+// chart (#1454).
 import { refusedAccess } from './api'
 
 export type HostedStart = 'open' | 'no-run' | 'no-access'

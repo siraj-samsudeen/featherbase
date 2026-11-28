@@ -22,8 +22,8 @@ const NoRun = () => (
 const NoAccess = () => (
   <div style={{ padding: 32, font: '15px system-ui', maxWidth: 560 }}>
     <h1 style={{ fontSize: 20 }}>You don't have access to forecasting data</h1>
-    <p>Forecasting opens for Team Leaders and above, for the stores and subcategories the org chart gives them. If your
-      job on the org chart is missing or wrong, ask your Store Manager or HR to correct it.</p>
+    <p>Forecasting opens for the stores, sections and subcategories the org chart gives you, as Dash does. If your job on
+      the org chart is missing or wrong, ask your Store Manager or HR to correct it.</p>
   </div>)
 
 // The Run under review and who reviews it are read first; the app's modules build from them as they load.

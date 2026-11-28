@@ -127,6 +127,16 @@ describe('a scoped Table', () => {
     expect(Object.keys(row).sort()).toEqual(['body', 'row_id', 'updated_at'])
   })
 
+  test('without fields, every column of the row itself; a page boundary loses no row', async ({ admin, createUser }) => {
+    await installed(admin)
+    for (let i = 0; i < 510; i++) await admin.post('/api/save_row', { table: ANSWER, row: { row_id: `b${String(i).padStart(3, '0')}`, store: 'N1', section: 'shoes', body: 'bulk' } })
+    const reader = await createUser({ roles: ['Answer Reader'] })
+    const rows = (await readAs(reader, 'answers', [{ label: 'North', filters: { store: ['N1'] } }])).body.result!
+    expect(rows).toHaveLength(512)
+    expect(new Set(rows.map((r) => r.row_id)).size).toBe(512)
+    expect(Object.keys(rows.find((r) => r.row_id === 'a1')!).sort()).toEqual(['body', 'notes', 'row_id', 'section', 'store', 'updated_at'])
+  })
+
   test('a Sub-table named among the fields comes with its rows, in their order', async ({ admin, createUser }) => {
     await installed(admin)
     const reader = await createUser({ roles: ['Answer Reader'] })
