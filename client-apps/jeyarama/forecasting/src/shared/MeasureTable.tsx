@@ -92,7 +92,7 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
   const blocks: Block[] = [
     ['fc', 'fq', 'Feather Forecast', `Feather Forecast for ${month.name}`],
     ['ly', 'lyq', 'Last year', `${month.name} ${month.year - 1}`],
-    ['r31', 'r31q', 'Last month', `Last 28 days to ${header.cutOff}, as a rate per day × ${month.name}'s ${month.days} days`],
+    ['r31', 'r31q', `Last month (${month.days}-day rate)`, `Last 28 days to ${header.cutOff}, as a rate per day × ${month.name}'s ${month.days} days`],
     ...(view.aop || vsAop ? [['aop', 'aq', 'AOP', `The annual plan for ${month.label}`] as Block] : []),
   ]
   const sortable = (k: SortKey, text: ReactNode, tip: string) => onSort
