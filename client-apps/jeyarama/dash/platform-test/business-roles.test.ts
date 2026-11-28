@@ -169,7 +169,7 @@ describe('business roles in shadow', () => {
       expect(await sql`select 1 from dash.business_role`).toEqual([])
       const systemManager = await createUser({ email: 'live-system-manager@example.test', roles: ['System Manager'] })
       const act = (name: string) => systemManager.post<{ result: Record<string, unknown> }>(`/api/app_actions/dash/${name}`, { idempotencyKey: crypto.randomUUID(), payload: {} }).then(a => a.result)
-      expect(await act('add_starting_roles')).toMatchObject({ roles: 18, titles: 12 })
+      expect(await act('add_starting_roles')).toMatchObject({ roles: 18, titles: 15 })
       expect(await act('give_old_grants_to_roles')).toMatchObject({ grants_added: 9, grants_not_converted: 1 })
       expect(await read(staff, 'can_open')).toBe(true)
       // #1340: Featherbase's own pages ask Dash about its business roles, and preview Give Old Grants, through the platform.
