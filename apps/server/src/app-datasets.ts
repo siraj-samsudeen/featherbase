@@ -496,18 +496,10 @@ function unmappedKeys(dataset: DatasetDeclaration, keys: readonly string[]): str
   return keys.filter((name) => !Object.hasOwn(dataset.filters, name)).sort()
 }
 
-// The same where, over the snapshot's stored rows.
-function storedRowsWhere(where: DatasetWhere) {
-  const condition = (c: DatasetCondition) => (c.values.length ? sql`(row->>${c.column}) in ${sql(c.values)}` : sql`false`)
-  const group = (conditions: DatasetCondition[]) => conditions.reduce((clause, c) => sql`${clause} and ${condition(c)}`, sql`true`)
-  const any = where.any.length ? where.any.map((g) => sql`(${group(g)})`).reduce((clause, g) => sql`${clause} or ${g}`) : sql`false`
-  return sql`(${any}) and (${group(where.all)})`
-}
-
-// #1418: the same where, over a read-only copy's typed columns (its Table,
-// a view of its active load). Compared as text, as the snapshot's are.
-function copyRowsWhere(where: DatasetWhere) {
-  const condition = (c: DatasetCondition) => (c.values.length ? sql`(${sql(c.column)}::text) in ${sql(c.values)}` : sql`false`)
+// The same where, over the snapshot's stored rows (#1418: or a read-only
+// copy's typed columns, each read as text, as the snapshot's are).
+function storedRowsWhere(where: DatasetWhere, asText = (column: string) => sql`row->>${column}`) {
+  const condition = (c: DatasetCondition) => (c.values.length ? sql`(${asText(c.column)}) in ${sql(c.values)}` : sql`false`)
   const group = (conditions: DatasetCondition[]) => conditions.reduce((clause, c) => sql`${clause} and ${condition(c)}`, sql`true`)
   const any = where.any.length ? where.any.map((g) => sql`(${group(g)})`).reduce((clause, g) => sql`${clause} or ${g}`) : sql`false`
   return sql`(${any}) and (${group(where.all)})`
@@ -665,7 +657,7 @@ export function appDatasets({ app, operation, user, title, declarations, places,
         const stored = await sql`select ${sql(dataset.columns.map((c) => c.name))},
             (select row_id from dataset_snapshot where dataset = ${datasetKey(app, name)} and state = 'active') as fb_load,
             (select activated_at from dataset_snapshot where dataset = ${datasetKey(app, name)} and state = 'active') as fb_at
-          from ${sql(schema)}.${sql(relation)} where ${copyRowsWhere(where)}`
+          from ${sql(schema)}.${sql(relation)} where ${storedRowsWhere(where, (column) => sql`${sql(column)}::text`)}`
         const [load] = await sql`select row_id, activated_at from dataset_snapshot where dataset = ${datasetKey(app, name)} and state = 'active'`
         if (!load) return null
         const at = stored[0]?.fb_at ?? load.activated_at

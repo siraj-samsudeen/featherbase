@@ -10,7 +10,7 @@ import type { SessionUser } from './auth'
 import { copyAgain, copyInfo } from './sources/table-copy'
 import { syncAfterCopy } from './master-sync'
 import { getMeta } from './meta'
-import { CADENCE_SECONDS, FinalJobFailure, enqueue, registerJob, syncScheduledJobs } from './jobs'
+import { FinalJobFailure, enqueue, registerJob, syncScheduledJobs } from './jobs'
 import { runAsSystemActor } from './system-actor'
 import { queueEmail } from './email'
 import { recordUndeliveredNotice, systemManagerEmails } from './system-notice'
@@ -72,18 +72,23 @@ export async function checkCopyNow(user: SessionUser, target: string): Promise<{
   const [copy] = await sql`select mode from featherbase.table_copy where target_table = ${target}`
   if (copy?.mode !== 'read_only') throw new AppError('NotFoundError', `${target} is not a read-only copy`)
   await assertPermission(user.row_id, target, 'read')
-  return runCheckSoon(target)
+  const outcome = await runCheckSoon(target)
+  if (!outcome) throw new AppError('ValidationError', `${target}'s check is paused; a System Manager can resume it`)
+  return outcome
 }
 
-async function runCheckSoon(target: string): Promise<{ queued: boolean; message: string }> {
+/** Null when a System Manager has paused the check: it waits for them. */
+async function runCheckSoon(target: string): Promise<{ queued: boolean; message: string } | null> {
   const schedule = await copySchedule(target)
-  if (!schedule?.enabled) throw new AppError('ValidationError', `${target}'s check is paused; a System Manager can resume it`)
+  if (!schedule?.enabled) return null
   const method = String(schedule.method)
   const [running] = await sql`select 1 from background_job where method = ${method} and job_status = 'running'`
   if (running) return { queued: false, message: 'The check is running now' }
-  const moved = await sql`update background_job set run_at = now(), trigger = 'manual', updated_at = now()
+  // Only sooner: the queued run stays the schedule's own, so its recurrence
+  // carries on after it (a run with any other trigger would end it).
+  const moved = await sql`update background_job set run_at = now(), updated_at = now()
     where method = ${method} and job_status = 'queued' returning row_id`
-  if (!moved.length) await enqueue(method, {}, { repeatEvery: CADENCE_SECONDS['every 15 minutes'], trigger: 'manual' })
+  if (!moved.length) await syncScheduledJobs(method)
   return { queued: true, message: 'The check runs now' }
 }
 
@@ -94,14 +99,14 @@ export async function provisionAppCopies(app: string, datasets: readonly Dataset
   const loadNow = await syncAppCopies(app, datasets)
   for (const dataset of datasets.filter((d) => d.store === 'table'))
     await scheduleReadOnlyCopy(copyTarget(app, dataset.name), (await getMeta(copyTarget(app, dataset.name))).label || dataset.name)
-  for (const target of loadNow) await runCheckSoon(target).catch(() => {})
+  for (const target of loadNow) await runCheckSoon(target)
 }
 
 /** #1418: an upgrade's copies wait for its activation; then they are checked at once. */
 export async function checkAppCopiesSoon(app: string): Promise<void> {
   const rows = await sql`select c.target_table from featherbase.table_copy c join table_def t on t.name = c.target_table
     where c.mode = 'read_only' and t.owner_app = ${app}`
-  for (const row of rows) await runCheckSoon(String(row.target_table)).catch(() => {})
+  for (const row of rows) await runCheckSoon(String(row.target_table))
 }
 
 function registerCopyRefresh(method: string): void {

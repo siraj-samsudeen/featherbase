@@ -5,10 +5,11 @@
 // each test shows the declaration it proves; a version step upgrades it.
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import postgres from 'postgres'
 import type { TestClient } from 'feather-testing-postgres'
 import { EXTERNAL_DATABASE_URL } from './external-database'
-import { discoverPackages } from '../src/runtime-packages'
+import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
 import { invalidateSources } from '../src/sources/registry'
 import { sql } from '../src/db'
 import { checkCopy, type LoadOptions } from '../src/read-only-copy'
@@ -147,6 +148,25 @@ export async function upgrade(admin: TestClient, installed: string, dir: string,
   const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: APP, version })
   await admin.post('/api/upgrade_app', { name: APP, version, planId: plan.planId })
   await admin.post('/api/activate_app_upgrade', { name: APP, version })
+}
+
+/** The place provider's module: a test sets the places it answers. */
+async function roster(): Promise<{ faults: { result?: unknown } }> {
+  const digest = availableRuntimeVersions().find((p) => p.name === 'placeroster')!.digest
+  return import(`${pathToFileURL(resolve(provider, 'server.mjs')).href}?artifact=${digest}`)
+}
+
+/** The app's read of the forecast lines, as `client`, covering `stores`. */
+export async function readLines(client: TestClient, stores: string[]): Promise<{ status: number; body: unknown }> {
+  const places = await roster()
+  places.faults.result = [{ label: 'Their stores', filters: { store: stores } }]
+  try {
+    const res = await client.fetch(`/api/app_reads/${APP}/lines`, { method: 'POST', body: JSON.stringify({ payload: {} }),
+      headers: { 'content-type': 'application/json', 'X-Featherbase-App-Version': `${APP}@1.0.0` } })
+    return { status: res.status, body: await res.json() }
+  } finally {
+    delete places.faults.result
+  }
 }
 
 /** Checks a copy as its schedule does, and answers what it did. */

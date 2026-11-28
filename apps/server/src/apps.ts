@@ -758,9 +758,6 @@ async function uninstallAppImpl(name: string): Promise<{ name: string; removed: 
   if (manifest && !manifest.runtime_package) await dropSchedulerJobs(manifest)
   await dropAppJobs(name)
 
-  // #1418: its read-only copies, loads and checks with them.
-  await (await import('./read-only-copy')).removeAppCopies(name)
-
   // Fixture rows go first — reverse declaration order, and before the app's
   // tables drop, since a fixture may live on (or reference) an app table.
   await teardownFixtures(asFixtureRefs(row.fixtures))

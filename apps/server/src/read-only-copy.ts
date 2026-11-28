@@ -196,12 +196,6 @@ export async function removeCopy(target: string): Promise<void> {
   invalidateMeta(target)
 }
 
-/** Every read-only copy an app owns, for uninstall. */
-export async function removeAppCopies(app: string): Promise<void> {
-  const rows = await sql`select c.target_table from featherbase.table_copy c join table_def t on t.name = c.target_table
-    where c.mode = 'read_only' and t.owner_app = ${app}`
-  for (const row of rows) await removeCopy(String(row.target_table))
-}
 
 // ------------------------------------------------------------- loading
 
@@ -253,10 +247,8 @@ function boundQuery(query: string, runKey: SourceRow | null): { text: string; va
 /** A value as one field of Postgres COPY text. */
 function copyField(value: unknown, type: ColumnType): string {
   if (value === null || value === undefined) return '\\N'
-  let text: string
-  if (value instanceof Date) text = type === 'date' ? value.toISOString().slice(0, 10) : value.toISOString()
-  else if (typeof value === 'object') text = JSON.stringify(value)
-  else text = String(value)
+  // A day may come as a Date at midnight UTC (Postgres) or as its text (DuckDB).
+  let text = value instanceof Date ? value.toISOString() : String(value)
   if (type === 'date') text = text.slice(0, 10)
   return text.replace(/\\/g, '\\\\').replace(/\t/g, '\\t').replace(/\n/g, '\\n').replace(/\r/g, '\\r')
 }
@@ -351,14 +343,15 @@ export async function checkCopy(target: string, opts: LoadOptions = {}): Promise
       const rows = await copyRows(target, dataset, snapshot, driver.stream(source, selectText(dataset, text), values))
       const loadMs = Date.now() - t0
       await checkLoad(target, dataset, snapshot, rows, previous, async (column) => {
-        for await (const [row] of driver.stream!(source, `select cast(sum(${q(column)}) as varchar) as total from (${text}) as source`, values))
-          return row?.total == null ? '0' : String(row.total)
-        return '0'
+        // One row, always: an aggregate. An empty source has no total, which is 0.
+        let total: unknown = null
+        for await (const [row] of driver.stream!(source, `select cast(sum(${q(column)}) as varchar) as total from (${text}) as source`, values)) total = row.total
+        return String(total ?? 0)
       })
       await indexAndAttach(target, dataset, snapshot)
       await assertStillServing(app, identity, () => activate(target, snapshot!, rows, loadMs, runKeyText, now))
-      await prune(target)
       if (dataset.onNewLoad) await queueNewLoad(app, dataset.onNewLoad, target, previous, snapshot)
+      await prune(target)
       return { status: 'loaded', snapshot, previous, rows }
     } catch (error) {
       if (snapshot) await failLoad(target, snapshot, errorMessage(error))
@@ -426,12 +419,16 @@ async function copyRows(target: string, dataset: DatasetDeclaration, snapshot: s
   }
   const columns = ['snapshot_id', 'row_id', ...dataset.columns.map((c) => c.name)].map(q).join(', ')
   try {
-    const writable = await sql.unsafe(`copy ${partRelation(snapshot)} (${columns}) from stdin`).writable()
-    await pipeline(Readable.from(lines()), writable)
+    // Its own transaction: a refused COPY rolls back alone, and the load is
+    // still recorded as refused.
+    await sql.begin(async (tx) => {
+      const writable = await tx.unsafe(`copy ${partRelation(snapshot)} (${columns}) from stdin`).writable()
+      await pipeline(Readable.from(lines()), writable)
+    })
   } catch (error) {
-    // A value the declared type cannot hold: the whole load is refused.
+    // A row with no key: the whole load is refused. (The shape check has
+    // already held every value to a kind its declared type takes.)
     if ((error as { code?: string }).code === '23502') refuse('a row has an empty key; every row names its ' + dataset.rowKey!.join(', '))
-    if (/^22/.test(String((error as { code?: string }).code))) refuse(`a value does not fit its declared type: ${errorMessage(error)}`)
     throw error
   }
   return count
@@ -483,7 +480,7 @@ async function activate(target: string, snapshot: string, rows: number, loadMs: 
   const [size] = await sql.unsafe(`select pg_total_relation_size(${literal(partRelation(snapshot))}) as bytes`)
   await sql.begin(async (tx) => {
     await tx`update dataset_snapshot set state = 'superseded', updated_at = now() where dataset = ${target} and state = 'active'`
-    await tx`update dataset_snapshot set state = 'active', activated_at = now(), row_count = ${rows}, bytes = ${Number(size.bytes)},
+    await tx`update dataset_snapshot set state = 'active', activated_at = clock_timestamp(), row_count = ${rows}, bytes = ${Number(size.bytes)},
       load_ms = ${loadMs}, updated_at = now() where row_id = ${snapshot}`
     await tx`update featherbase.table_copy set last_copied_at = ${at}, last_run_id = ${snapshot}, last_run_key = ${runKey}
       where target_table = ${target}`

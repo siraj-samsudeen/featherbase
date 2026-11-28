@@ -12,11 +12,8 @@ import { registerCopyRefreshJobs } from '../../src/copy-refresh'
 import { test } from '../pg-test'
 import { scenarioFor } from '../scenario'
 import { expectRefused } from '../fixtures'
-import { resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
-import { availableRuntimeVersions } from '../../src/runtime-packages'
 import {
-  APP, LINES, SALES, Warehouse, dailySales, forecastLines, install, jobCalls, load, removeFolders, rows, upgrade, writeApp,
+  APP, LINES, SALES, Warehouse, dailySales, forecastLines, install, jobCalls, load, readLines, removeFolders, rows, upgrade, writeApp,
   type Line,
 } from '../read-only-copy-app'
 import type { LoadOutcome } from '../../src/read-only-copy'
@@ -271,25 +268,16 @@ describe('read-only-copies', () => {
 
   scenario('A team leader sees only her store\'s lines', async ({ admin, createUser }, step) => {
     let reader!: TestClient
-    let answer!: { result: { rows: { store_code: string }[] } }
+    let answer!: { status: number; body: unknown }
     await step('the forecast lines copy holds run "Dec-1" for stores "LKS" and "RVR"', () => holdingDec1(admin, [LKS_GJ01, RVR_GJ01]))
     await step('the user covers store "LKS"', async () => {
       reader = await createUser({ email: 'team.leader@example.test', roles: ['Copy Reader'] })
-      const roster = await moduleOf('placeroster', resolve('../..', 'test-apps/fixtures/place-roster'))
-      roster.faults.result = [{ label: 'Lakeside', filters: { store: ['LKS'] } }]
     })
-    try {
-      await step('the app reads the forecast lines for the user', async () => {
-        const res = await reader.fetch(`/api/app_reads/${APP}/lines`, { method: 'POST', body: JSON.stringify({ payload: {} }),
-          headers: { 'content-type': 'application/json', 'X-Featherbase-App-Version': `${APP}@1.0.0` } })
-        expect(res.status).toBe(200)
-        answer = await res.json()
-      })
-    } finally {
-      delete (await moduleOf('placeroster', resolve('../..', 'test-apps/fixtures/place-roster'))).faults.result
-    }
-    await step('the user gets the lines of store "LKS" only', () =>
-      expect(answer.result.rows).toEqual([{ run_id: 'Dec-1', store_code: 'LKS', subcategory_code: 'GJ01', sale_date: '2026-12-01', value: 1000 }]))
+    await step('the app reads the forecast lines for the user', async () => { answer = await readLines(reader, ['LKS']) })
+    await step('the user gets the lines of store "LKS" only', () => expect(answer).toMatchObject({ status: 200, body: { result: {
+      dataset: 'forecast_line_day', served: 'cached',
+      rows: [{ run_id: 'Dec-1', store_code: 'LKS', subcategory_code: 'GJ01', sale_date: '2026-12-01', value: 1000 }],
+    } } }))
   })
 
   scenario('The forecast lines are not offered to the capture', async ({ admin }, step) => {
@@ -316,9 +304,4 @@ async function runScheduledCheckDue() {
   await sql`update background_job set max_attempts = 1 where job_status = 'queued' and run_at <= now() + interval '1 second'`
   await sql`update background_job set run_at = now() where job_status = 'queued' and run_at <= clock_timestamp()`
   expect(await runOneJob()).toBe(true)
-}
-
-async function moduleOf(name: string, directory: string) {
-  const digest = availableRuntimeVersions().find((p) => p.name === name)!.digest
-  return import(`${pathToFileURL(resolve(directory, 'server.mjs')).href}?artifact=${digest}`)
 }
