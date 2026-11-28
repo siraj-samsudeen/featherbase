@@ -116,3 +116,46 @@ describe('#1236, Codex review round 12: a grant and a mandatory policy are separ
     await discoverPackages([])
   })
 })
+
+describe("#1385: an app's own sidebar sections, declared in its manifest", () => {
+  const sidebar = (items: unknown[]) => ({ version: 1, sections: [{ id: 'pages', title: 'Pages', items }] })
+
+  test('the catalog gives them, each address resolved under the app', async ({ admin }) => {
+    const copy = await mkdtemp(resolve('test/.catalog-sidebar-'))
+    try {
+      await cp(TASKER, copy, { recursive: true, filter: (source) => !source.includes('node_modules') })
+      const manifest = JSON.parse(await readFile(resolve(copy, 'featherbase.json'), 'utf8'))
+      await writeFile(resolve(copy, 'featherbase.json'), JSON.stringify({
+        ...manifest,
+        sidebar: sidebar([
+          { label: 'Inbox', address: '#page=inbox', icon: 'inbox', count: 3 },
+          { label: 'Projects', address: '?view=projects', icon: 'folder', children: [{ label: 'Launch', address: '?view=projects&project=a' }] },
+          { label: 'All Tasks In Featherbase', address: '/featherbase/admin/table/tasker.task', icon: 'table' },
+        ]),
+      }))
+      expect(await discoverPackages([copy])).toEqual([])
+      await admin.post('/api/install_app', { name: 'tasker' })
+      await admitTasker(admin)
+      const catalog = await admin.get<{ name: string; sidebar?: { items: { address: string; children?: { address: string }[] }[] }[] }[]>('/api/app_catalog')
+      const items = catalog.find((app) => app.name === 'tasker')?.sidebar?.[0].items
+      expect(items?.map((item) => item.address)).toEqual(['/tasker/#page=inbox', '/tasker/?view=projects', '/featherbase/admin/table/tasker.task'])
+      expect(items?.[1].children?.[0].address).toBe('/tasker/?view=projects&project=a')
+    } finally {
+      await rm(copy, { recursive: true, force: true })
+      await discoverPackages([])
+    }
+  })
+
+  test("a row named after one of the platform's own pieces is refused", async () => {
+    expect(await findChanged((manifest) => ({ ...manifest, sidebar: sidebar([{ label: 'Recently Opened', address: '#recent', icon: 'list' }]) }))).toMatch(/platform/)
+  })
+
+  test("an address on another site, or a script, is refused", async () => {
+    expect(await findChanged((manifest) => ({ ...manifest, sidebar: sidebar([{ label: 'Elsewhere', address: '//example.com/', icon: 'link' }]) }))).toMatch(/address/)
+    expect(await findChanged((manifest) => ({ ...manifest, sidebar: sidebar([{ label: 'Run', address: 'javascript:alert(1)', icon: 'link' }]) }))).toMatch(/address/)
+  })
+
+  test('an icon outside the set is refused', async () => {
+    expect(await findChanged((manifest) => ({ ...manifest, sidebar: sidebar([{ label: 'Inbox', address: '#inbox', icon: 'rocket' }]) }))).toMatch(/icon/)
+  })
+})

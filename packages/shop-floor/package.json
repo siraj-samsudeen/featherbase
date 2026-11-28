@@ -8,7 +8,8 @@
     "./styles.css": "./src/styles.css",
     "./theme": "./src/theme.ts",
     "./format": "./src/format.ts",
-    "./hierarchy": "./hierarchy/index.ts"
+    "./hierarchy": "./hierarchy/index.ts",
+    "./sidebar": "./src/sidebar.ts"
   },
   "peerDependencies": {
     "react": "^19.0.0",

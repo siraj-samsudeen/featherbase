@@ -12,7 +12,7 @@ import { PLATFORM_ROLES, hasPermission } from './permissions'
 import { tableAccessPolicy } from './mandatory-access'
 import { AppError, errorMessage } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
-import { WHY_DEFAULT_LABEL, WHY_LABEL, APP_ACCENTS, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
+import { WHY_DEFAULT_LABEL, WHY_LABEL, APP_ACCENTS, APP_TAB_ICONS, SIDEBAR_ICONS, SIDEBAR_LABEL_MAX, isSidebarAddress, namesDefaultPiece, sidebarSectionsUnder, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
 import { callerDocuments, callerRoles, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations, linkedTables } from './runtime-actions'
 import { approvalTypesDeclaration, baseTablesDeclaration, baseTablesReader } from './change-proposals'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
@@ -62,6 +62,29 @@ const tabsDeclaration = z.object({
     path: z.string().regex(APP_TAB_PATH, 'a tab path is lower-case segments under the app, like "targets" or "" for its root'),
   }).strict()).min(2).max(5)
     .refine(items => new Set(items.map(item => item.path)).size === items.length, 'each tab opens a path of its own'),
+}).strict()
+
+// #1385 (slice 4): the sections an app shows in the shared sidebar, as data.
+// The rows that change at run time come from the app's one runtime call
+// (setSidebarRows); these are the ones that never change, and the order of all.
+const sidebarWords = z.string().trim().min(1).max(SIDEBAR_LABEL_MAX).regex(/^[^\p{C}]*$/u, 'sidebar words are visible text')
+  .refine(label => !namesDefaultPiece(label), 'a sidebar row is never named after one of the platform\'s own pieces (Recently Opened, Saved Views, …)')
+const sidebarAddress = z.string().refine(isSidebarAddress, 'a sidebar address is a path, or a query or hash on the app\'s page, like "?view=sections" or "#jobs"')
+const sidebarChild = z.object({ label: sidebarWords, address: sidebarAddress, count: z.number().int().min(0).optional() }).strict()
+const sidebarDeclaration = z.object({
+  version: z.literal(1),
+  sections: z.array(z.object({
+    id: z.string().regex(/^[a-z][a-z0-9-]{0,40}$/, 'a section id is lower-case words joined by -'),
+    title: sidebarWords.optional(),
+    icon: z.enum(SIDEBAR_ICONS).optional(),
+    items: z.array(sidebarChild.extend({
+      icon: z.enum(SIDEBAR_ICONS),
+      id: z.string().regex(/^[a-z][a-z0-9-]{0,40}$/).optional(),
+      initials: z.boolean().optional(),
+      children: z.array(sidebarChild).optional(),
+    }).strict()),
+  }).strict()).min(1)
+    .refine(sections => new Set(sections.map(section => section.id)).size === sections.length, 'each sidebar section has an id of its own'),
 }).strict()
 
 // #642 (E4): an outside site the app frames, written as its exact origin:
@@ -215,6 +238,7 @@ const manifestSchema = z.object({
     sections: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/).optional(),
   }).strict().optional(),
   tabs: tabsDeclaration.optional(),
+  sidebar: sidebarDeclaration.optional(),
   // #941 (ADR 0019): the app's accent, one of the platform's named set. Any
   // text is accepted here so the app is still found; installing (or upgrading
   // to) an accent outside the set is refused, naming the accents there are.
@@ -1161,6 +1185,8 @@ export async function appCatalog(user: string) {
         // #1282: the areas its people pick on the trees, for the area picker.
         ...(pkg.manifest.areas && { areas: await realAreas(pkg.name, pkg.manifest.areas) }),
         ...(pkg.manifest.tabs && { tabs: appTabLinks(appHref(pkg.name), pkg.manifest.tabs.items) }),
+        // #1385 (slice 4): the app's own sidebar sections, addresses under its root.
+        ...(pkg.manifest.sidebar && { sidebar: sidebarSectionsUnder(appHref(pkg.name), pkg.manifest.sidebar.sections) }),
       })
   }
   return result

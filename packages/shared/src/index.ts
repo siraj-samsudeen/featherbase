@@ -64,3 +64,4 @@ export { RECORD_FACTS_LIMITS, RECORD_FACT_TONES, actionDoneSchema, actionPreview
 export { WORKED_OUT_LIMITS, workedOutRowSchema, workedOutSchema, type WorkedOut, type WorkedOutAnswer, type WorkedOutRow } from './worked-out'
 export { ADDRESS_MAX, UNAVAILABLE_PATH, askedAddress, unavailableHref } from './unavailable-address'
 export { needsEmail, personMeta, personMetaShort, personMetaText, type PersonLabel, type PersonMetaPart } from './person-label'
+export { SIDEBAR_ICONS, SIDEBAR_LABEL_MAX, SIDEBAR_DEFAULT_PIECES, SIDEBAR_ROWS_GLOBAL, SIDEBAR_ROWS_EVENT, isSidebarAddress, mergeSidebarSections, namesDefaultPiece, sidebarAddressUnder, sidebarSectionsUnder, type SidebarChildItem, type SidebarDeclaration, type SidebarIcon, type SidebarItem, type SidebarRows, type SidebarSection } from './app-sidebar'
