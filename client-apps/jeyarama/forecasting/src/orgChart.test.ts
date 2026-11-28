@@ -37,11 +37,13 @@ const TABLES: Record<string, Row[]> = {
 // like the platform's helper, it refuses a read while another is still running (reads are awaited one at a time)
 let running = 0
 const base = {
-  list: async (table: string, args: { filters?: [string, string, unknown][] }) => {
+  // and, like it, serves at most 500 rows a page
+  list: async (table: string, args: { filters?: [string, string, unknown][]; limit_start?: number; limit_page_length?: number }) => {
     if (running++) throw new Error('Base Table and proposal helpers must be awaited one at a time inside the handler')
     await new Promise(r => setTimeout(r, 0))
     running--
-    return (TABLES[table] ?? []).filter(r => (args.filters ?? []).every(([c, op, v]) => (op === 'in' ? (v as unknown[]).includes(r[c]) : r[c] === v)))
+    const start = args.limit_start ?? 0, size = Math.min(args.limit_page_length ?? 20, 500)
+    return (TABLES[table] ?? []).filter(r => (args.filters ?? []).every(([c, op, v]) => (op === 'in' ? (v as unknown[]).includes(r[c]) : r[c] === v))).slice(start, start + size)
   },
 }
 
@@ -66,5 +68,19 @@ describe('the live org chart (#1419)', () => {
     expect(org.subcategories.S1).toMatchObject({ buyer: 'Kavya', categoryHead: 'Ravi' })
     expect(org.subcategories.S2).toMatchObject({ buyer: null, categoryHead: 'Lena' })
     expect((await orgChart(base, 'LKS', '2026-11-27')).subcategories.S2.buyer).toBe('Lena')
+  })
+
+  it('reads every page (the platform serves 500 rows a page) and takes dates as the database gives them, Date objects at UTC midnight', async () => {
+    const saved = TABLES['Section Subcategory']
+    // 600 earlier rows that ended, then S1's row today, its dates as Date objects
+    TABLES['Section Subcategory'] = [
+      ...Array.from({ length: 600 }, (_, i) => ({ store: 'LKS', subcategory: `OLD${i}`, section: 'LKS-GF-Saree', starts_on: new Date('2026-01-01T00:00:00Z'), ends_on: new Date('2026-02-01T00:00:00Z') })),
+      { store: 'LKS', subcategory: 'S1', section: 'LKS-1F-Girls', starts_on: new Date('2026-11-06T00:00:00Z'), ends_on: null },
+    ]
+    try {
+      const org = await orgChart(base, 'LKS', '2026-11-28')
+      expect(org.subcategories.S1.section).toBe('LKS-1F-Girls')
+      expect(org.subcategories.OLD0).toBeUndefined()
+    } finally { TABLES['Section Subcategory'] = saved }
   })
 })

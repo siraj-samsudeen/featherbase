@@ -2538,7 +2538,7 @@
     {
       "name": "forecast_run",
       "source": "warehouse",
-      "query": "select run_id, model, purpose, status, origin_date, horizon_from, horizon_to from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)",
+      "query": "select run_id, model, purpose, status, origin_date, horizon_from, horizon_to from marts_forecasting.main.forecast_run where run_id in (select run_id from (select r.run_id, row_number() over (partition by r.horizon_from, l.region order by r.origin_date desc, r.run_id desc) as newest from marts_forecasting.main.forecast_run r join (select distinct run_id, region from marts_forecasting.main.fb_forecast_explanation_month) l on l.run_id = r.run_id where r.purpose = 'official' and r.horizon_to >= date_trunc('month', current_date)) where newest = 1)",
       "columns": [
         {
           "name": "run_id",
@@ -2576,7 +2576,7 @@
         "run_id"
       ],
       "unscoped": true,
-      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)",
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from (select run_id from (select r.run_id, row_number() over (partition by r.horizon_from, l.region order by r.origin_date desc, r.run_id desc) as newest from marts_forecasting.main.forecast_run r join (select distinct run_id, region from marts_forecasting.main.fb_forecast_explanation_month) l on l.run_id = r.run_id where r.purpose = 'official' and r.horizon_to >= date_trunc('month', current_date)) where newest = 1)",
       "loadRoles": [
         "Forecast Creator"
       ],
@@ -2590,7 +2590,7 @@
     {
       "name": "forecast_line_month",
       "source": "warehouse",
-      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, forecast_month, forecast_value_before_tax, forecast_qty, own_value_b1, weight_b1, adds_value_b1, own_value_b2, weight_b2, adds_value_b2, own_value_b3, weight_b3, adds_value_b3, own_value_b4, weight_b4, adds_value_b4, own_value_b5, weight_b5, adds_value_b5, own_value_b6, weight_b6, adds_value_b6, growth_factor, seasonal_factor, from_recent_selling, seasonal_step_on_top, from_last_year, adjustments, rebalanced_within_category, price_and_rounding from marts_forecasting.main.fb_forecast_explanation_month where run_id in (select run_id from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date))",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, forecast_month, forecast_value_before_tax, forecast_qty, own_value_b1, weight_b1, adds_value_b1, own_value_b2, weight_b2, adds_value_b2, own_value_b3, weight_b3, adds_value_b3, own_value_b4, weight_b4, adds_value_b4, own_value_b5, weight_b5, adds_value_b5, own_value_b6, weight_b6, adds_value_b6, growth_factor, seasonal_factor, from_recent_selling, seasonal_step_on_top, from_last_year, adjustments, rebalanced_within_category, price_and_rounding from marts_forecasting.main.fb_forecast_explanation_month where run_id in (select run_id from (select r.run_id, row_number() over (partition by r.horizon_from, l.region order by r.origin_date desc, r.run_id desc) as newest from marts_forecasting.main.forecast_run r join (select distinct run_id, region from marts_forecasting.main.fb_forecast_explanation_month) l on l.run_id = r.run_id where r.purpose = 'official' and r.horizon_to >= date_trunc('month', current_date)) where newest = 1)",
       "columns": [
         {
           "name": "run_id",
@@ -2775,13 +2775,13 @@
           "column": "forecast_value_before_tax"
         }
       ],
-      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)",
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from (select run_id from (select r.run_id, row_number() over (partition by r.horizon_from, l.region order by r.origin_date desc, r.run_id desc) as newest from marts_forecasting.main.forecast_run r join (select distinct run_id, region from marts_forecasting.main.fb_forecast_explanation_month) l on l.run_id = r.run_id where r.purpose = 'official' and r.horizon_to >= date_trunc('month', current_date)) where newest = 1)",
       "onNewLoad": "carry_changes"
     },
     {
       "name": "forecast_line_day",
       "source": "warehouse",
-      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, forecast_date, forecast_value_before_tax, forecast_qty, day_shape from marts_forecasting.main.fb_forecast_line_day where run_id in (select run_id from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date))",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, forecast_date, forecast_value_before_tax, forecast_qty, day_shape from marts_forecasting.main.fb_forecast_line_day where run_id in (select run_id from (select r.run_id, row_number() over (partition by r.horizon_from, l.region order by r.origin_date desc, r.run_id desc) as newest from marts_forecasting.main.forecast_run r join (select distinct run_id, region from marts_forecasting.main.fb_forecast_explanation_month) l on l.run_id = r.run_id where r.purpose = 'official' and r.horizon_to >= date_trunc('month', current_date)) where newest = 1)",
       "columns": [
         {
           "name": "run_id",
@@ -2868,12 +2868,12 @@
           "column": "forecast_value_before_tax"
         }
       ],
-      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)"
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from (select run_id from (select r.run_id, row_number() over (partition by r.horizon_from, l.region order by r.origin_date desc, r.run_id desc) as newest from marts_forecasting.main.forecast_run r join (select distinct run_id, region from marts_forecasting.main.fb_forecast_explanation_month) l on l.run_id = r.run_id where r.purpose = 'official' and r.horizon_to >= date_trunc('month', current_date)) where newest = 1)"
     },
     {
       "name": "sales_reference",
       "source": "warehouse",
-      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, window_name, date_from, date_to, sales_value_before_tax, sales_qty from marts_forecasting.main.fb_sales_reference where run_id in (select run_id from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date))",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, window_name, date_from, date_to, sales_value_before_tax, sales_qty from marts_forecasting.main.fb_sales_reference where run_id in (select run_id from (select r.run_id, row_number() over (partition by r.horizon_from, l.region order by r.origin_date desc, r.run_id desc) as newest from marts_forecasting.main.forecast_run r join (select distinct run_id, region from marts_forecasting.main.fb_forecast_explanation_month) l on l.run_id = r.run_id where r.purpose = 'official' and r.horizon_to >= date_trunc('month', current_date)) where newest = 1)",
       "columns": [
         {
           "name": "run_id",
@@ -2964,12 +2964,12 @@
           "column": "sales_value_before_tax"
         }
       ],
-      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)"
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from (select run_id from (select r.run_id, row_number() over (partition by r.horizon_from, l.region order by r.origin_date desc, r.run_id desc) as newest from marts_forecasting.main.forecast_run r join (select distinct run_id, region from marts_forecasting.main.fb_forecast_explanation_month) l on l.run_id = r.run_id where r.purpose = 'official' and r.horizon_to >= date_trunc('month', current_date)) where newest = 1)"
     },
     {
       "name": "annual_plan_line",
       "source": "warehouse",
-      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, plan_month, revision_id, plan_value_before_tax, plan_qty from marts_forecasting.main.fb_plan_line where run_id in (select run_id from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date))",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, plan_month, revision_id, plan_value_before_tax, plan_qty from marts_forecasting.main.fb_plan_line where run_id in (select run_id from (select r.run_id, row_number() over (partition by r.horizon_from, l.region order by r.origin_date desc, r.run_id desc) as newest from marts_forecasting.main.forecast_run r join (select distinct run_id, region from marts_forecasting.main.fb_forecast_explanation_month) l on l.run_id = r.run_id where r.purpose = 'official' and r.horizon_to >= date_trunc('month', current_date)) where newest = 1)",
       "columns": [
         {
           "name": "run_id",
@@ -3058,7 +3058,7 @@
           "column": "plan_value_before_tax"
         }
       ],
-      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)"
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from (select run_id from (select r.run_id, row_number() over (partition by r.horizon_from, l.region order by r.origin_date desc, r.run_id desc) as newest from marts_forecasting.main.forecast_run r join (select distinct run_id, region from marts_forecasting.main.fb_forecast_explanation_month) l on l.run_id = r.run_id where r.purpose = 'official' and r.horizon_to >= date_trunc('month', current_date)) where newest = 1)"
     },
     {
       "name": "other_model_day",
@@ -3251,7 +3251,7 @@
     {
       "name": "price_band_mix",
       "source": "warehouse",
-      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, price_band, price_band_order, date_from, date_to, sales_value_before_tax, sales_qty, items_sold, value_share, qty_share, items_to_50_pct, items_to_70_pct from marts_forecasting.main.fb_price_band_mix where run_id in (select run_id from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date))",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, price_band, price_band_order, date_from, date_to, sales_value_before_tax, sales_qty, items_sold, value_share, qty_share, items_to_50_pct, items_to_70_pct from marts_forecasting.main.fb_price_band_mix where run_id in (select run_id from (select r.run_id, row_number() over (partition by r.horizon_from, l.region order by r.origin_date desc, r.run_id desc) as newest from marts_forecasting.main.forecast_run r join (select distinct run_id, region from marts_forecasting.main.fb_forecast_explanation_month) l on l.run_id = r.run_id where r.purpose = 'official' and r.horizon_to >= date_trunc('month', current_date)) where newest = 1)",
       "columns": [
         {
           "name": "run_id",
@@ -3366,7 +3366,7 @@
           "column": "sales_value_before_tax"
         }
       ],
-      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)"
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from (select run_id from (select r.run_id, row_number() over (partition by r.horizon_from, l.region order by r.origin_date desc, r.run_id desc) as newest from marts_forecasting.main.forecast_run r join (select distinct run_id, region from marts_forecasting.main.fb_forecast_explanation_month) l on l.run_id = r.run_id where r.purpose = 'official' and r.horizon_to >= date_trunc('month', current_date)) where newest = 1)"
     },
     {
       "name": "stock_band",
@@ -3480,7 +3480,7 @@
     {
       "name": "price_band_top_item",
       "source": "warehouse",
-      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, price_band, price_band_order, item_rank, item_code, item_name, sales_qty, sales_value_before_tax, share_of_band_sales, stock_qty from marts_forecasting.main.fb_price_band_top_item where run_id in (select run_id from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date))",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, price_band, price_band_order, item_rank, item_code, item_name, sales_qty, sales_value_before_tax, share_of_band_sales, stock_qty from marts_forecasting.main.fb_price_band_top_item where run_id in (select run_id from (select r.run_id, row_number() over (partition by r.horizon_from, l.region order by r.origin_date desc, r.run_id desc) as newest from marts_forecasting.main.forecast_run r join (select distinct run_id, region from marts_forecasting.main.fb_forecast_explanation_month) l on l.run_id = r.run_id where r.purpose = 'official' and r.horizon_to >= date_trunc('month', current_date)) where newest = 1)",
       "columns": [
         {
           "name": "run_id",
@@ -3585,7 +3585,7 @@
           "column": "store_code"
         }
       ],
-      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)"
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from (select run_id from (select r.run_id, row_number() over (partition by r.horizon_from, l.region order by r.origin_date desc, r.run_id desc) as newest from marts_forecasting.main.forecast_run r join (select distinct run_id, region from marts_forecasting.main.fb_forecast_explanation_month) l on l.run_id = r.run_id where r.purpose = 'official' and r.horizon_to >= date_trunc('month', current_date)) where newest = 1)"
     },
     {
       "name": "item_health",

@@ -29,7 +29,8 @@ interface CommentRow { ref_name: string; content: string; created_at: string }
  *  whenever a real one is loaded, so a real store never shares the screen with the made-up one. */
 export async function officialRuns(): Promise<(RunRow & { model?: string })[]> {
   const runs = (await listWhere<RunRow & { model?: string }>('forecasting.forecast_run', ['run_id', 'model', 'purpose', 'origin_date', 'horizon_from', 'horizon_to'], [['purpose', '=', 'official']]))
-    .sort((a, b) => b.horizon_from.localeCompare(a.horizon_from))
+    // newest month first; of two Runs of a month, the newer one (the copies hold only the newest, but say so here too)
+    .sort((a, b) => b.horizon_from.localeCompare(a.horizon_from) || String(b.origin_date).localeCompare(String(a.origin_date)))
   const real = runs.filter(r => r.model !== 'made_up')
   return real.length ? real : runs
 }
@@ -52,19 +53,27 @@ export async function loadStore(store?: string | null): Promise<StoreSummary | n
   const runs = await officialRuns()
   const run = runs[0]
   if (!run) return null
-  const rows = await listWhere<{ store_short_code: string; subcategory_code: string; subcategory_name: string; forecast_value_before_tax: number | string }>(
-    'forecasting.forecast_line_month', ['store_short_code', 'subcategory_code', 'subcategory_name', 'forecast_value_before_tax'], [['run_id', 'in', runs.filter(r => r.horizon_from === run.horizon_from).map(r => r.run_id)]])
+  // the month's Runs, one per region: a store is in one of them
+  const rows = await listWhere<{ run_id: string; store_code: string; store_short_code: string; subcategory_code: string | null; subcategory_name: string; forecast_value_before_tax: number | string }>(
+    'forecasting.forecast_line_month', ['run_id', 'store_code', 'store_short_code', 'subcategory_code', 'subcategory_name', 'forecast_value_before_tax'], [['run_id', 'in', runs.filter(r => r.horizon_from === run.horizon_from).map(r => r.run_id)]])
   const count = new Map<string, number>()
   for (const r of rows) count.set(r.store_short_code, (count.get(r.store_short_code) ?? 0) + 1)
   const stores = [...count.keys()].sort()
   const chosen = store && count.has(store) ? store : [...count.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
   if (!chosen) return null
-  const mine = rows.filter(r => r.store_short_code === chosen)
-  const [org, reviews] = await Promise.all([
+  const at0 = rows.find(r => r.store_short_code === chosen)!, storeRun = runs.find(r => r.run_id === at0.run_id) ?? run
+  const mine = rows.filter(r => r.store_short_code === chosen && r.run_id === storeRun.run_id)
+  const month = storeRun.horizon_from.slice(0, 10)
+  const [org, stored] = await Promise.all([
     orgOf(chosen),
-    listWhere<{ subcategory_name: string }>('forecasting.forecast_line_review', ['subcategory_name'], [['run_id', '=', run.run_id]]),
+    listWhere<{ run_id: string; subcategory_name: string; forecast_month: string | null; engine_value_before_tax: number | string | null; updated_at: string }>('forecasting.forecast_line_review',
+      ['run_id', 'subcategory_name', 'forecast_month', 'engine_value_before_tax', 'updated_at'], [['store_code', '=', at0.store_code], ['forecast_month', '=', month]]),
   ])
-  const answered = new Set(reviews.map(r => r.subcategory_name))
+  // answered as the review counts it: on this Run, or carried from an earlier Run of the month (carry.ts)
+  const { answers } = carryAnswers(stored.map(r => ({ run: r.run_id, month: r.forecast_month, subcategory: r.subcategory_name,
+    engine: r.engine_value_before_tax == null || r.engine_value_before_tax === '' ? null : Number(r.engine_value_before_tax), updatedAt: r.updated_at, answer: true })),
+    storeRun.run_id, month, Object.fromEntries(mine.map(l => [l.subcategory_name, Number(l.forecast_value_before_tax)])))
+  const answered = new Set(Object.keys(answers))
   const bySection = new Map<string, SectionSummary>()
   let noSection = { subcategories: 0, fc: 0 }
   for (const r of mine) {
@@ -75,7 +84,7 @@ export async function loadStore(store?: string | null): Promise<StoreSummary | n
     bySection.set(at.id, s)
   }
   const sections = [...bySection.values()].sort((a, b) => a.floorOrder - b.floorOrder || a.floor.localeCompare(b.floor) || b.fc - a.fc)
-  return { run, stores, store: chosen, month: monthOfRun(run.horizon_from), cutOff: day(run.origin_date), sections, noSection }
+  return { run: storeRun, stores, store: chosen, month: monthOfRun(storeRun.horizon_from), cutOff: day(storeRun.origin_date), sections, noSection }
 }
 
 /** The place name of a store's subcategories that the org chart puts in no section. */
