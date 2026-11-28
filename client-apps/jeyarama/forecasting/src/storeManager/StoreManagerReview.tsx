@@ -188,7 +188,7 @@ export function StoreManagerReview({ chain, hrefFor, openLine, onOpenLine }: Cha
       <button key={s.name} type="button" className="sm-tile" aria-pressed={board === s.name} data-n={s.name}
         onClick={() => { setBoard(board === s.name ? null : s.name); setOpen(null) }}>
         <span className="sm-tn">{s.name}</span>
-        <span className="sm-tt">{s.teamLeader ?? 'No Team Leader'}</span>
+        <span className="sm-tt">{s.teamLeader || 'No Team Leader'}</span>
         <span className="sm-tv"><b>{inr(o.fc)}</b><span className={aopText(o)}>{o.aop ? `${Math.round(o.fc / o.aop * 100)}% of AOP` : 'no AOP'}</span></span>
         <span className="sm-meter" title="Feather Forecast against AOP; the mark is 100%"><i data-tone={tone} style={{ width: `${meterWidth(o)}%` }} /></span>
         <span className="sm-tt">Gap <span className={aopText(o)}>{o.aop ? inr(o.fc - o.aop) : '—'}</span> · {pc(o.fc, o.ly)} on last year</span>
