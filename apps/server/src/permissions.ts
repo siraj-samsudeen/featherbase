@@ -77,14 +77,15 @@ function heldRoleRows(principals: string[]) {
       and b.app_role not in ${sql(PLATFORM_ROLES)}
       and jsonb_typeof(a.manifest->'roles') = 'array' and a.manifest->'roles' ? b.app_role
     union all
-    -- #1453: an app role from the org chart, while the instance has its job on and the app still declares it
+    -- #1453: an app role from the org chart, while a System Manager's rule turns it on, the app still declares it
+    -- may be given so, and the role is one the app created (never a same-named role it only adopted)
     select distinct w.principal, o.app_role as role, o.app from wanted w
     join app_role_from_org_chart o on o.person = w.principal
+    join org_chart_role_rule r on r.app = o.app and r.app_role = o.app_role
     join installed_app a on a.name = o.app and a.enabled and not a.activation_pending
-    join scheduled_job j on j.row_id = 'sync_org_chart_roles' and j.enabled
     where o.app_role not in ${sql(PLATFORM_ROLES)}
       and jsonb_typeof(a.manifest->'orgChartRoles') = 'array' and a.manifest->'orgChartRoles' ? o.app_role
-      and a.manifest->'roles' ? o.app_role
+      and jsonb_typeof(a.roles) = 'array' and a.roles ? o.app_role
     order by principal, app nulls first, role`
 }
 

@@ -391,11 +391,6 @@ async function assertOnlyScopeProvider(pkg: RuntimePackage) {
     `Only one enabled app may provide people's scope; ${others.map(r => String(r.name)).join(', ')} already does`)
 }
 
-/** #1453: each active app's roles from the org chart, as it declares them. */
-export function orgChartRoleDeclarations(): { app: string; roles: string[] }[] {
-  return [...packages.values()].flatMap((pkg) => (pkg.manifest.orgChartRoles?.length ? [{ app: pkg.name, roles: [...pkg.manifest.orgChartRoles] }] : []))
-}
-
 /** #1454: whether an app's files are loaded and serving now (its Tables' place scope can be read). */
 export function isAppLoaded(app: string): boolean {
   return packages.has(app)
@@ -490,6 +485,8 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   let providers = new Map<string, AppScopeProvider>()
   let jobHandlers = new Map<string, RuntimeJobHandler>()
   const provider = manifest.scopeProvider
+  // #1453: the app that says who has a place cannot also take a role from having one (it would keep itself in)
+  if (manifest.orgChartRoles?.length && provider) throw new Error("The app that provides people's scope cannot declare orgChartRoles")
   if (provider) {
     if (!manifest.server) throw new Error('A scope provider requires a server module')
     // An owned Table the provider reads must carry the mark; another
@@ -890,6 +887,11 @@ async function upgradePlan(name: string, version: string, preview = true) {
     migrations: pending.map(m => ({ id: m.id, checksum: checksum(m), operations: m.operations })),
     tables: [...new Set(operations.flatMap(op => op.kind === 'renameTable' ? [op.from, op.to] : [typeof op.table === 'string' ? op.table : op.table.name]))],
     roles: newRoles.map(role => ({ create: role })),
+    // #1453: roles the org chart may give: listed so an upgrade never adds one unseen (each still needs its rule)
+    orgChartRoles: {
+      added: (target.manifest.orgChartRoles ?? []).filter(role => !(prior.manifest.orgChartRoles ?? []).includes(role)),
+      removed: (prior.manifest.orgChartRoles ?? []).filter(role => !(target.manifest.orgChartRoles ?? []).includes(role)),
+    },
     permissions: [...withdrawn.map((p) => ({ withdraw: p })), ...granted.map((p) => ({ grant: p }))], jobs, indexes: [], destructive,
     dataEffects: destructive ? 'Destructive: the steps under losses remove data; every other row is unchanged' : 'Existing rows unchanged; added columns are NULL unless backfilled',
     codeOnly: operations.length === 0 }

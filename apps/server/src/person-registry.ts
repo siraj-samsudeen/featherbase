@@ -146,6 +146,8 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   leaver_sign_in: { person: id, section: code, why: text, ways_in: text },
   // #1453: who holds an app role from the org chart; why names their places.
   app_role_from_org_chart: { person: id, app: code, app_role: code, why: text },
+  app_role_from_org_chart_rebuild: { summary: text },
+  org_chart_role_rule: { app: code, app_role: code },
   leaver_sign_in_rebuild: { summary: text },
   letter_head: { '*': text },
   metadata_override: { '*': code },

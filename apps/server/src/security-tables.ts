@@ -29,6 +29,8 @@ export const SECURITY_TABLES: ReadonlySet<string> = new Set([
   // #620: an app's settings and which roles carry its roles.
   'App Setting',
   'App Role Binding',
+  // #1453: which app roles everyone the org chart gives a place holds.
+  'Org Chart Role Rule',
   'Employee Section Map',
   'Section Ownership',
   'Store Manager',

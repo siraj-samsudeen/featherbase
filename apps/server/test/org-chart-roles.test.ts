@@ -1,13 +1,14 @@
 // #1453: an app's role from the org chart. The app `chartproof` declares that everyone the org chart gives a place
-// holds its role Chart Reader; the places come from test-apps/fixtures/place-roster's positions (a person's rows
-// there are their places). The instance turns the rule on by enabling the Scheduled Job sync_org_chart_roles.
-// Every person and place is made up.
+// may hold its role Chart Reader; the places come from test-apps/fixtures/place-roster's positions (a person's rows
+// there are their places). A System Manager turns it on with an Org Chart Role Rule row; the job keeps holders in
+// step. Every person and place is made up.
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { afterEach, describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { discoverPackages } from '../src/runtime-packages'
+import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
+import { pathToFileURL } from 'node:url'
 import { getRoles } from '../src/permissions'
 import { sql } from '../src/db'
 import { syncOrgChartRoles } from '../src/org-chart-roles'
@@ -29,6 +30,8 @@ async function writeApp(more: Record<string, unknown> = {}) {
   folders.push(dir)
   await writeFile(join(dir, 'package.json'), JSON.stringify({ name: `featherbase-${APP}`, version: '1.0.0', type: 'module' }))
   await writeFile(join(dir, 'featherbase.json'), JSON.stringify(manifest(more)))
+  // a server module only where the test declares one (a scope provider needs one)
+  if (more.server) await writeFile(join(dir, 'server.mjs'), "export const platformVersion = '2026-10'\nexport const scopeProviders = { x: async () => [] }\n")
   return dir
 }
 
@@ -46,15 +49,24 @@ async function installed(admin: TestClient, createUser: CreateUserFn) {
 }
 const position = (admin: TestClient, person: string, place: string, store: string, section: string) =>
   admin.post('/api/save_row', { table: 'placeroster.position', row: { row_id: `${person}-${section}`, person, place, store, section } })
-const turnOn = (on = true) => sql`update scheduled_job set enabled = ${on} where row_id = 'sync_org_chart_roles'`
+/** A System Manager turns the role on (a rule row), or off (the row removed). */
+async function turnOn(admin: TestClient, on = true) {
+  if (on) await admin.post('/api/save_row', { table: 'Org Chart Role Rule', row: { app: APP, app_role: 'Chart Reader' } })
+  else await sql`delete from org_chart_role_rule where app = ${APP}`
+}
+async function roster(): Promise<{ faults: { provider?: unknown } }> {
+  const digest = availableRuntimeVersions().find((p) => p.name === 'placeroster')!.digest
+  return import(`${pathToFileURL(resolve(provider, 'server.mjs')).href}?artifact=${digest}`)
+}
 
 describe('an app role from the org chart', () => {
   test('is held by everyone the org chart gives a place, once the instance turns it on', async ({ admin, createUser }) => {
     const { leader, manager, outsider } = await installed(admin, createUser)
     await syncOrgChartRoles()
-    // installed off: nobody holds it yet, though the rows are worked out
+    // installed, nothing is turned on: nobody holds it
     expect(await getRoles(leader)).not.toContain('Chart Reader')
-    await turnOn()
+    await turnOn(admin)
+    await syncOrgChartRoles()
     expect(await getRoles(leader)).toContain('Chart Reader')
     expect(await getRoles(manager)).toContain('Chart Reader')
     expect(await getRoles(outsider)).not.toContain('Chart Reader')
@@ -64,7 +76,7 @@ describe('an app role from the org chart', () => {
 
   test('says who holds it and why', async ({ admin, createUser }) => {
     const { leader } = await installed(admin, createUser)
-    await turnOn()
+    await turnOn(admin)
     await syncOrgChartRoles()
     const listed = await admin.get<{ data: { person: string; app: string; app_role: string; why: string }[] }>(`/api/table/${encodeURIComponent('App Role From Org Chart')}?${new URLSearchParams({
       fields: JSON.stringify(['person', 'app', 'app_role', 'why']), filters: JSON.stringify([['person', '=', leader]]) })}`)
@@ -73,7 +85,7 @@ describe('an app role from the org chart', () => {
 
   test('follows the records: a leaver, or someone whose place ends, loses it on the next run', async ({ admin, createUser }) => {
     const { leader, manager } = await installed(admin, createUser)
-    await turnOn()
+    await turnOn(admin)
     await syncOrgChartRoles()
     await admin.post('/api/save_row', { table: 'Person', row: { row_id: manager, updated_at: (await admin.get<{ updated_at: string }>(`/api/table/Person/${manager}`)).updated_at, enabled: false } })
     await sql`delete from placeroster.position where person = ${leader}`
@@ -82,17 +94,45 @@ describe('an app role from the org chart', () => {
     expect((await sql`select count(*)::int as n from app_role_from_org_chart`)[0].n).toBe(0)
   })
 
+  test('a provider that cannot answer keeps the last holders, and the run says so', async ({ admin, createUser }) => {
+    const { leader } = await installed(admin, createUser)
+    await turnOn(admin)
+    await syncOrgChartRoles()
+    const places = await roster()
+    places.faults.provider = new Error('roster down')
+    try {
+      await expect(syncOrgChartRoles()).rejects.toThrow(/could not say where .* people work; the last holders stand/)
+    } finally { delete places.faults.provider }
+    expect(await getRoles(leader)).toContain('Chart Reader')
+  })
+
+  test('a role the app only adopted (an instance role of the same name) is never given', async ({ admin, createUser }) => {
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Chart Reader' } })
+    const { leader } = await installed(admin, createUser)
+    await turnOn(admin)
+    await syncOrgChartRoles()
+    expect(await getRoles(leader)).not.toContain('Chart Reader')
+  })
+
+  test('the access explanation says the org chart gave it, and why', async ({ admin, createUser }) => {
+    const { leader } = await installed(admin, createUser)
+    await turnOn(admin)
+    await syncOrgChartRoles()
+    const explained = await admin.get<{ roles: { role: string; app: string | null; through: string | null }[] }>(`/api/access_explanation/${leader}`)
+    expect(explained.roles).toContainEqual(expect.objectContaining({ role: 'Chart Reader', app: APP, through: 'the org chart (1 place on the org chart: North kids)' }))
+  })
+
   test('turned off again, nobody holds it through the rule', async ({ admin, createUser }) => {
     const { leader } = await installed(admin, createUser)
-    await turnOn()
+    await turnOn(admin)
     await syncOrgChartRoles()
-    await turnOn(false)
+    await turnOn(admin, false)
     expect(await getRoles(leader)).not.toContain('Chart Reader')
   })
 
   test('opens the app’s Table to its holders, as the role would', async ({ admin, createUser }) => {
     await installed(admin, createUser)
-    await turnOn()
+    await turnOn(admin)
     await syncOrgChartRoles()
     const reader = await createUser({ email: 'reader@example.test' })
     await position(admin, reader.user!, 'South', 'S1', 'kids')
@@ -105,5 +145,6 @@ describe('an app role from the org chart', () => {
     const problems = async (more: Record<string, unknown>) => JSON.stringify(await discoverPackages([await writeApp(more), provider]))
     expect(await problems({ orgChartRoles: ['System Manager'] })).toContain("not one of the app's own roles")
     expect(await problems({ orgChartRoles: ['Someone Else'] })).toContain("not one of the app's own roles")
+    expect(await problems({ server: 'server.mjs', scopeProvider: { name: 'x', tables: [`${APP}.note`] } })).toContain('cannot declare orgChartRoles')
   })
 })
