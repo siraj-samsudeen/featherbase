@@ -8,8 +8,10 @@ import { SectionSwitcher } from './SectionSwitcher'
 import { storeStepOf } from '../shared/model'
 import { TeamLeaderReview } from './TeamLeaderReview'
 
-export function SectionPage({ viewer, href, sectionHref, storeHref }: {
+export function SectionPage({ viewer, month, href, sectionHref, storeHref }: {
   viewer: Viewer; href: (line: string) => string
+  /** The month to review (YYYY-MM, from the address): that month's Run; none for the newest. */
+  month?: string | null
   /** Where another section of the store opens, for the switcher; none for a Team Leader on their own section. */
   sectionHref?: (store: string, s: SectionSummary) => string
   storeHref?: (store: string) => string
@@ -17,16 +19,16 @@ export function SectionPage({ viewer, href, sectionHref, storeHref }: {
   const [section, setSection] = useState<Section | null | undefined>(undefined)
   const [failed, setFailed] = useState(false)
   const load = useCallback(async () => {
-    try { setSection(await loadSection(viewer)); setFailed(false) } catch { setFailed(true) }
-  }, [viewer.name, viewer.place, viewer.role])
+    try { setSection(await loadSection(viewer, month)); setFailed(false) } catch { setFailed(true) }
+  }, [viewer.name, viewer.place, viewer.role, month])
   useEffect(() => { setSection(undefined); void load() }, [load])
   const [store, setStore] = useState<StoreSummary | null>(null)
   useEffect(() => { if (sectionHref) loadStore(viewer.place.split(' · ')[0]).then(setStore, () => setStore(null)) }, [viewer.place, sectionHref])
   const refresh = useCallback(async () => {
     if (!section) return
-    const state = await loadState(section.run, section.storeCode, viewer.name, section.lines)
+    const state = await loadState(section.run, section.storeCode, section.header.person, section.lines)
     setSection(s => (s ? { ...s, state } : s))
-  }, [section, viewer.name])
+  }, [section])
 
   if (failed) return <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => void load()}>Try again</Button>} /></Card>
   if (section === undefined) return <Skeleton label="Opening your section" lines={8} />

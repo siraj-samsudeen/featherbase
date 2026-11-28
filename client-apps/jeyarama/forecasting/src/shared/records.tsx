@@ -30,3 +30,19 @@ export function PersonLink({ id, name }: { id?: string | null; name: string }) {
   const can = useCanOpen('Employee')
   return id ? <RecordLink table="Employee" rowId={id} name={name} canOpen={can} /> : <>{name}</>
 }
+
+/** In-app navigation, as the app's own links do: the address changes and the page follows. */
+const go = (href: string) => { history.pushState(null, '', href); window.dispatchEvent(new PopStateEvent('popstate')) }
+/** A page title naming where it is, "ATK · Girls Bottoms · December 2026" (the design session, 28-Nov: the title is
+ *  navigation, like a breadcrumb): the store opens the store's sections, the section opens its review; the rest is
+ *  words. An administrator's view keeps naming the place in the address. */
+export function PlaceTitle({ store, section, rest }: { store: string; section?: string | null; rest: string }) {
+  const at = (q: Record<string, string>) => `?${new URLSearchParams(q)}`
+  return (
+    <>
+      <RecordLink table="Site" rowId={store} name={store} href={at({ view: 'sections', store })} onNavigate={go} />
+      {section && <>{' · '}<RecordLink table="Section" rowId={`${store}-${section}`} name={section} href={at({ view: 'section', store, section })} onNavigate={go} /></>}
+      {' · '}{rest}
+    </>
+  )
+}

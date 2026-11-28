@@ -5,6 +5,7 @@
 // /forecasting/?view=days (an administrator adds &store=<store>&section=<section>&tl=<name>)
 import { useCallback, useEffect, useState } from 'react'
 import { Card, EmptyState, PageHeader, RecordPagesProvider, Select, Skeleton, StatusPill } from '@featherbase/shop-floor'
+import { PlaceTitle } from '../shared/records'
 import { listWhere, saveRow } from '../api'
 import { NO_SECTION, officialRuns, orgOf, speaker, type Viewer } from '../teamLeader/live'
 import { BASIS_CODES, PARTS, day as dayText, inr, monthOfRun, pc, type Base, type RunRow } from '../shared/model'
@@ -102,19 +103,21 @@ export function DayReviewPage({ viewer, href, monthHref }: {
   const byRow = new Map([...days.rowIds].map(([name, id]) => [id, name]))
   const inView = scope ? days.built.filter(b => b.name === scope) : days.built
   const fc = inView.reduce((t, b) => t + b.fc, 0), aop = inView.reduce((t, b) => t + b.aop, 0)
+  // the same month throughout: this Run's month in the review, never a jump to the next (design session, 28-Nov)
+  const reviewHref = `${monthHref}${monthHref.includes('?') ? '&' : '?'}month=${days.run.horizon_from.slice(0, 7)}`
   return (
     <RecordPagesProvider pageFor={(table, rowId) => (table === 'forecasting.forecast_line_month' && byRow.has(rowId) ? href(byRow.get(rowId)!) : undefined)}>
       <div className="flex flex-col" data-testid="day-review-page">
-        <PageHeader title={`${days.store} · ${days.section} · ${days.month.label}, day by day`}
+        <PageHeader title={<PlaceTitle store={days.store} section={days.section} rest={`${days.month.label}, day by day`} />}
           status={`${days.person} · ${viewer.role} · sales to ${days.salesTo ? dayText(days.salesTo) : '—'} · before tax`} />
         {/* the underlined tab row the review and the 26-Nov mockup use: one look on every forecasting page */}
         <div className="fr-tabs mt-4" role="tablist" aria-label="Day review">
           {([['month', 'Review the month'], ['days', 'Days'], ['how', 'How it was built']] as const).map(([id, label]) => (
-            <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => (id === 'month' ? go(monthHref) : setTab(id))}>{label}</button>))}
+            <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => (id === 'month' ? go(reviewHref) : setTab(id))}>{label}</button>))}
         </div>
         <div className="mt-4">{tab === 'days'
           ? <DayReview section={days.section} subs={days.subs} month={days.month} explanations={days.explanations} rowIdOf={name => days.rowIds.get(name)} onSave={save}
-            monthLink={{ label: days.month.name, href: monthHref }} initialScope={scope} onScope={setScope} />
+            monthLink={{ label: days.month.name, href: reviewHref }} initialScope={scope} onScope={setScope} />
           : <HowBuilt fc={fc} adds={addsOf(inView)} month={days.month.name} otherLabel={PARTS.find(p => p.key === 'adj')!.label} onDays={() => setTab('days')}
             title={<>How Feather Forecast reached {inr(fc)} for {scope || days.section}</>}
             facts={<>{days.store} · {days.section} · Forecast {inr(fc)} · AOP {aop ? inr(aop) : '—'} · {aop ? <StatusPill tone={aopTone(fc, aop)}>{pc(fc, aop)}</StatusPill> : 'no AOP'} · {inView.length} {inView.length === 1 ? 'subcategory' : 'subcategories'}</>}

@@ -4,6 +4,7 @@
 // `actions`, so the same screen runs on a story's memory or on the app's tables.
 import { useMemo, useState, type ReactNode } from 'react'
 import { Chip, PageHeader, RecordLink, StatusPill } from '@featherbase/shop-floor'
+import { PlaceTitle } from '../shared/records'
 import { byGapToLastYear, combine, groupsOf, inr, matches, type Group, type HelpTopic, type Line } from '../shared/model'
 import { SubcategorySearch } from '../shared/SubcategorySearch'
 import type { Header, ReviewActions, ReviewState } from '../shared/review'
@@ -127,7 +128,7 @@ export function TeamLeaderReview({ header, lines, storeStep, state, actions, hre
 
   return (
     <div className="fr flex flex-col" data-testid="team-leader-review">
-      <PageHeader title={`${header.store} · ${header.section} · ${header.month.label}`}
+      <PageHeader title={<PlaceTitle store={header.store} section={header.section} rest={header.month.label} />}
         status={`${header.person} · ${header.role} · sales to ${header.cutOff} · before tax`}
         actions={<>{switcher}<MyQuestions questions={state.questions} lines={lines} hrefFor={hrefFor} onJump={jumpTo} /></>} />
       <div className="mt-4"><SubcategorySearch lines={lines} query={query} onOpen={jumpTo}

@@ -269,10 +269,10 @@ export function ForecastingApp() {
             : view === 'sections' || ((view === 'section' || view === 'attention' || view === 'days') && !me && !asSection) ? <StorePage store={params.get('store')}
               sectionHref={(store, s) => address(view === 'attention' || view === 'days' ? view : 'section', { store, section: s.section, ...(s.teamLeaders[0] ? { tl: s.teamLeaders[0] } : {}) })}
               noSectionHref={store => address('unassigned', { store })} onStore={store => { history.pushState(null, '', address('sections', { store })); window.dispatchEvent(new PopStateEvent('popstate')) }} />
-            : view === 'section' ? <SectionPage key={asSection ? asSection.place : viewer.id} viewer={asSection ?? viewer}
+            : view === 'section' ? <SectionPage key={`${asSection ? asSection.place : viewer.id}|${params.get('month') ?? ''}`} viewer={asSection ?? viewer} month={params.get('month')}
               sectionHref={asSection ? (store, s) => address('section', { store, section: s.section, ...(s.teamLeaders[0] ? { tl: s.teamLeaders[0] } : {}) }) : undefined}
               storeHref={store => address('sections', { store })}
-              href={line => address('section', { line, ...(asSection ? { store: params.get('store')!, section: params.get('section')!, ...(params.get('tl') ? { tl: params.get('tl')! } : {}) } : {}) })} />
+              href={line => address('section', { line, ...(params.get('month') ? { month: params.get('month')! } : {}), ...(asSection ? { store: params.get('store')!, section: params.get('section')!, ...(params.get('tl') ? { tl: params.get('tl')! } : {}) } : {}) })} />
             : view === 'attention' ? <AttentionPage key={asSection ? asSection.place : viewer.id} viewer={asSection ?? viewer}
               reviewHref={(line, band) => `${address('section', sectionInAddress())}#${new URLSearchParams({ open: line, ...(band ? { band } : {}) })}`}
               onReview={href => { history.pushState(null, '', href); window.dispatchEvent(new PopStateEvent('popstate')) }} />

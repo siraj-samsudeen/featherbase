@@ -5,6 +5,7 @@
 // never to the copy of the Run. /forecasting/?view=unassigned&store=<store>
 import { useEffect, useState } from 'react'
 import { Card, EmptyState, Notice, PageHeader, RecordLink, RecordPagesProvider, Skeleton } from '@featherbase/shop-floor'
+import { PlaceTitle } from '../shared/records'
 import { NO_SECTION, loadSection, type Section } from '../teamLeader/live'
 import { combine, storeStepOf, type Line } from '../shared/model'
 import { MeasureTable } from '../shared/MeasureTable'
@@ -67,7 +68,7 @@ export function UnassignedPage({ store, href }: { store: string; href: (line: st
   return (
     <RecordPagesProvider pageFor={(table, rowId) => (table === 'forecasting.forecast_line_month' && byRow.has(rowId) ? href(byRow.get(rowId)!) : undefined)}>
       <div className="fr flex flex-col gap-4" data-testid="unassigned-subcategories">
-        <PageHeader title={`${section.header.store} · Subcategories in No Section · ${section.header.month.label}`}
+        <PageHeader title={<PlaceTitle store={section.header.store} rest={`Subcategories in No Section · ${section.header.month.label}`} />}
           count={`${lines.length} subcategories`} status={`sales to ${section.header.cutOff} · before tax`} />
         <Notice>These subcategories belong to no section on the org chart, so no Team Leader reviews them. Assign them in Section Subcategory.</Notice>
         <MeasureTable header={section.header} view={{ ...DEFAULT_VIEW, measure: 'vq', aop: true }} open={open} onToggle={toggle}

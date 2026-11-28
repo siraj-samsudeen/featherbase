@@ -102,10 +102,11 @@ export const NO_SECTION = 'Not placed in a section'
 
 /** A Team Leader's section ("Lakeside · Girls Bottoms"), or a store's subcategories in no section, in the newest
  *  official Run that has it; null when none does. */
-export async function loadSection(viewer: Viewer): Promise<Section | null> {
+export async function loadSection(viewer: Viewer, month?: string | null): Promise<Section | null> {
   const [store, section] = viewer.place.split(' · ')
   if (!section) return null
-  const runs = await officialRuns()
+  // a month named in the address keeps to that month's Run (the Day Review's "Review the month"); moving month is the picker's job
+  const runs = (await officialRuns()).filter(r => !month || r.horizon_from.slice(0, 7) === month)
   if (!runs.length) return null
   const org = await orgOf(store)
   const at = org.sections.find(s => s.name === section)
