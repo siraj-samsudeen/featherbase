@@ -65,7 +65,8 @@ export interface LineMonthRow {
 interface ByLine { store_code: string; subcategory_name: string }
 export interface SalesRow extends ByLine { window_name: string; sales_value_before_tax: Num; sales_qty: Num }
 export interface PlanRow extends ByLine { plan_month: string; plan_value_before_tax: Num; plan_qty: Num }
-/** One day of another model's forecast (fb_other_models), summed per subcategory for the month. */
+/** Another model's forecast, a day (other_model_day, the Team Leader's page) or a month (other_model_month, the
+ *  managers' pages), summed per subcategory for the month. */
 export interface OtherModelRow extends ByLine { model: string; forecast_value_before_tax: Num }
 export interface CopiedRows { lines: LineMonthRow[]; sales: SalesRow[]; plans: PlanRow[]; others: OtherModelRow[]; bands?: BandRows }
 
@@ -89,7 +90,8 @@ export function linesFrom({ lines, sales, plans, others, bands }: CopiedRows, st
     const v = (w: string) => n(win[w]?.sales_value_before_tax), q = (w: string) => n(win[w]?.sales_qty)
     const plan = at('plans')[0]
     // another model's month: its days summed; a model with no row for the subcategory has no figure
-    const model = (m: string) => at('others').filter(o => o.model === m).reduce((t, o) => t + n(o.forecast_value_before_tax), 0)
+    // the warehouse names the models in lower case (xgboost, lightgbm); the made-up rows as people read them
+    const model = (m: string) => at('others').filter(o => o.model.toLowerCase() === m.toLowerCase()).reduce((t, o) => t + n(o.forecast_value_before_tax), 0)
     const row = l as unknown as Record<string, Num>
     const bases = BASIS_CODES.map((code, i): Base => {
       const own = row[`own_value_b${i + 1}`], adds = n(row[`adds_value_b${i + 1}`])

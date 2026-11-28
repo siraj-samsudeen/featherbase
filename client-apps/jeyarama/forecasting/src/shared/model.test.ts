@@ -7,6 +7,25 @@ const lines = linesFrom({ lines: fixture.forecast_line_month, sales: fixture.sal
 const line = (name: string, category: string, growth: number): Line => ({ ...lines[0], name, category, growth })
 
 describe('the Team Leader model (#1419)', () => {
+  it("reads the other models as the warehouse names them (xgboost, lightgbm), by day or summed to the month", () => {
+    const at = { lines: fixture.forecast_line_month, sales: [], plans: [] }
+    const days = (fixture.other_model_day as { model: string }[]).map(o => ({ ...o, model: o.model.toLowerCase() }))
+    // the month copy: the same days summed per model, store and subcategory, as fb_other_models_month sums them
+    const sums = new Map<string, { model: string; store_code: string; subcategory_name: string; forecast_value_before_tax: number }>()
+    for (const o of days as unknown as { model: string; store_code: string; subcategory_name: string; forecast_value_before_tax: string }[]) {
+      const k = `${o.model}|${o.store_code}|${o.subcategory_name}`
+      const m = sums.get(k) ?? sums.set(k, { model: o.model, store_code: o.store_code, subcategory_name: o.subcategory_name, forecast_value_before_tax: 0 }).get(k)!
+      m.forecast_value_before_tax += Number(o.forecast_value_before_tax)
+    }
+    const byDay = linesFrom({ ...at, others: days } as unknown as CopiedRows, '9001')
+    const byMonth = linesFrom({ ...at, others: [...sums.values()] } as unknown as CopiedRows, '9001')
+    expect(byDay.map(l => [l.xgb, l.lgbm])).toEqual(lines.map(l => [l.xgb, l.lgbm]))
+    for (const [d, m] of byDay.map((l, i) => [l, byMonth[i]])) {
+      expect(d.xgb).toBeGreaterThan(0)
+      expect(m.xgb).toBeCloseTo(d.xgb, 2); expect(m.lgbm).toBeCloseTo(d.lgbm, 2)
+    }
+  })
+
   it("builds each line's parts so they add up to Feather Forecast", () => {
     expect(lines).toHaveLength(10)
     for (const l of lines) expect(Math.abs(l.fromRecent + l.lift + l.lyg + l.adj - l.fc)).toBeLessThanOrEqual(2)
