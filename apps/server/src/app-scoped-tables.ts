@@ -11,6 +11,9 @@ import type { PersonScope } from 'shared'
 import { AppError } from './errors'
 import { datasetWhere, type DatasetDeclaration } from './app-datasets'
 import { getList } from './query'
+import { getMeta } from './meta'
+import { sql } from './db'
+import { tableRelation } from './table-engine'
 
 const identifier = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
 const distinct = (values: string[]) => new Set(values).size === values.length
@@ -51,7 +54,8 @@ export function validateScopedTables(app: string, tables: readonly { name: strin
 const asDataset = (declaration: ScopedTableDeclaration) => ({ name: declaration.table, keys: declaration.keys, filters: declaration.filters }) as unknown as DatasetDeclaration
 
 export interface ScopedListOptions {
-  /** The columns to answer, besides row_id and updated_at; all readable columns when absent. */
+  /** The columns to answer, besides row_id and updated_at; all of the row's own columns when absent. A Sub-table
+   *  column named here comes with its rows (each child row's own columns), in their order. */
   fields?: string[]
 }
 
@@ -73,7 +77,9 @@ export function scopedTables(declarations: readonly ScopedTableDeclaration[], pl
       if (options.fields !== undefined && (!Array.isArray(options.fields) || options.fields.some((f) => typeof f !== 'string')))
         throw new AppError('ValidationError', 'fields is a list of column names')
       const where = datasetWhere(asDataset(declaration), places, filters)
-      const fields = options.fields ? [...new Set(['row_id', 'updated_at', ...options.fields])] : undefined
+      const meta = await getMeta(table)
+      const subTables = meta.columns.filter((c) => c.column_type === 'Sub-table' && options.fields?.includes(c.column_name))
+      const fields = options.fields ? [...new Set(['row_id', 'updated_at', ...options.fields.filter((f) => !subTables.some((c) => c.column_name === f))])] : undefined
       const rows = new Map<string, Record<string, unknown>>()
       for (const group of where.any) {
         // A place's own filters and the read's, all of which must hold.
@@ -86,9 +92,27 @@ export function scopedTables(declarations: readonly ScopedTableDeclaration[], pl
           if (page.length < PAGE) break
         }
       }
-      return JSON.parse(JSON.stringify([...rows.values()].sort((a, b) => (String(a.row_id) < String(b.row_id) ? -1 : 1)))) as Record<string, unknown>[]
+      const answer = [...rows.values()].sort((a, b) => (String(a.row_id) < String(b.row_id) ? -1 : 1))
+      for (const column of subTables) await attachChildren(meta.name, column.column_name, column.row_table!, answer)
+      return JSON.parse(JSON.stringify(answer)) as Record<string, unknown>[]
     },
   })
+}
+
+/** Each row's rows of one Sub-table, as loadChildren reads them (document.ts): by parent, in their order. */
+async function attachChildren(parentType: string, column: string, childTable: string, rows: Record<string, unknown>[]) {
+  const child = await getMeta(childTable)
+  const own = child.columns.filter((c) => !['Sub-table', 'Section Break', 'Column Break'].includes(c.column_type)).map((c) => c.column_name)
+  const byParent = new Map<string, Record<string, unknown>[]>(rows.map((row) => [String(row.row_id), []]))
+  const ids = [...byParent.keys()]
+  for (let i = 0; i < ids.length; i += 1000) {
+    for (const r of await sql`select parent, ${sql(['row_id', ...own])} from ${sql(await tableRelation(childTable))}
+        where parent in ${sql(ids.slice(i, i + 1000))} and parenttype = ${parentType} and parentfield = ${column} order by parent, position`) {
+      const { parent, ...values } = r as Record<string, unknown>
+      byParent.get(String(parent))!.push(values)
+    }
+  }
+  for (const row of rows) row[column] = byParent.get(String(row.row_id))
 }
 
 /** An outbound read's handler runs after its transaction has closed, so it reads no Table. */

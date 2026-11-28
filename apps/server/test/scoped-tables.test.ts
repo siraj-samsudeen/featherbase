@@ -26,8 +26,10 @@ const manifest = (more: Record<string, unknown> = {}) => ({
   manifestVersion: 1, platformVersion: '2026-10', name: APP, title: 'Scoped Table proof', entryTable: `${APP}.entry`, server: 'server.mjs',
   tables: [
     { name: `${APP}.entry`, label: 'entry', id_pattern: 'prompt', columns: [{ column_name: 'body', column_type: 'Data' }] },
+    { name: `${APP}.answer_reason`, label: 'answer reason', kind: 'sub_table', columns: [{ column_name: 'code', column_type: 'Data' }] },
     { name: ANSWER, label: 'answer', id_pattern: 'prompt', columns: [{ column_name: 'store', column_type: 'Data' }, { column_name: 'section', column_type: 'Data' },
-      { column_name: 'body', column_type: 'Data' }, { column_name: 'notes', column_type: 'Text' }] },
+      { column_name: 'body', column_type: 'Data' }, { column_name: 'notes', column_type: 'Text' },
+      { column_name: 'reasons', column_type: 'Sub-table', row_table: `${APP}.answer_reason` }] },
   ],
   roles: ['Answer Reader'],
   // The reader may open the app; nobody but an administrator may read the answers' Table itself.
@@ -58,7 +60,8 @@ async function installed(admin: TestClient) {
   await admin.post('/api/install_app', { name: 'placeroster' })
   for (const [row_id, store, section, body] of [['a1', 'N1', 'kids', 'north kids'], ['a2', 'N1', 'mens', 'north mens'],
     ['a3', 'S1', 'kids', 'south kids'], ['a4', 'S1', 'mens', 'south mens']])
-    await admin.post('/api/save_row', { table: ANSWER, row: { row_id, store, section, body, notes: 'made up' } })
+    await admin.post('/api/save_row', { table: ANSWER, row: { row_id, store, section, body, notes: 'made up',
+      reasons: row_id === 'a1' ? [{ code: 'stockout' }, { code: 'festival' }] : [] } })
 }
 
 async function roster(): Promise<{ faults: { result?: unknown } }> {
@@ -122,6 +125,16 @@ describe('a scoped Table', () => {
     const reader = await createUser({ roles: ['Answer Reader'] })
     const [row] = (await readAs(reader, 'answers', [{ label: 'North kids', filters: { store: ['N1'], section: ['kids'] } }], { fields: ['body'] })).body.result!
     expect(Object.keys(row).sort()).toEqual(['body', 'row_id', 'updated_at'])
+  })
+
+  test('a Sub-table named among the fields comes with its rows, in their order', async ({ admin, createUser }) => {
+    await installed(admin)
+    const reader = await createUser({ roles: ['Answer Reader'] })
+    const rows = (await readAs(reader, 'answers', [{ label: 'North', filters: { store: ['N1'] } }], { fields: ['body', 'reasons'] })).body.result!
+    expect(rows.map((r) => [r.row_id, (r.reasons as { code: string }[]).map((c) => c.code)])).toEqual([['a1', ['stockout', 'festival']], ['a2', []]])
+    // Unasked, it is not read.
+    const [plain] = (await readAs(reader, 'answers', [{ label: 'North kids', filters: { store: ['N1'], section: ['kids'] } }])).body.result!
+    expect(plain).not.toHaveProperty('reasons')
   })
 
   test('a read that is not person_scope has no places, so no rows', async ({ admin, createUser }) => {
