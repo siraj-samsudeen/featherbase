@@ -81,6 +81,8 @@ describe('#1459 a Table with no row rule is read by System Managers only', () =>
     await admin.post('/api/table_def', { name: 'Rr Bare', columns: [{ column_name: 'title', column_type: 'Data' }] })
     const [bare] = await sql`select row_rule from featherbase.table_def where name = 'Rr Bare'`
     expect(bare.row_rule).toBeNull()
+    // a rule the Table cannot carry is refused with the definition
+    await expectRefused(admin.post('/api/table_def', { name: 'Rr Wrong', row_rule: { kind: 'own', columns: ['title'] }, columns: [{ column_name: 'title', column_type: 'Data' }] }), 417)
     await admin.post('/api/table_def', { name: 'Rr Said', row_rule: { kind: 'own' }, columns: [{ column_name: 'title', column_type: 'Data' }] })
     const [said] = await sql`select row_rule from featherbase.table_def where name = 'Rr Said'`
     expect(said.row_rule).toEqual({ kind: 'own' })

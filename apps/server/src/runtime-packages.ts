@@ -395,12 +395,11 @@ async function assertOnlyScopeProvider(pkg: RuntimePackage) {
  *  loaded now (so the Table is closed). A read-only copy takes its dataset's: its filters are its places, and an
  *  unscoped one is read whole. */
 export function appRowRule(owner: string, table: string): import('shared').RowRule | null {
-  const app = packages.get(owner)
-  if (!app || !table.startsWith(`${owner}.`)) return null
-  const name = table.slice(owner.length + 1)
-  const copy = app.manifest.datasets?.find((d) => d.name === name && d.store !== 'json')
+  // an app whose files are not loaded has no manifest to ask, so neither branch below finds a rule
+  const manifest = packages.get(owner)?.manifest
+  const copy = manifest?.datasets?.find((d) => `${owner}.${d.name}` === table && d.store !== 'json')
   if (copy) return copy.unscoped || !Object.keys(copy.filters).length ? { kind: 'all' } : { kind: 'places', columns: copy.filters }
-  return app.manifest.rowRules?.[table] ?? null
+  return manifest?.rowRules?.[table] ?? null
 }
 
 // #559: the instance's one scope provider: the enabled, active app whose
