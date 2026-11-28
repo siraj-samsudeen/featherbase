@@ -8,11 +8,22 @@ import { formatValue, useSettings } from '../lib/settings'
 import { useIsSystemManager } from '../lib/session'
 import { Button, Notice, cardClasses } from '@featherbase/shop-floor'
 import { CopySchedule } from './CopySchedule'
+import { ReadOnlyCopyBar } from './ReadOnlyCopyBar'
+import { useMeta } from '../lib/meta'
 
 interface CopyInfo { data_source: string; database: string; source_schema: string; source_table: string; key_column: string; last_copied_at: string | null }
 interface CopyResult { inserted: number; updated: number; failed: number; conflicts: number; deleted_at_source: number; back_at_source: number; first_errors: string[] }
 
+/** #1418: an app's system-written Table may be a read-only copy, with its
+ *  own bar; any other Table keeps the editable copy's bar. */
 export function CopyBar({ table }: { table: string }) {
+  const meta = useMeta(table)
+  if (!meta.data) return null
+  if (meta.data.system_written && meta.data.owner_app) return <ReadOnlyCopyBar table={table} />
+  return <EditableCopyBar table={table} />
+}
+
+function EditableCopyBar({ table }: { table: string }) {
   const queryClient = useQueryClient()
   const settings = useSettings()
   // #1301: only a System Manager may read copy information, so no one else asks;

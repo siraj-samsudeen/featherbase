@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Read-only copy bar</title>
+<!-- #1418: the Admin's bar above a read-only copy's list, two options, each in
+     three states. Colours are the Admin's own tokens (packages/shop-floor/src/styles.css).
+     Made-up data. Viewed at 1280px. -->
+<style>
+:root{--canvas:#f4f5f7;--surface:#fff;--fill:#f1f2f4;--border:#e5e7eb;--ink:#151a23;--muted:#4b5563;--subtle:#5b6472;
+--accent:#1d4ed8;--neg:#b91c1c;--neg-t:#fef2f2;--pos:#15803d;--pos-t:#f0fdf4;--cau:#a35200;--cau-t:#fff7ed;--info-t:#eff6ff}
+*{box-sizing:border-box}body{margin:0;background:var(--canvas);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding:24px 32px}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:16px;margin:32px 0 4px}h3{font-size:13px;margin:18px 0 8px;color:var(--subtle);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+p.note{margin:0 0 8px;color:var(--muted);max-width:900px}
+.page{background:var(--surface);border-radius:12px;padding:20px;max-width:1216px}
+.title{font-size:18px;font-weight:600;margin:0 0 14px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px}
+.bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px}
+.meta{font-size:14px;color:var(--muted);margin:0}.meta b{color:var(--ink);font-weight:600}.mono{font-family:ui-monospace,Menlo,monospace;font-size:13px}
+.btns{display:flex;gap:8px}
+.btn{border:0;border-radius:8px;padding:7px 14px;font:inherit;font-weight:600;cursor:pointer;background:var(--fill);color:var(--ink)}
+.btn.primary{background:var(--accent);color:#fff}.btn[disabled]{opacity:.55;cursor:default}
+.notice{border-radius:8px;padding:9px 14px;margin-top:8px;font-size:14px}
+.notice.neg{background:var(--neg-t);color:var(--neg)}.notice.info{background:var(--info-t);color:var(--accent)}.notice.pos{background:var(--pos-t);color:var(--pos)}
+.tag{display:inline-block;background:#eef0f3;color:#374151;border-radius:6px;padding:1px 8px;font-size:12px;font-weight:600;margin-right:6px}
+.rows{margin-top:16px;border-top:1px solid var(--border);color:var(--subtle);font-size:13px;padding-top:10px}
+.menu{position:relative;display:inline-block}.dropdown{position:absolute;right:0;top:38px;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);width:300px;z-index:1}
+.dropdown div{padding:9px 14px}.dropdown div+div{border-top:1px solid var(--border)}.dropdown small{display:block;color:var(--subtle)}
+.pill{display:inline-flex;align-items:center;gap:6px;background:var(--fill);border-radius:999px;padding:3px 10px;font-size:13px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--pos)}.dot.neg{background:var(--neg)}.dot.cau{background:var(--cau)}
+.grid{display:grid;gap:18px}
+</style>
+</head>
+<body>
+<h1>Read-only copy bar (#1418)</h1>
+<p class="note">Above a read-only copy's list in the Admin, for a System Manager or a role the app lets load it. Siraj's ruling (28-Nov-2026): a load runs only when someone asks. Two options; each shown holding a run, with a load waiting, and after a refused load.</p>
+
+<h2>Option A (recommended): the editable copy's bar, with two buttons</h2>
+<p class="note">Same card and place as today's "Copied from … · Copy again" bar. One line says what the copy holds; both actions are always in view. Below it, one notice for a load waiting or the last load's refusal. <b>Pros:</b> nothing new to learn, both actions one click, the reason a load failed is in plain sight. <b>Cons:</b> two buttons side by side; "Load now" could be pressed when "Check" was meant (it only reloads the same run, so no harm).</p>
+<div class="grid">
+  <div>
+    <h3>A1 · holds a run</h3>
+    <div class="page"><p class="title">Forecast Line Day</p>
+      <div class="card bar"><p class="meta"><span class="tag">Read-only copy</span>Loaded by <b>Forecasting</b> from <b>motherduck</b> · run <span class="mono">Dec-2</span> · 2,04,310 rows · loaded 28-Nov-2026 09:12</p>
+        <div class="btns"><button class="btn">Check for a new run</button><button class="btn">Load now</button></div></div>
+      <div class="rows">… the list of rows, as today …</div></div>
+  </div>
+  <div>
+    <h3>A2 · a load waiting or running</h3>
+    <div class="page"><p class="title">Forecast Line Day</p>
+      <div class="card bar"><p class="meta"><span class="tag">Read-only copy</span>Loaded by <b>Forecasting</b> from <b>motherduck</b> · run <span class="mono">Dec-2</span> · 2,04,310 rows · loaded 28-Nov-2026 09:12</p>
+        <div class="btns"><button class="btn" disabled>Check for a new run</button><button class="btn" disabled>Load now</button></div></div>
+      <div class="notice info">A load is running. The list shows the run above until it finishes.</div>
+      <div class="rows">… the list of rows, as today …</div></div>
+  </div>
+  <div>
+    <h3>A3 · the last load was refused</h3>
+    <div class="page"><p class="title">Forecast Line Day</p>
+      <div class="card bar"><p class="meta"><span class="tag">Read-only copy</span>Loaded by <b>Forecasting</b> from <b>motherduck</b> · run <span class="mono">Dec-1</span> · 1,98,004 rows · loaded 27-Nov-2026 08:40</p>
+        <div class="btns"><button class="btn">Check for a new run</button><button class="btn">Load now</button></div></div>
+      <div class="notice neg">The last load (28-Nov-2026 09:05) was refused: the source has no column value (renamed or removed?). The last good load is kept.</div>
+      <div class="rows">… the list of rows, as today …</div></div>
+  </div>
+</div>
+
+<h2>Option B: a status pill and one Load menu</h2>
+<p class="note">A compact line with a coloured state and one "Load" button opening a two-item menu. <b>Pros:</b> one button, quieter. <b>Cons:</b> the reason a load failed is a click away (in the pill's tooltip or menu); a menu for two actions; colour carries the state, so it needs the words too.</p>
+<div class="grid">
+  <div>
+    <h3>B1 · holds a run (menu open)</h3>
+    <div class="page"><p class="title">Forecast Line Day</p>
+      <div class="card bar"><p class="meta"><span class="pill"><span class="dot"></span>Run Dec-2 · 2,04,310 rows · 28-Nov 09:12</span></p>
+        <div class="menu"><button class="btn">Load ▾</button>
+          <div class="dropdown"><div><b>Check for a new run</b><small>Loads only if the warehouse names a new run</small></div><div><b>Load now</b><small>Loads the current run again</small></div></div></div></div>
+      <div class="rows" style="margin-top:96px">… the list of rows, as today …</div></div>
+  </div>
+  <div>
+    <h3>B3 · the last load was refused</h3>
+    <div class="page"><p class="title">Forecast Line Day</p>
+      <div class="card bar"><p class="meta"><span class="pill"><span class="dot neg"></span>Run Dec-1 · last load refused (hover for why)</span></p>
+        <div class="menu"><button class="btn">Load ▾</button></div></div>
+      <div class="rows">… the list of rows, as today …</div></div>
+  </div>
+</div>
+</body>
+</html>

@@ -40,6 +40,11 @@ describe('a report taking one store', () => {
     expect(diveFilters(oneStore, [wholeStore('9901')], { ...period, store: '9902' })).toEqual({ refused: 'not_your_store' })
   })
 
+  // #1423
+  it('refuses a reader who reaches no store at all as having nothing set up, not as another store', () => {
+    expect(diveFilters(oneStore, [], { ...period, store: undefined })).toEqual({ refused: 'no_reach' })
+  })
+
   it('leaves the month out when the report takes none', () => {
     const { month_key: _, ...rest } = oneStore
     expect(diveFilters({ ...rest, month_key: null }, [wholeStore('9901')], period)).toEqual({ state: { plant_code: '9901', whole_store: true } })
@@ -124,8 +129,9 @@ describe('a report whose Dive has its own pickers', () => {
       .toEqual({ state: { reach: { 9901: ['000000001', '000000002'], 9902: null }, month: 'this' } })
   })
 
+  // #1423: a reader who reaches nothing yet is told so, not that the store isn't theirs.
   it('refuses a reader who reaches no store, so the Dive is never asked', () => {
-    expect(diveFilters(pickers, [], { periodEnd: '2026-11-07', appOrigin: null })).toEqual({ refused: 'not_your_store' })
+    expect(diveFilters(pickers, [], { periodEnd: '2026-11-07', appOrigin: null })).toEqual({ refused: 'no_reach' })
   })
 
   it('offers the bar no store', () => {

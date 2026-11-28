@@ -956,7 +956,9 @@ async function assertValuesInView(table: string, relation: string, column: strin
 export async function createTable(
   input: unknown,
   ownerApp?: string,
-  opts: { alongside?: readonly string[] } = {},
+  // #1418: `storage: false` writes the definition only; a read-only copy
+  // (read-only-copy.ts) builds its own storage, a view of its active load.
+  opts: { alongside?: readonly string[]; storage?: boolean } = {},
 ): Promise<TableMeta> {
   // #1021: a view is defined by its base and filters, not by columns.
   if (input && typeof input === 'object' && (input as { kind?: unknown }).kind === 'view') {
@@ -1141,7 +1143,7 @@ export async function createTable(
     const relation = qualified
       ? `${tableRow.physical_schema}.${tableRow.physical_relation}`
       : platformRelation(physical)
-    const ddl = def.data_source ? null : createTableDDL(def, relation)
+    const ddl = def.data_source || opts.storage === false ? null : createTableDDL(def, relation)
     if (ddl) {
       await tx.unsafe(ddl)
       if (def.kind === 'sub_table')

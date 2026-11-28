@@ -2,6 +2,7 @@
   "apps": [
     "client-apps/jeyarama/dash",
     "client-apps/jeyarama/equipment",
+    "client-apps/jeyarama/forecasting",
     "example-apps/tasker",
     "example-apps/tickets"
   ],
