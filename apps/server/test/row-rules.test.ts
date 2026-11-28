@@ -146,7 +146,7 @@ describe('#1459 "own": the rows a person created, or that name them', () => {
   test('while viewing as someone, the reads are theirs', async ({ admin, createUser }) => {
     const { reader, other } = await world(admin, createUser, { kind: 'own' })
     const seen = await runViewingAs({ tester: other.user!, person: reader.user!, name: 'the reader' }, () => getList(PROJECT.name, {}, reader.user!))
-    expect(seen.data.map((row: { row_id: string }) => row.row_id)).toEqual(['p1'])
+    expect((seen.data as { row_id: string }[]).map((row) => row.row_id)).toEqual(['p1'])
   })
 })
 
@@ -234,7 +234,7 @@ describe('#1459 a System Manager sets a Table\'s rule', () => {
     await world(admin, createUser, { kind: 'own' }, null)
     await makeTable(admin, { name: 'Rr Open', columns: ['title'] })
     await grantRole(admin, { role: 'All', table: 'Rr Open', can_read: true })
-    const lines = (await admin.get<{ data: { table: string; rule: unknown; from: string; readers: string[]; everyone_reads_whole: boolean }[] }>('/api/row_rules')).data
+    const lines = (await admin.get<{ data: { table: string; app: string | null; rule: unknown; from: string; readers: string[]; everyone_reads_whole: boolean }[] }>('/api/row_rules')).data
     const line = (table: string) => lines.find((l) => l.table === table)
     expect(line(PROJECT.name)).toMatchObject({ rule: { kind: 'own' }, from: 'instance', readers: [ROLE], everyone_reads_whole: false })
     expect(line(TASK.name)).toMatchObject({ rule: null, from: 'none' })
