@@ -84,13 +84,3 @@ export const STORE_LAYOUT: Level[] = [LEVEL.floor, LEVEL.section]
 export const MERCHANDISE: Level[] = [LEVEL.division, LEVEL.subdivision, LEVEL.category]
 /** The heading of a tree's first column: "Floor › Section › Subcategory". */
 export const headingOf = (levels: Level[], leaf = 'Subcategory') => [...levels.map(l => l.name), leaf].join(' › ')
-
-/** A row's share of its siblings' total (Siraj, 28-Nov: "contribution across similar items"): a whole-number %,
- *  "<1%" for anything above nothing and under 1%, "—" when the siblings add up to nothing. */
-export function shareOf(part: number, whole: number): string {
-  if (!whole) return '—'
-  const p = part / whole * 100
-  if (p > 0 && p < 1) return '<1%'
-  const r = Math.round(p)
-  return `${r < 0 ? '−' : ''}${Math.abs(r)}%`
-}

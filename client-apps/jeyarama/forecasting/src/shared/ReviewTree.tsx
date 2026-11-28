@@ -107,23 +107,21 @@ export function ReviewTree(p: ReviewTreeProps) {
   }
 
   const rows: TableRow[] = []
-  // each row's parent (the node above it, or the total at the top) gives its Share: siblings add up to 100%
-  const under = (rs: TableRow[], parent: Line | Group) => rs.map(r => ({ ...r, parent }))
-  const walk = (nodes: TreeNode[], parent: Group) => {
+  const walk = (nodes: TreeNode[]) => {
     for (const n of nodes) {
       const expanded = openNodes.has(n.id)
       rows.push({
-        key: `node:${n.id}`, dataName: n.label, item: n.item, depth: n.depth, expanded, parent,
+        key: `node:${n.id}`, dataName: n.label, item: n.item, depth: n.depth, expanded,
         onClick: p.onDrill ? () => p.onDrill!(n) : () => p.onToggleNode(n.id),
         label: <b>{n.label}{n.detail && <> <span className="fr-detail">{n.detail}</span></>}</b>,
         sub: (p.nodePills || p.nodeSub || n.subLabel) && <>{p.nodePills?.(n)}{p.nodeSub?.(n) ?? n.subLabel}</>,
       })
       if (!expanded || p.onDrill) continue
-      if (n.children.length) walk(n.children, n.item)
-      else rows.push(...under(leaves(n.lines, n.depth + 1), n.item))
+      if (n.children.length) walk(n.children)
+      else rows.push(...leaves(n.lines, n.depth + 1))
     }
   }
-  if (levels.length) walk(tree, total); else rows.push(...under(leaves(lines, 0), total))
+  if (levels.length) walk(tree); else rows.push(...leaves(lines, 0))
 
   const panel = (row: TableRow, width: number | undefined) => {
     const l = row.item
@@ -135,6 +133,6 @@ export function ReviewTree(p: ReviewTreeProps) {
   }
   return (
     <MeasureTable header={header} view={view} rows={rows} total={total} totalLabel={p.totalLabel} firstHeading={p.firstHeading ?? headingOf(levels)}
-      open={open} onToggle={p.onOpen} panel={panel} flash={p.flash} vsAop sort={sort} onSort={p.onSort} valueOnly={p.valueOnly} rowEnd={p.rowEnd} share />
+      open={open} onToggle={p.onOpen} panel={panel} flash={p.flash} vsAop sort={sort} onSort={p.onSort} valueOnly={p.valueOnly} rowEnd={p.rowEnd} />
   )
 }

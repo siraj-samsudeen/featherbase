@@ -238,7 +238,8 @@ export function needsAttention(lines: Line[], items: ItemHealthRow[], people: Pe
     const idle = its.filter(i => n(i.stock_qty) > 0 && n(i.sales_qty) === 0)
     const dead = idle.filter(i => i.price_band.startsWith('Never sold') || yes(i.is_dead) || n(i.days_since_movement) >= S.deadDays)
     const slow = idle.filter(i => !dead.includes(i))
-    const allStock = its.reduce((t, i) => t + n(i.stock_qty), 0) || 1
+    // stock held, never less than none: an item booked below zero would shrink the total and push a share past 100%
+    const allStock = its.reduce((t, i) => t + Math.max(0, n(i.stock_qty)), 0) || 1
     for (const [group, kind, title, days] of [[dead, 'dead', 'dead stock', `${S.deadDays} days`], [slow, 'slow', 'not selling', '28 days']] as const) {
       if (!group.length) continue
       const held = group.reduce((t, i) => t + n(i.stock_qty), 0)

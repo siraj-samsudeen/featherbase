@@ -40,7 +40,7 @@ export function AttentionPage({ viewer, reviewHref, onReview }: {
     <div className="flex flex-col" data-testid="attention-page">
       <PageHeader title={`${h.store} · ${h.section} · Needs Your Attention`}
         status={`${h.person} · ${h.role} · ${h.month.label} · sales to ${found?.salesTo ? day(found.salesTo) : '—'} · stock as of ${found?.stockAsOf ? day(found.stockAsOf) : h.stockAsOf ? day(h.stockAsOf) : '—'}`} />
-      {found ? <NeedsAttention findings={found.findings} header={h} othersAsOf={found.othersAsOf} tab={tab} onTab={chooseTab} href={href} onOpen={f => onReview(href(f))} />
+      {found ? <NeedsAttention findings={found.findings} header={found.stockAsOf ? { ...h, stockAsOf: found.stockAsOf } : h} othersAsOf={found.othersAsOf} tab={tab} onTab={chooseTab} href={href} onOpen={f => onReview(href(f))} />
         : <Card className="mt-4"><EmptyState title="Nothing to check yet" body={`The item stock for ${h.store} is not loaded with this Run, so nothing can be checked yet.`} /></Card>}
     </div>
   )

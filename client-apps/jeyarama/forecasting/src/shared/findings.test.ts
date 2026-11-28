@@ -95,6 +95,11 @@ describe('Needs Your Attention (#1419, approved 28-Nov-2026)', () => {
     expect(f[0].action).toBe('Move them off the best display; ask Ravi (category head) about a promotion or a return')
   })
 
+  it("never puts dead stock above 100% of the subcategory's stock when an item is booked below zero", () => {
+    const f = find(line([]), [item('1', { stock_qty: 10, days_since_movement: 95 }), item('2', { stock_qty: -3, sales_qty: 2 })])
+    expect(f.find(x => x.kind === 'dead')!.n.shareStock).toBe(100)
+  })
+
   it('folds items with no price band into data to fix, and ranks red, then purple, then grey, each by its own ₹', () => {
     const f = find(line([band('a', { stock: 10 })]), [item('1', { price_band: 'No band', sales_value_before_tax: 900, stock_qty: 2 }), item('2', { stock_qty: 5, days_since_movement: 40 })])
     expect(f.map(x => x.colour)).toEqual(['red', 'purple', 'grey'])
