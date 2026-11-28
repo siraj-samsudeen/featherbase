@@ -30,7 +30,7 @@ export function HelpTab({ header, lines, storeStep, at, from, onBack, intro, man
       <ul>
         <li id="help-recent"><b style={{ color: 'var(--color-part-recent)' }}>From recent selling</b>: what the subcategory sold in the last 28 days, as a rate per day, × {days} {name} days.</li>
         <li id="help-step"><b style={{ color: 'var(--color-part-step)' }}>{name} step on top</b>: {name} usually sells more than late {prevMonth(name)}. Feather Forecast measures each subcategory's own {name} rate against its late-{prevMonth(name)} rate in past years: here it runs from ×{Math.min(...steps).toFixed(2)} to ×{Math.max(...steps).toFixed(2)}, shown on each subcategory. The step adds that extra on part of recent selling.</li>
-        <li id="help-lastyear"><b style={{ color: 'var(--color-part-last-year)' }}>From last year × growth</b>: last {name}'s sales × how much faster or slower the subcategory sells now than last year.</li>
+        <li id="help-lastyear"><b style={{ color: 'var(--color-part-last-year)' }}>From last year</b>: last {name}'s sales, with how much faster or slower the subcategory sells now than last year folded into its weight.</li>
         <li id="help-adjust"><b className="fr-dim">Rebalanced within category</b>: after the blend, Feather Forecast takes a category's slower-selling subcategories (under ₹10,000 a day over the last 28 days) at the store, keeps their total, and shares it out again in line with each one's share of those 28 days' sales. One subcategory gains what another loses; the category total does not change. A fixed list of {name}-only lines (Christmas lines such as plum cake and stars) skips this and follows last {name} instead.</li>
         <li id="help-adjust-price"><b className="fr-dim">Price and rounding</b>: in Kerala's Grocery division, the forecast is re-priced at the last 28 days' selling price where that has changed; every day is rounded to whole rupees; and a subcategory whose month comes out below zero is set to zero. Usually a few rupees.</li>
       </ul>
@@ -43,7 +43,7 @@ export function HelpTab({ header, lines, storeStep, at, from, onBack, intro, man
       <h3 id="help-columns">The columns</h3>
       <table className="fr-helptable"><tbody>
         <tr><td><b>Feather Forecast</b></td><td>Feather Forecast's {name} for the subcategory.</td></tr>
-        <tr><td><b>Last month</b></td><td>What the subcategory sold in the last 28 days before Feather Forecast ran (to {header.cutOff}), as a rate per day × {name}'s {days} days. Hover the column heading to see this.</td></tr>
+        <tr><td><b>Last month ({days}-day rate)</b></td><td>What the subcategory sold in the last 28 days before Feather Forecast ran (to {header.cutOff}), as a rate per day × {name}'s {days} days. Hover the column heading to see this.</td></tr>
         <tr><td><b>Last year</b></td><td>What the subcategory sold in {name} {year - 1}.</td></tr>
         {managers && <tr><td><b>AOP</b></td><td>The annual plan for {header.month.label}, before tax. It is also one more opinion beside XGBoost and LightGBM in an opened subcategory.</td></tr>}
         <tr><td><b>Value vs</b></td><td>Feather Forecast's value against last month{managers ? ', last year and AOP' : ' and against last year'}, in %.{managers ? ' Against AOP it is coloured: on or above the plan, within 10% of it, or more than 10% behind. Click AOP (or Feather Forecast, or Last year) to sort by it.' : ''}</td></tr>
