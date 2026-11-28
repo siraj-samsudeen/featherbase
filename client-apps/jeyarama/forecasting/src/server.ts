@@ -14,6 +14,7 @@
 import { areaText, covers, personNamed } from './areas'
 import { person as madeUpPerson } from './madeUp'
 import { causesProblem, linesOf } from './causes'
+import { orgChart } from './orgChart'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -334,6 +335,17 @@ function copiedFromWarehouse(ctx: Context) {
 const COPIES = ['forecast_run', 'forecast_line_month', 'sales_reference', 'annual_plan_line', 'other_model_line', 'price_band_mix', 'stock_band', 'price_band_top_item', 'item_health', 'merchandise_people', 'item_other_stores', 'forecast_line_day', 'actuals_day']
 
 export const platformVersion = '2026-10'
+/** Today in India, YYYY-MM-DD. */
+const todayIST = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+/** The app's read operations (/api/app_reads/forecasting/<name>). org_chart: one store's org chart today, from the
+ *  instance's own Tables (baseTables.read), so a page knows each subcategory's section without reading them. */
+export const reads = {
+  org_chart: (ctx: { payload: unknown; baseTables: Parameters<typeof orgChart>[0] }) => {
+    const store = String((ctx.payload as { store?: unknown } | null)?.store ?? '')
+    if (!/^[A-Z0-9]{2,8}$/.test(store)) throw new Error('Name a store by its site code, such as ATK')
+    return orgChart(ctx.baseTables, store, todayIST())
+  },
+}
 export const validators = { 'forecasting.number': prepareNumber, 'forecasting.decision': prepareDecision, 'forecasting.explanation': prepareExplanation,
   'forecasting.forecast_change': prepareChange, 'forecasting.forecast_line_review': prepareLineReview, 'forecasting.forecast_question': prepareQuestion, 'forecasting.day_explanation': prepareDayExplanation,
   ...Object.fromEntries(COPIES.map(t => [`forecasting.${t}`, copiedFromWarehouse])) }

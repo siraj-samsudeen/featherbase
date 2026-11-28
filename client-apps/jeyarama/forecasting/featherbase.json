@@ -3755,5 +3755,68 @@
         "forecast_line_month"
       ]
     }
-  ]
+  ],
+  "baseTables": {
+    "read": {
+      "Site": [
+        "operating_region"
+      ],
+      "Section": [
+        "name",
+        "site",
+        "floor",
+        "status"
+      ],
+      "Store Floor": [
+        "name",
+        "site",
+        "floor_order"
+      ],
+      "Section Subcategory": [
+        "store",
+        "subcategory",
+        "section",
+        "starts_on",
+        "ends_on"
+      ],
+      "Subcategory": [
+        "subcategory",
+        "category"
+      ],
+      "Job Assignment": [
+        "employee",
+        "job",
+        "site",
+        "section",
+        "starts_on",
+        "ends_on"
+      ],
+      "Employee": [
+        "name"
+      ],
+      "Merchandise Assignment": [
+        "employee",
+        "responsibility",
+        "category",
+        "subcategory",
+        "operating_region",
+        "starts_on",
+        "ends_on"
+      ]
+    }
+  },
+  "reads": {
+    "version": 1,
+    "tables": [],
+    "operations": {
+      "org_chart": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      }
+    }
+  }
 }
