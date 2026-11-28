@@ -12,11 +12,11 @@ const ctx = (moves: { group: Record<string, string>; before: string; after: stri
     documents: { list: async (_t: string, args?: unknown) => { listed.push(args); return [
       { store_code: '9001', subcategory_name: 'Girls Jean', reviewer: 'Asha', forecast_month: '2026-12-01' },
       { store_code: '9001', subcategory_name: 'Capri', reviewer: 'Asha', forecast_month: '2026-12-01' }] } },
-    // the live org chart: Omar is the Store Manager of Lakeside (LKS) today
+    // the live org chart: Omar (Person P3, by his Employee row) is the Store Manager of Lakeside (LKS) today
     baseTables: { list: async (table: string) => ({
       Site: [{ row_id: 'LKS', name: 'Lakeside', operating_region: 'North' }],
       'Job Assignment': [{ employee: 'E3', job: 'Store Manager', site: 'LKS', section: null, starts_on: '2026-01-01', ends_on: null }],
-      Employee: [{ row_id: 'E3', name: 'Omar' }] } as Record<string, Record<string, unknown>[]>)[table] ?? [] },
+      Employee: [{ row_id: 'E3', name: 'Omar', person: 'P3' }] } as Record<string, Record<string, unknown>[]>)[table] ?? [] },
     people: { list: async () => [{ person: 'P1', full_name: 'Asha' }, { person: 'P3', full_name: 'Omar' }], notify: async (person: string, m: { subject: string; body: string }) => { told.push({ person, ...m }); return true } },
     setResult: (s: string) => { result = s },
   }

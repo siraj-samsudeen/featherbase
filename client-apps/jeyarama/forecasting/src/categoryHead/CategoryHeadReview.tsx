@@ -19,7 +19,7 @@ import { ChangeForm } from '../shared/ChangeForm'
 import { Questions } from '../shared/Questions'
 import { LinePanel } from '../shared/LinePanel'
 import { HelpTab } from '../shared/Help'
-import { chainHeader, personIn, type ChainPageProps } from '../shared/chainPage'
+import { chainHeader, type ChainPageProps } from '../shared/chainPage'
 import { linesOf } from '../shared/chainData'
 import type { SortKey } from '../shared/MeasureTable'
 import { behindCounts, cellLines, commonPath, storesBySize, type Metric, type RankBy } from './heads'
@@ -42,9 +42,10 @@ const PIVOT_OPTIONS: { value: Pivot; label: string }[] = [
 ]
 const LEGEND_HINT = 'Click a row to open it; click a subcategory for how Feather Forecast built it.'
 
-export function CategoryHeadReview({ chain, hrefFor, openLine, onOpenLine }: ChainPageProps) {
-  // the category head (?as= picks one) and their merchandise: the subcategory codes at the stores their assignment names
-  const head = personIn(chain, 'Category Head')
+export function CategoryHeadReview({ chain, hrefFor, openLine, onOpenLine, person }: ChainPageProps) {
+  // the category head (the signed-in one, or the one an administrator views as) and their merchandise: the subcategory
+  // codes at the stores their assignment names
+  const head = person
   const all = useMemo(() => (head ? linesOf(head, chain.lines) : []), [head, chain.lines])
   const REGION = [...new Set(all.map(l => l.region))].filter(Boolean).join(' and ')
   const SUBDIVISIONS = [...new Set(all.map(l => l.subdivision))]
