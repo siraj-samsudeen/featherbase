@@ -62,8 +62,9 @@ export function ReadOnlyCopyBar({ table }: { table: string }) {
   const when = (at: string) => formatValue('Datetime', at, settings)
   return (
     <div className="mb-4 space-y-2" data-testid="read-only-copy-bar">
-      <div className={cardClasses('flex flex-wrap items-center justify-between gap-3 px-4 py-3')}>
-        <p className="text-sm text-ink-muted">
+      {/* The line wraps inside its own space; the buttons stay on the right (checklist point 3). */}
+      <div className={cardClasses('flex items-center justify-between gap-3 px-4 py-3')}>
+        <p className="min-w-0 flex-1 text-sm text-ink-muted">
           <span className={tagClasses('mr-2')}>Read-only copy</span>
           Loaded by <span className="font-semibold text-ink">{s.app_title}</span> from{' '}
           <RecordLink table="Data Source" rowId={s.source} name={s.source} canOpen={s.can_open_source} />
@@ -71,7 +72,7 @@ export function ReadOnlyCopyBar({ table }: { table: string }) {
             ? <>{run && <> · run <span className="font-mono">{run}</span></>} · {fmtCount(s.rows)} rows · loaded {when(s.loaded_at)}</>
             : <> · not loaded yet</>}
         </p>
-        <div className="flex gap-2">
+        <div className="flex shrink-0 gap-2">
           <Button variant="secondary" disabled={Boolean(s.pending)} onClick={() => load(false)} data-testid="copy-check">Check for a new run</Button>
           <Button variant="secondary" disabled={Boolean(s.pending)} onClick={() => load(true)} data-testid="copy-load-now">Load now</Button>
         </div>

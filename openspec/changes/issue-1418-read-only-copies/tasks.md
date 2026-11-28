@@ -18,7 +18,7 @@
 ## 4. Sync
 
 - [x] 4.1 (D5 as ruled 28-Nov-2026) `POST /api/copy_load { table, force }`: a System Manager or a `loadRoles` holder queues one load job; `:copy_load_state` says what the copy holds and why its last load failed. No Scheduled Job for a read-only copy
-- [ ] 4.2 The Admin's bar on a read-only copy: Check for a new run, Load now, its last load and why it failed (UI route: mockup, checklist in the issue, verifier)
+- [x] 4.2 The Admin's bar on a read-only copy: Check for a new run, Load now, its last load and why it failed (UI route: mockup, checklist in the issue, verifier)
 
 ## 5. After a load, and reads
 
