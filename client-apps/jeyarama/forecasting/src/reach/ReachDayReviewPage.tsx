@@ -59,7 +59,7 @@ export function ReachDayReviewPage({ reach, person, role, reviewHref, lineHref, 
       void eachStore(first, s => loadStoreDays(s, days), (s, got, bad) => {
         if (!live) return
         if (got) setStores(m => new Map(m).set(s.store, got)); else if (bad) setFailedStores(f => [...f, s.store])
-      })
+      }, 3)
     }, () => live && setFailed(true))
     return () => { live = false }
   }, [reach.kind === 'store' ? reach.store : reach.region])
@@ -81,6 +81,8 @@ export function ReachDayReviewPage({ reach, person, role, reviewHref, lineHref, 
   const region = reach.kind === 'region'
   const levels = region ? [STORE, SECTION] : [SECTION]
   const rootName = region ? reach.region : `${first.store} ${first.name}`
+  // who the page speaks as: the person named, else the store's Store Manager today (the org chart)
+  const speaker = region || person !== 'Store Manager' ? person : stores.get(first.store)?.org.storeManagers[0] ?? person
   const salesTo = [...stores.values()].reduce<string | null>((a, d) => (d.salesTo && (!a || d.salesTo > a) ? d.salesTo : a), null)
 
   // where a day is explained: a section's day (no subcategory) or a subcategory's, at its store
@@ -99,9 +101,9 @@ export function ReachDayReviewPage({ reach, person, role, reviewHref, lineHref, 
   const canExplain = (a: DayAt) => !region && (a.path.length === levels.length || !!a.sub) && a.members[0]?.section !== NO_SECTION
   const save = async (d: ExplainDraft, replacing: DayExplanation | undefined, a: DayAt) => {
     const s0 = a.members[0], got = stores.get(s0.store ?? '')!
-    const mine = replacing && replacing.by === person ? { row_id: replacing.id, updated_at: replacing.updatedAt } : {}
+    const mine = replacing && replacing.by === speaker ? { row_id: replacing.id, updated_at: replacing.updatedAt } : {}
     await saveRow('forecasting.day_explanation', { ...mine, run_id: got.store.run.run_id, store_code: got.store.storeCode, section_name: s0.section, subcategory_name: d.subcategory,
-      explained_date: `${monthKey}-${String(d.day).padStart(2, '0')}`, direction: d.direction, causes: d.causes.join('\n'), tags: d.tags.join('\n'), note: d.note, explained_by: person })
+      explained_date: `${monthKey}-${String(d.day).padStart(2, '0')}`, direction: d.direction, causes: d.causes.join('\n'), tags: d.tags.join('\n'), note: d.note, explained_by: speaker })
     const fresh = await loadExplanations(got.store)
     setStores(m => new Map(m).set(got.store.store, { ...got, explanations: fresh }))
   }
@@ -137,7 +139,7 @@ export function ReachDayReviewPage({ reach, person, role, reviewHref, lineHref, 
       <div className="flex flex-col" data-testid="reach-day-review-page">
         <PageHeader title={<>{region ? reach.region : <RecordLink table="Site" rowId={first.store} name={first.store} href={`?${new URLSearchParams({ view: 'sections', store: first.store })}`} onNavigate={go} />} · {m.label}, day by day</>}
           count={region ? `${of} stores` : undefined}
-          status={`${person} · ${role} · sales to ${salesTo ? dayText(salesTo) : '—'} · before tax`} />
+          status={`${speaker} · ${role} · sales to ${salesTo ? dayText(salesTo) : '—'} · before tax`} />
         {/* the underlined tab row the Team Leader's Day Review uses: one look on every forecasting page */}
         <div className="fr-tabs mt-4" role="tablist" aria-label="Day review">
           {([['month', 'Review the month'], ['days', 'Days'], ['how', 'How it was built']] as const).map(([id, label]) => (

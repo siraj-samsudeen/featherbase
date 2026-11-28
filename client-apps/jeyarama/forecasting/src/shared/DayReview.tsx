@@ -142,7 +142,8 @@ export function DayReview({ section, rootKind = 'section', subs, month, explanat
   const setPath = (p: string[]) => { setPathState(p); onPath?.(p); setScope('') }
   const [mode, setMode] = useState<'all' | 'one'>('all')
   const [day, setDay] = useState(Math.max(1, lastLoaded))
-  const [only, setOnly] = useState(true)
+  // a section's subcategories open on only those off; a store's sections or a region's stores open on them all
+  const [onlyPicked, setOnly] = useState<boolean | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const inPath = within(path)
   const scopeSubDays = scope ? inPath.find(s => idOf(s) === scope) ?? null : null
@@ -197,6 +198,7 @@ export function DayReview({ section, rootKind = 'section', subs, month, explanat
   const f = days[day - 1], monthFc = inScope.reduce((t, s) => t + s.fc.reduce((a, b) => a + b, 0), 0)
   // the rows of one day: the next level down (sections, stores), else the subcategories
   const depth = path.length, next = !scopeSubDays && depth < levels.length ? levels[depth] : null
+  const only = onlyPicked ?? !next
   interface DayRow { id: string; label: string; sub: string; order: number; at: DayAt; f: DayFigures; leaf: SubDays | null }
   const rowsOfDay: DayRow[] = next
     ? [...new Map(inPath.map(s => [next.key(s), s])).values()].map(s => {

@@ -55,7 +55,9 @@ export function ReachAttentionPage({ reach, person, role, lineHref }: {
   if (!stores.size && !failedStores.length) return <Skeleton label={region ? `Reading ${s0.store} ${s0.name} first; the region's other stores follow` : `Reading every item at ${s0.store} ${s0.name}`} lines={8} />
   const scopeName = region ? reach.region : `${s0.store} ${s0.name}`
   const stockAsOf = newest(got.map(g => g.stockAsOf)), salesTo = newest(got.map(g => g.salesTo))
-  const header: Header = { store: region ? '' : s0.store, section: scopeName, person, role, cutOff: '', month: m, stockAsOf }
+  // who the page speaks as: the person named, else the store's Store Manager today (the org chart)
+  const speaker = region || person !== 'Store Manager' ? person : got[0]?.org.storeManagers[0] ?? person
+  const header: Header = { store: region ? '' : s0.store, section: scopeName, person: speaker, role, cutOff: '', month: m, stockAsOf }
   const arrived = stores.size + failedStores.length, of = plan.stores.length
   const progress = region && arrived < of ? `${stores.size} of ${of} stores so far` : failedStores.length ? `${failedStores.join(', ')} couldn't be read` : undefined
   const title = region ? <>{reach.region} · Needs Your Attention</>
@@ -63,7 +65,7 @@ export function ReachAttentionPage({ reach, person, role, lineHref }: {
   return (
     <div className="flex flex-col" data-testid="reach-attention-page">
       <PageHeader title={title} count={region ? `${of} stores` : undefined}
-        status={`${person} · ${role} · ${m.label} · sales to ${salesTo ? day(salesTo) : '—'} · stock as of ${stockAsOf ? day(stockAsOf) : '—'}`} />
+        status={`${speaker} · ${role} · ${m.label} · sales to ${salesTo ? day(salesTo) : '—'} · stock as of ${stockAsOf ? day(stockAsOf) : '—'}`} />
       {got.length || arrived < of ? <NeedsAttention findings={findings} header={header} othersAsOf={newest(got.map(g => g.othersAsOf))} tab={tab} onTab={chooseTab}
         href={lineHref} onOpen={f => go(lineHref(f))} openLabel={region ? 'Open in RB Review' : 'Open in Store Manager Review'} over={region ? 'store' : 'section'}
         scopeName={scopeName} progress={progress} />

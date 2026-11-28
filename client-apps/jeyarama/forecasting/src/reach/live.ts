@@ -152,7 +152,8 @@ export async function loadStoreFindings(s: ReachStore, regionStores: string[]): 
   // first pass: which items a transfer would be looked for
   const wanted = new Set<string>()
   for (const l of lines) needsAttention([l], bySub.get(l.code ?? '') ?? [], org, m, s.storeCode, wanted)
-  const others = regionStores.filter(x => x !== s.store)
+  // the region's other stores: those the page covers, and every store the org chart names in the region (as the Team Leader's)
+  const others = [...new Set([...regionStores, ...Object.keys(org.stores)])].filter(x => x !== s.store)
   const codes = [...wanted], theirs: (ItemHealthRow & { stock_as_of: string | null })[] = []
   for (let i = 0; i < codes.length && others.length; i += 150)
     theirs.push(...await listWhereAll<ItemHealthRow & { stock_as_of: string | null }>('forecasting.item_health', [...ITEM_HEALTH_FIELDS, 'stock_as_of'],
