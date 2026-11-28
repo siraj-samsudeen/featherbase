@@ -170,6 +170,8 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 .fr-att-none { font-size: 13.5px; color: var(--color-ink-muted); padding: 12px 0; }
 .fr-att-wrap { overflow-x: auto; }
 .fr-att-table thead th { position: sticky; top: 0; z-index: 1; }
+.fr-att-table thead th { white-space: normal; line-height: 1.25; }
+.fr-att-table .fr-att-name { max-width: 15rem; }
 .fr-att-sort { all: unset; cursor: pointer; } .fr-att-sort:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; border-radius: 4px; }
 .fr-att-row { cursor: pointer; } .fr-att-row:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 .fr-att-row > td:first-child { box-shadow: inset 3px 0 0 var(--color-border); }
