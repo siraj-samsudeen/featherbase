@@ -1,4 +1,4 @@
-// The review table (TL-13..TL-19, TL-25): column blocks (Feather Forecast · Last month · Last year · AOP), each
+// The review table (TL-13..TL-19, TL-25): column blocks (Feather Forecast · Last year · Last month · AOP; Siraj's order, 28-Nov), each
 // with the measures Show picked, then Value vs and Built from. Rows come in already in order, one per visible
 // row (a subcategory, a group, a level of a tree; levels.ts turns a hierarchy into them); clicking a row opens
 // the page's own panel under it, as wide as the visible table. The look is Shop Floor's TableLook, written out
@@ -55,19 +55,20 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
 
   const blocks: Block[] = [
     ['fc', 'fq', 'Feather Forecast', `Feather Forecast for ${month.name}`],
-    ['r31', 'r31q', 'Last month', `Last 28 days to ${header.cutOff}, as a rate per day × ${month.name}'s ${month.days} days`],
     ['ly', 'lyq', 'Last year', `${month.name} ${month.year - 1}`],
+    ['r31', 'r31q', 'Last month', `Last 28 days to ${header.cutOff}, as a rate per day × ${month.name}'s ${month.days} days`],
     ...(view.aop ? [['aop', 'aq', 'AOP', `The annual plan for ${month.label}`] as Block] : []),
   ]
   const measures = ({ all: ['v', 'q', 'a'], vq: ['v', 'q'], v: ['v'], q: ['q'] } as const)[view.measure]
-  const columns = 1 + blocks.length * measures.length + 3
+  const vs = view.aop ? 3 : 2
+  const columns = 1 + blocks.length * measures.length + vs + 1
   const cell = (l: Item, [k, q]: Block, m: 'v' | 'q' | 'a', first: boolean, cls: string) => {
     const v = (l as unknown as Record<string, number>)[k], qty = (l as unknown as Record<string, number>)[q]
     return <td key={`${k}${m}`} className={`${first ? 'fr-b0 ' : ''}${cls}`}>{m === 'v' ? inr(v) : m === 'q' ? count(qty) : asp(v, qty)}</td>
   }
   const figures = (l: Item, strong: boolean) => <>
     {blocks.map((b, bi) => measures.map((m, mi) => cell(l, b, m, mi === 0, strong && bi === 0 ? 'fr-fc' : strong ? 'fr-dim' : '')))}
-    <td className="fr-b0">{pc(l.fc, l.r31)}</td><td>{pc(l.fc, l.ly)}</td>
+    <td className="fr-b0">{pc(l.fc, l.ly)}</td><td>{pc(l.fc, l.r31)}</td>{view.aop && <td>{pc(l.fc, l.aop)}</td>}
     <td className="fr-b0"><PartsBar parts={shares(l)} shape={view.shape} /></td>
   </>
 
@@ -77,12 +78,13 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
         <thead>
           <tr className="fr-blocks"><th />
             {blocks.map(b => <th key={b[2]} colSpan={measures.length} className="fr-b0"><Hover text={b[3]}>{b[2]}</Hover></th>)}
-            <th colSpan={2} className="fr-b0"><Hover text="Feather Forecast's value against last month and last year">Value vs</Hover></th>
+            <th colSpan={vs} className="fr-b0"><Hover text={`Feather Forecast's value against last year, last month${view.aop ? ' and the AOP' : ''}`}>Value vs</Hover></th>
             <th className="fr-b0">Built from</th></tr>
           <tr><th>{firstHeading}</th>
             {blocks.map(b => measures.map((m, i) => <th key={b[2] + m} className={i === 0 ? 'fr-b0' : ''}>{{ v: 'Value', q: 'Qty', a: 'ASP' }[m]}</th>))}
-            <th className="fr-b0"><Hover text={`Last 28 days at ${month.name}'s ${month.days} days`}>Last month</Hover></th>
-            <th><Hover text={`${month.name} ${month.year - 1}`}>Last year</Hover></th><th className="fr-b0" /></tr>
+            <th className="fr-b0"><Hover text={`${month.name} ${month.year - 1}`}>Last year</Hover></th>
+            <th><Hover text={`Last 28 days at ${month.name}'s ${month.days} days`}>Last month</Hover></th>
+            {view.aop && <th><Hover text={`The annual plan for ${month.label}`}>AOP</Hover></th>}<th className="fr-b0" /></tr>
         </thead>
         <tbody>{rows.map(r => {
           const isOpen = open === r.key, look = r.look ?? []

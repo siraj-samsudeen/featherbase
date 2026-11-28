@@ -239,3 +239,8 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 .fr-explain-note { display: block; width: 100%; margin-top: 10px; min-height: 64px; padding: 8px 10px; border: 0; border-radius: 8px; background: var(--color-fill); font: inherit; font-size: 13.5px; }
 .fr-explain-actions { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
 .fr-explain-hint { font-size: 12px; }
+/* the one explanation table (Siraj, 28-Nov): group rows, their bases indented beneath */
+.fr-one .fr-brow > td:first-child { padding-left: 28px; }
+.fr-one .fr-grow > td { font-weight: 500; }
+.fr-wtip { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
+.fr-build-note { font-size: 12px; margin: 8px 0 0; }
