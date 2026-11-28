@@ -46,6 +46,18 @@ export async function listWhere<T>(table: string, fields: string[], filters: Fil
     if (page.data.length < 500) return rows
   }
 }
+/** The rows of a Table that match the filters, eight pages at a time (the managers' pages read many stores' lines:
+ *  a region is some 18,000 subcategories and five sales windows each). The first page says how many there are. */
+export async function listWhereAll<T>(table: string, fields: string[], filters: Filter[]): Promise<T[]> {
+  const page = (start: number) => request<{ data: T[]; total: number }>(`/api/table/${encodeURIComponent(table)}?${new URLSearchParams({
+    fields: JSON.stringify(['row_id', ...fields]), filters: JSON.stringify(filters), limit_page_length: '500', limit_start: String(start), order_by: 'row_id asc' })}`)
+  const first = await page(0)
+  const rows: T[] = [...first.data]
+  const starts: number[] = []
+  for (let s = rows.length; first.data.length && s < first.total; s += 500) starts.push(s)
+  for (let i = 0; i < starts.length; i += 8) for (const p of await Promise.all(starts.slice(i, i + 8).map(page))) rows.push(...p.data)
+  return rows
+}
 /** One row, with its sub-table rows. */
 export async function getRow<T>(table: string, rowId: string): Promise<T> {
   const r = await request<{ data?: T } & T>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(rowId)}`)
