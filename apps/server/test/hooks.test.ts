@@ -11,14 +11,14 @@ const DT = 'Hook Chain Probe'
 const FILE_DT = 'Hook File Demo'
 
 async function makeTables(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },
       { column_name: 'computed', column_type: 'Data' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: FILE_DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },
@@ -164,7 +164,7 @@ describe('controllers: registry edges', () => {
 
   test('clearControllers removes every controller for a table', async ({ admin }) => {
     const DT = 'Cov Clear Note'
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: DT,
       columns: [{ column_name: 'title', column_type: 'Data' }],
     })
@@ -193,7 +193,7 @@ describe('controllers: registry edges', () => {
 describe('A refused check saves nothing', () => {
   test('an automation refusing after the row was written still leaves nothing saved, nested rows included', async ({ admin }) => {
     await admin.post('/api/table_def', { name: 'Hook Late Line', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data' }] })
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Hook Late Refusal',
       columns: [
         { column_name: 'title', column_type: 'Data' },

@@ -43,7 +43,7 @@ describe('META-002: Table save validates column_types', () => {
   test('rejects an invalid column_type with a field-wise error', async ({ admin }) => {
     const res = await admin.fetch('/api/table_def', {
       method: 'POST',
-      body: JSON.stringify({
+      body: JSON.stringify({ row_rule: { kind: 'all' },
         name: 'Bad Type DT',
         columns: [{ column_name: 'x', column_type: 'Wibble' }],
       }),
@@ -56,7 +56,7 @@ describe('META-002: Table save validates column_types', () => {
 
   test('rejects Choice/Reference/Sub-table columns without their target', async ({ admin }) => {
     await expect(
-      admin.post('/api/table_def', {
+      admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: 'Bad Options DT',
         columns: [{ column_name: 'stage', column_type: 'Reference' }],
       }),
@@ -68,7 +68,7 @@ describe('META-002: Table save validates column_types', () => {
 
   test('rejects reserved column names', async ({ admin }) => {
     await expect(
-      admin.post('/api/table_def', {
+      admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: 'Bad Reserved DT',
         columns: [{ column_name: 'created_by', column_type: 'Data' }],
       }),
@@ -115,7 +115,7 @@ describe('Table definition defenses leave no partial metadata or storage', () =>
     },
   ]) {
     test(`rejects invalid column metadata: ${Object.values(fields)[0]}`, async ({ admin }) => {
-      await expect(admin.post('/api/table_def', { name: 'Engine Invalid Columns', columns }))
+      await expect(admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Engine Invalid Columns', columns }))
         .rejects.toMatchObject({ status: 417, type: 'ValidationError', fields })
       expect(await sql`select name from table_def where name = 'Engine Invalid Columns'`).toEqual([])
       expect(await sql`select to_regclass('featherbase.engine_invalid_columns') as relation`).toEqual([{ relation: null }])
@@ -126,7 +126,7 @@ describe('Table definition defenses leave no partial metadata or storage', () =>
     test(`rejects incoherent ${kind} source bindings before contacting a source`, async ({ admin }) => {
       // All of these defects are local metadata errors: no live source is needed
       // to reject them, and the missing source must not mask the field errors.
-      await expect(admin.post('/api/table_def', {
+      await expect(admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: 'Engine Invalid Binding', kind, data_source: 'Engine Missing Source', is_submittable: true,
         columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Engine Missing Child' }],
       })).rejects.toMatchObject({
@@ -145,7 +145,7 @@ describe('Table definition defenses leave no partial metadata or storage', () =>
   }
 
   test('rejects malformed opaque naming on creation and update without changing the naming rule', async ({ admin }) => {
-    await expect(admin.post('/api/table_def', {
+    await expect(admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Engine Bad Opaque', id_pattern: 'opaque:UPPER_', columns: [{ column_name: 'title', column_type: 'Data' }],
     })).rejects.toMatchObject({ status: 417, fields: { id_pattern: expect.stringContaining('short lowercase prefix') } })
     expect(await sql`select name from table_def where name = 'Engine Bad Opaque'`).toEqual([])
@@ -157,7 +157,7 @@ describe('Table definition defenses leave no partial metadata or storage', () =>
 
   test('accepts null optional flags on a read-modify-write and persists their defaults', async ({ admin }) => {
     const flags = { reqd: null, unique: null, read_only: null, hidden: null, in_list_view: null, tier: null }
-    const meta = await admin.post<{ columns: Record<string, unknown>[] }>('/api/table_def', {
+    const meta = await admin.post<{ columns: Record<string, unknown>[] }>('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Engine Null Flags', kind: null, is_submittable: null, system: null, decides_scope: null,
       columns: [{ column_name: 'title', column_type: 'Data', ...flags }],
     })

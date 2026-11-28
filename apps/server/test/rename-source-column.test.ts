@@ -12,7 +12,7 @@ const save = (admin: TestClient, table: string, row: Record<string, unknown>) =>
   admin.post<Record<string, unknown>>('/api/save_row', { table, row })
 
 async function cluster(admin: TestClient, extra: { column?: Record<string, unknown>; id_pattern?: string } = {}) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Rs Cluster',
     id_pattern: extra.id_pattern ?? 'field:code',
     title_column: 'code',
@@ -27,7 +27,7 @@ describe('renaming a row named after its own column', () => {
   test('moves the column too, and links follow', async ({ admin }) => {
     await cluster(admin)
     await save(admin, 'Rs Cluster', { code: 'VLM', note: 'kept' })
-    await admin.post('/api/table_def', { name: 'Rs Store', columns: [{ column_name: 'cluster', column_type: 'Reference', reference_table: 'Rs Cluster' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Rs Store', columns: [{ column_name: 'cluster', column_type: 'Reference', reference_table: 'Rs Cluster' }] })
     const store = await save(admin, 'Rs Store', { cluster: 'VLM' })
 
     const renamed = await rename(admin, 'Rs Cluster', 'VLM', 'TVM')
@@ -69,7 +69,7 @@ describe('renaming a row named after its own column', () => {
   })
 
   test('a link column that names the row must point at a row', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Rs Plant', id_pattern: 'prompt', columns: [{ column_name: 'label', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Rs Plant', id_pattern: 'prompt', columns: [{ column_name: 'label', column_type: 'Data' }] })
     await save(admin, 'Rs Plant', { row_id: 'P1', label: 'One' })
     await cluster(admin, { column: { column_type: 'Reference', reference_table: 'Rs Plant' } })
     await save(admin, 'Rs Cluster', { code: 'P1' })
@@ -77,13 +77,13 @@ describe('renaming a row named after its own column', () => {
   })
 
   test('a read-only column is not moved by a rename', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Rs Fixed', id_pattern: 'field:code', columns: [{ column_name: 'code', column_type: 'Data', read_only: true, default_value: 'VLM' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Rs Fixed', id_pattern: 'field:code', columns: [{ column_name: 'code', column_type: 'Data', read_only: true, default_value: 'VLM' }] })
     const row = await save(admin, 'Rs Fixed', { code: 'VLM' })
     await expectRefused(rename(admin, 'Rs Fixed', String(row.row_id), 'TVM'), 417)
   })
 
   test('a Table with another naming rule is unchanged', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Rs Prompt', id_pattern: 'prompt', columns: [{ column_name: 'code', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Rs Prompt', id_pattern: 'prompt', columns: [{ column_name: 'code', column_type: 'Data' }] })
     await save(admin, 'Rs Prompt', { row_id: 'A', code: 'kept' })
     expect(await rename(admin, 'Rs Prompt', 'A', 'B')).toMatchObject({ row_id: 'B', code: 'kept' })
   })

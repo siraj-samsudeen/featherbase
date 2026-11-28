@@ -19,7 +19,7 @@ const DT = 'Atp Note'
 afterEach(() => vi.unstubAllGlobals())
 
 test('FILE-002: two attached files are listed and served, and removing one deletes its stored file', async ({ admin, api }) => {
-  await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   await admin.post('/api/save_row', { table: 'Metadata Override', row: { table_name: DT, property: 'enable_files', value: 'true' } })
   const { row_id } = await admin.post<{ row_id: string }>('/api/save_row', { table: DT, row: { title: 'with files' } })
 
@@ -57,7 +57,7 @@ test('FILE-002: two attached files are listed and served, and removing one delet
 })
 
 async function openNote(admin: Parameters<typeof renderApp>[1]) {
-  await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   await admin.post('/api/save_row', { table: 'Metadata Override', row: { table_name: DT, property: 'enable_files', value: 'true' } })
   const { row_id } = await admin.post<{ row_id: string }>('/api/save_row', { table: DT, row: { title: 'with files' } })
   return {

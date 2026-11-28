@@ -15,7 +15,7 @@ const names = (list: { table: string }[]) => list.map((t) => t.table)
 const reachOf = (owner: string) => `/api/access_tokens/reach?owner=${encodeURIComponent(owner)}`
 
 test('a new service account has no role of its own and reaches only what All grants', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Reach Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Reach Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
   const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'reach-new' })
   const reach = await admin.get<Reach>(reachOf(account.row_id))
   expect(reach).toMatchObject({ every_table: false, own_roles: false, own_reach: false, change: [] })
@@ -26,7 +26,7 @@ test('a role adds the Tables it grants, to read and to change', async ({ admin }
   const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'reach-importer' })
   const before = await admin.get<Reach>(reachOf(account.row_id))
 
-  await admin.post('/api/table_def', { name: 'Reach Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Reach Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Reach Reader' } })
   await grantRole(admin, { table: 'Reach Zone', role: 'Reach Reader', can_read: true })
   await admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['Reach Reader'] })
@@ -42,7 +42,7 @@ test('a role adds the Tables it grants, to read and to change', async ({ admin }
 })
 
 test('the reach matches what the token can really do', async ({ admin, api }) => {
-  await admin.post('/api/table_def', { name: 'Reach Bin', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Reach Bin', columns: [{ column_name: 'code', column_type: 'Data' }] })
   const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'reach-checker' })
   const { token } = await admin.post<{ token: string }>('/api/access_tokens', { label: 'check', owner: account.row_id })
   const asToken = { headers: { authorization: `Bearer ${token}` } }
@@ -71,7 +71,7 @@ test('only a System Manager may ask about another owner; anyone may ask about th
 })
 
 test('a grant for its own rows only is marked as such; a full grant on the same Table outranks it', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Reach Order', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Reach Order', columns: [{ column_name: 'code', column_type: 'Data' }] })
   const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'reach-own-rows' })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Order Own Writer' } })
   await grantRole(admin, { table: 'Reach Order', role: 'Order Own Writer', can_read: true, can_write: true, own_rows_only: true })
@@ -94,7 +94,7 @@ test('a role that grants nothing reaches nothing beyond what every account can',
 })
 
 test('a Table whose mandatory access admits none of the owner\'s roles is not reached', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Reach Vault', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Reach Vault', columns: [{ column_name: 'code', column_type: 'Data' }] })
   await sql`update table_def set access_policy='{"version":1,"roles":["Vault Member"]}'::jsonb where name='Reach Vault'`
   invalidateMeta('Reach Vault')
   const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'reach-vault' })

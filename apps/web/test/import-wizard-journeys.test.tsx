@@ -53,7 +53,7 @@ const BOOK = {
 }
 
 async function makeStock(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: EXISTING_DT,
     columns: [
       { column_name: 'wizard_sku', label: 'Wizard SKU', column_type: 'Data', in_list_view: true },

@@ -16,7 +16,7 @@ const ROLE = 'Pm Depot Clerk'
 type Perms = { roles: string[]; perms: { role: string; can_read: boolean; can_write: boolean }[] }
 
 async function seed(admin: { post: (p: string, b: unknown) => Promise<unknown> }) {
-  await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'depot', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'depot', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
 }
 

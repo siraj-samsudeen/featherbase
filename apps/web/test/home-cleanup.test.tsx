@@ -16,7 +16,7 @@ const SIDEBAR_WAIT = { timeout: 15_000 }
 
 /** A Table with NO title column, whose row id is a composite code. */
 async function seedMerch(admin: Client) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: MERCH,
     id_pattern: 'prompt',
     columns: ['store_code', 'material_group', 'mch_subcategory', 'section_name'].map((column_name) => ({ column_name, column_type: 'Data' })),
@@ -64,7 +64,7 @@ test('Last row reads as the row, with its Table beneath — not its internal id'
 })
 
 test("a home page's links curated before any card break sit under a heading", async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Home Suppliers', columns: [{ column_name: 'supplier_name', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Home Suppliers', columns: [{ column_name: 'supplier_name', column_type: 'Data' }] })
   await renderApp('/featherbase/admin/home/home', admin)
   const card = (await screen.findByTestId('home-link-Home Suppliers')).closest('[data-testid^="home-card-"]') as HTMLElement
   expect(within(card).getByTestId('home-card-heading')).toHaveTextContent('Tables')
@@ -105,7 +105,7 @@ test('My activity titles an opened row from its values', async ({ admin }) => {
 })
 
 test('Team tab: the same row — kind icon, "<person> changed …", role kept quietly, clock time', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Home Team DT', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Home Team DT', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
   const c = await admin.post<{ updated_at: string }>('/api/save_row', { table: 'Home Team DT', row: { row_id: 'team-1', title: 'v1' } })
   await admin.post('/api/save_row', { table: 'Home Team DT', row: { row_id: 'team-1', title: 'Spring stock', updated_at: c.updated_at } })
   await renderApp('/featherbase/admin', admin)
@@ -164,7 +164,7 @@ test('a System Manager sees Data and People & Access in Title Case, each link wi
 
 test('a person with only a Table grant keeps today’s links, and no management ones', async ({ admin, createUser }) => {
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Home Shelf Clerk' } })
-  await admin.post('/api/table_def', { name: 'Home Shelf Note', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Home Shelf Note', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await grantRole(admin, { table: 'Home Shelf Note', role: 'Home Shelf Clerk', can_read: true })
   const clerk = await createUser({ email: 'home.clerk@example.com', roles: ['Home Shelf Clerk'] })
   await renderApp('/featherbase/admin', clerk)
@@ -224,7 +224,7 @@ test('the app selector reads Featherbase, on a phone as on a wide screen', async
 // although the Table names a title column. It uses the same row title as
 // Home and the feed, and updates after a save.
 test('the row page heading reads the row title, not its id', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Store Section', id_pattern: 'prompt', title_column: 'section_name',
     columns: [{ column_name: 'store_code', column_type: 'Data' }, { column_name: 'section_name', column_type: 'Data' }],
   })
@@ -250,7 +250,7 @@ test.for(['Person', 'Service Account'] as const)('a %s-valued row title names re
     ? await makePerson({ full_name: label })
     : (await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'warehouse-title-importer' })).row_id
   const table = `Home Title ${principalTable}`
-  await admin.post('/api/table_def', { name: table, id_pattern: 'prompt', title_column: 'owner', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: table, id_pattern: 'prompt', title_column: 'owner', columns: [
     { column_name: 'owner', column_type: 'Reference', reference_table: principalTable },
   ] })
   await admin.post('/api/save_row', { table, row: { row_id: 'owned-1', owner: principal } })
@@ -269,7 +269,7 @@ test.for(['Person', 'Service Account'] as const)('a %s-valued row title names re
 test('a readable row does not name a Person the reader cannot read', async ({ admin, createUser }) => {
   const owner = await makePerson({ full_name: 'Undisclosed Title Owner' })
   const table = 'Home Private Owner'
-  await admin.post('/api/table_def', { name: table, id_pattern: 'prompt', title_column: 'owner', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: table, id_pattern: 'prompt', title_column: 'owner', columns: [
     { column_name: 'owner', column_type: 'Reference', reference_table: 'Person' },
   ] })
   await admin.post('/api/save_row', { table, row: { row_id: 'owned-1', owner } })

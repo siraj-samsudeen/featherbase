@@ -36,7 +36,7 @@ test('RVT-J1: the bad run is reverted from the history strip: rehearsed, the edi
   }
 
   // Prior state: a Table with rows outside any run.
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'zone', label: 'Zone', column_type: 'Data', in_list_view: true },

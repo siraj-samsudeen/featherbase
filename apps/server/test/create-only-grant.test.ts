@@ -12,7 +12,7 @@ const orders = tableRef(DT)
 describe('#608: a create-only grant saves what was typed', () => {
   test('the new row keeps its sub-table lines, and a restricted column is refused', async ({ admin, createUser }) => {
     await admin.post('/api/table_def', { name: LINE, kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data' }] })
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: DT,
       columns: [
         { column_name: 'title', column_type: 'Data' },

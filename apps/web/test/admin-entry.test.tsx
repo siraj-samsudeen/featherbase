@@ -46,7 +46,7 @@ test('a refused Google sign-in keeps the saved destination in the address once, 
 })
 
 test('a row that does not exist says so at once, without asking the server again', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Ae Note', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ae Note', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await openAdmin(admin, '/featherbase/admin/table/ae-note/row/no-such-note')
   // A refusal (4xx) is final: retried, it would only hold the page on Loading.
   // #1327: said on the shared Not found page.

@@ -109,7 +109,7 @@ async function formFixture(admin: Admin) {
       { column_name: 'qty', column_type: 'Int', label: 'Qty' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Uif Form',
     columns: [
       { column_name: 'title', column_type: 'Data', label: 'Title', reqd: true },
@@ -156,7 +156,7 @@ test('generated controls are reachable by labels, including child rows and error
 
 test('visible attachment actions identify their fields and keyboard activation opens the correct chooser', async ({ admin }) => {
   const user = userEvent.setup()
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Accessible Attachments',
     columns: [
       { column_name: 'invoice', column_type: 'Attach', label: 'Invoice' },
@@ -194,7 +194,7 @@ test('persisted child controls retain actual nodes and IDs across edit, reorder 
     name: 'Identity Line', kind: 'sub_table',
     columns: [{ column_name: 'item', column_type: 'Data', label: 'Item' }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Identity Form',
     columns: ['items', 'extras'].map((name) => ({ column_name: name, column_type: 'Sub-table', label: name, row_table: 'Identity Line' })),
   })
@@ -255,7 +255,7 @@ afterAll(async () => {
 test('source preview distinguishes bound, selected, wrong-schema and wrong-key FK proposals', async ({ admin }) => {
   invalidateSources()
   await admin.post('/api/table/Data%20Source', { row_id: 'uif-preview', engine: 'postgres', url_env: ENV, access: 'read_only' })
-  const bind = (name: string, table: string, pk: string) => admin.post('/api/table_def', {
+  const bind = (name: string, table: string, pk: string) => admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name, data_source: 'uif-preview', external_schema: 'uif', external_table: table, external_pk: pk,
     columns: [{ column_name: 'count', column_type: 'Int', source_column: 'count' }],
   })

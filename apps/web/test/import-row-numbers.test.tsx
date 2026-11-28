@@ -31,7 +31,7 @@ function workbook() {
 
 test('#115: a blank row does not shift the blame — the check names the true Excel row', async ({ admin }) => {
   clearSession()
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'truth_sku', label: 'Truth SKU', column_type: 'Data', in_list_view: true },

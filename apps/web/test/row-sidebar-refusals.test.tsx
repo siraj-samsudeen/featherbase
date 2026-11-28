@@ -17,7 +17,7 @@ const ENC = encodeURIComponent(DT)
 type Admin = Parameters<typeof renderApp>[1]
 
 async function seedRow(admin: Admin, property: string): Promise<string> {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],
   })
@@ -109,7 +109,7 @@ test('a comment on a row deleted meanwhile is refused and the draft is kept', as
 
 test('a workflow action someone else already took is refused with the reason', async ({ admin }) => {
   const user = userEvent.setup()
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],
@@ -170,7 +170,7 @@ test('a tag the network drops says adding the tag failed', async ({ admin }) => 
 
 test('a workflow action the network drops says the transition failed', async ({ admin }) => {
   const user = userEvent.setup()
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],

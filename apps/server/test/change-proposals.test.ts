@@ -27,7 +27,7 @@ const probe = async (client: TestClient, payload: object) =>
 async function setUp(admin: TestClient, createUser: CreateUserFn) {
   expect(await discoverPackages([directory])).toEqual([])
   await admin.post('/api/install_app', { name: 'proposalproof' })
-  await admin.post('/api/table_def', { name: 'Placement', id_pattern: 'field:placement_id', track_changes: true, columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Placement', id_pattern: 'field:placement_id', track_changes: true, columns: [
     { column_name: 'placement_id', column_type: 'Data', reqd: true },
     { column_name: 'label', column_type: 'Data' }, { column_name: 'site', column_type: 'Data' },
     { column_name: 'secret', column_type: 'Data' },
@@ -35,7 +35,7 @@ async function setUp(admin: TestClient, createUser: CreateUserFn) {
     { column_name: 'starts_on', column_type: 'Date' }, { column_name: 'ends_on', column_type: 'Date' },
     { column_name: 'source', column_type: 'Data' },
   ] })
-  await admin.post('/api/table_def', { name: 'Hidden Base', columns: [{ column_name: 'label', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Hidden Base', columns: [{ column_name: 'label', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'proposalproof.linked_tables', value: JSON.stringify(['Placement']) } })
   const row = await admin.post<any>('/api/save_row', { table: 'Placement', row: { placement_id: 'P-1', label: 'Sarees', site: 'North', secret: 'kept', starts_on: '2026-10-01' } })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Proof Editor' } })
@@ -330,7 +330,7 @@ describe('what the helpers refuse', () => {
     const { maker } = await setUp(admin, createUser)
     await expectRefused(probe(maker, { op: 'list', table: 'Placement', args: { fields: ['label'], filters: [['site', 'related', 'x']] } }), 417)
     await admin.post('/api/table_def', { name: 'Holder Child', kind: 'sub_table', columns: [{ column_name: 'label', column_type: 'Data' }] })
-    await admin.post('/api/table_def', { name: 'Holder Base', columns: [{ column_name: 'label', column_type: 'Data' }, { column_name: 'kids', column_type: 'Sub-table', row_table: 'Holder Child' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Holder Base', columns: [{ column_name: 'label', column_type: 'Data' }, { column_name: 'kids', column_type: 'Sub-table', row_table: 'Holder Child' }] })
     const [setting] = await sql`select updated_at from app_setting where row_id = 'proposalproof.linked_tables'`
     await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'proposalproof.linked_tables', updated_at: setting.updated_at, value: JSON.stringify(['Placement', 'Holder Base', 'Holder Child', 'Role']) } })
     for (const table of ['Holder Base', 'Holder Child', 'Role'])

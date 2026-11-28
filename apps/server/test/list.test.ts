@@ -10,7 +10,7 @@ const DT = 'List Test Item'
 // The Table's own two-value field is named `stage` (not `status`) — `status`
 // is now the reserved draft/submitted/cancelled lifecycle column.
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },
@@ -181,7 +181,7 @@ describe('Browse a table\'s rows: child rows and counts follow what the caller m
       kind: 'sub_table',
       columns: [{ column_name: 'item', column_type: 'Data' }],
     })
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: ORDER,
       columns: [
         { column_name: 'customer', column_type: 'Data' },

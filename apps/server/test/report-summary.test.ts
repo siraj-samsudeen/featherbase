@@ -16,7 +16,7 @@ type Summary = {
 }
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: T,
     columns: [
       { column_name: 'region', column_type: 'Choice', choices: 'North\nSouth' },
@@ -98,7 +98,7 @@ describe('summary totals over every matching row', () => {
   })
 
   test('the totals are not capped at the 500 rows a list page returns', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: T, columns: [{ column_name: 'qty', column_type: 'Int' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: T, columns: [{ column_name: 'qty', column_type: 'Int' }] })
     for (let i = 0; i < 501; i++) await admin.post('/api/save_row', { table: T, row: { qty: 2 } })
     const page = await admin.get<{ data: unknown[]; total: number }>(`/api/table/${ENC}?limit_page_length=1000`)
     expect(page.data).toHaveLength(500)

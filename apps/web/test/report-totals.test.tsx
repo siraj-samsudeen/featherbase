@@ -27,7 +27,7 @@ afterEach(() => {
 
 // 501 rows: 300 North at amount 2, 201 South at amount 3 — one more than a list page holds.
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: T,
     columns: [
       { column_name: 'region', column_type: 'Choice', label: 'Region', choices: 'North\nSouth', in_list_view: true },
@@ -139,7 +139,7 @@ test('the export has every matching row and the same totals', async ({ admin }) 
 })
 
 test('check values and absent text retain their meaning in the report and CSV', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: T,
     id_pattern: 'prompt',
     columns: [
@@ -162,7 +162,7 @@ test('check values and absent text retain their meaning in the report and CSV', 
 })
 
 test('a summary that fits on the page says nothing about rows left out', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: T,
     columns: [{ column_name: 'amount', column_type: 'Int', label: 'Amount', in_list_view: true }],
   })
@@ -228,7 +228,7 @@ test('an export that cannot read every row says so and downloads nothing', async
 })
 
 test('a blank and a missing value are one empty group, with all its rows listed', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: T,
     columns: [
       { column_name: 'area', column_type: 'Data', label: 'Area', in_list_view: true },

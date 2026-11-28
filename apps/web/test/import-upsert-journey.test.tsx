@@ -66,7 +66,7 @@ async function rows<T>(admin: Admin, table: string, fields: string[]) {
 
 async function seedZones(admin: Admin) {
   clearSession()
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: 'UPSJZ-.###',
     columns: [
@@ -204,7 +204,7 @@ test('UPS-R5: a remembered match key comes back as a suggestion, active only onc
 
 async function codedTable(admin: Admin, residents: Record<string, unknown>[]) {
   clearSession()
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT2,
     id_pattern: 'UPSJC-.###',
     columns: [

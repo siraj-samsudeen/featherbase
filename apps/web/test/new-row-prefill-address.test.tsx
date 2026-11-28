@@ -8,7 +8,7 @@ const T = { timeout: 10_000 }
 type Admin = Parameters<typeof renderApp>[1]
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', { name: 'Npa Shelf', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Npa Shelf', columns: [
     { column_name: 'shelf_name', column_type: 'Data', label: 'Shelf name' },
     { column_name: 'starts_on', column_type: 'Date', label: 'Starts on' },
   ] })

@@ -154,7 +154,7 @@ const link = (column_name: string, label: string, reference_table: string) =>
   ({ column_name, column_type: 'Reference', label, reference_table, in_list_view: true })
 
 async function table(admin: Client, def: Record<string, unknown>, rows: Record<string, unknown>[] = []) {
-  await admin.post('/api/table_def', def)
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, ...def })
   for (const row of rows) await admin.post(`/api/table/${encodeURIComponent(String(def.name))}`, row)
 }
 

@@ -21,7 +21,7 @@ const DT = 'Deletion Target'
 const ENC = encodeURIComponent(DT)
 
 async function makeTable(admin: TestClient, name = DT, extra: object[] = []) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name,
     columns: [{ column_name: 'title', column_type: 'Data' }, ...extra],
   })
@@ -91,7 +91,7 @@ describe('DEL-R2: deletion removes what creation wrote', () => {
   test('DEL-R2: a settings Table sheds metadata only; a nonexistent name 404s', async ({
     admin,
   }) => {
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Deletion Settings',
       kind: 'settings',
       columns: [{ column_name: 'flag', column_type: 'Check' }],
@@ -111,7 +111,7 @@ describe('DEL-R3: schema references block, and say who', () => {
     admin,
   }) => {
     await makeTable(admin)
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Deletion Referrer',
       columns: [
         { column_name: 'zone', column_type: 'Reference', reference_table: DT },
@@ -143,7 +143,7 @@ describe('DEL-R3: schema references block, and say who', () => {
       message: expect.stringContaining(`${DT}.lines`),
     })
     // A submittable Table references itself via amended_from — deletable.
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Deletion Selfref',
       is_submittable: true,
       columns: [{ column_name: 'title', column_type: 'Data' }],
@@ -302,7 +302,7 @@ describe('DEL-I2: a refusal changes nothing', () => {
     admin,
   }) => {
     await makeTable(admin)
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Deletion Referrer',
       columns: [{ column_name: 'zone', column_type: 'Reference', reference_table: DT }],
     })
@@ -323,7 +323,7 @@ describe('DEL-I2: a refusal changes nothing', () => {
 
 describe('DEL-R5: row-id series survive deletion', () => {
   test('DEL-R5: recreate the same Table — ids continue, never restart', async ({ admin }) => {
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: DT,
       id_pattern: 'DELTGT-.###',
       columns: [{ column_name: 'title', column_type: 'Data' }],
@@ -333,7 +333,7 @@ describe('DEL-R5: row-id series survive deletion', () => {
       row: { title: 'a' },
     })) as { row_id: string }
     await admin.delete(`/api/table_def/${ENC}`)
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: DT,
       id_pattern: 'DELTGT-.###',
       columns: [{ column_name: 'title', column_type: 'Data' }],

@@ -70,7 +70,7 @@ afterAll(async () => {
 async function setup(admin: TestClient) {
   received.length = 0
   failuresLeft.clear()
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
@@ -183,7 +183,7 @@ describe('PLAT-005: webhooks', () => {
 
   test('a submit webhook sends the submitted row with a signature the receiver can verify', async ({ admin }) => {
     received.length = 0
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Webhook Submittable',
       is_submittable: true,
       columns: [{ column_name: 'title', column_type: 'Data' }],

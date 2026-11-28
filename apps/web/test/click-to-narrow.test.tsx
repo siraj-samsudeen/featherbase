@@ -21,10 +21,10 @@ const SECTION = 'Nw Section'
 async function seed(admin: Admin, extraSections = 0) {
   const title = { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true }
   const ref = (column_name: string, label: string, reference_table: string) => ({ column_name, column_type: 'Reference', label, reference_table, in_list_view: true })
-  await admin.post('/api/table_def', { name: REGION, title_column: 'title', columns: [title] })
-  await admin.post('/api/table_def', { name: STORE, title_column: 'title', columns: [title, ref('region', 'Region', REGION)] })
-  await admin.post('/api/table_def', { name: FLOOR, title_column: 'title', columns: [title] })
-  await admin.post('/api/table_def', { name: SECTION, title_column: 'title', columns: [title, ref('store', 'Store', STORE), ref('floor', 'Floor', FLOOR)] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: REGION, title_column: 'title', columns: [title] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: STORE, title_column: 'title', columns: [title, ref('region', 'Region', REGION)] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: FLOOR, title_column: 'title', columns: [title] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: SECTION, title_column: 'title', columns: [title, ref('store', 'Store', STORE), ref('floor', 'Floor', FLOOR)] })
   const insert = async (table: string, row: Record<string, unknown>) => (await admin.post<{ row_id: string }>('/api/save_row', { table, row })).row_id
   const coastal = await insert(REGION, { title: 'Coastal' })
   const inland = await insert(REGION, { title: 'Inland' })

@@ -64,7 +64,7 @@ describe('arrangeFields', () => {
 })
 
 async function parcelDesk(admin: { post: <T>(p: string, b: unknown) => Promise<T> }, sections = false) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Arrange Desk',
     id_pattern: 'prompt',
     title_column: 'label',
@@ -278,7 +278,7 @@ test("a connected row whose source keeps its last change as words, not a time, s
   invalidateSources()
   await admin.post('/api/table/Data%20Source', { row_id: 'web-arrange-words', engine: 'postgres', url_env: ENV, default_schema: 'web_arrange', access: 'read_only' })
   // A binding written by hand, whose "last changed" column holds words.
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Arrange Worded Parcel', data_source: 'web-arrange-words', external_schema: 'web_arrange', external_table: 'parcel',
     external_pk: 'id', external_modified: 'instructions', columns: [{ column_name: 'label', column_type: 'Data', label: 'Label' }],
   })
@@ -295,7 +295,7 @@ async function handBoundParcel(admin: Parameters<typeof renderApp>[1], columns: 
   invalidateSources()
   await admin.post('/api/table/Data%20Source', { row_id: 'web-arrange-hand', engine: 'postgres', url_env: ENV, default_schema: 'web_arrange', access: 'read_only' })
   await admin.post('/api/table/Data%20Source/web-arrange-hand:reflect', { tables: ['web_arrange.rack'], names: { 'web_arrange.rack': 'Arrange Hand Rack' } })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Arrange Hand Parcel', data_source: 'web-arrange-hand', external_schema: 'web_arrange', external_table: 'parcel',
     external_pk: 'id', columns: [{ column_name: 'label', column_type: 'Data', label: 'Label' }, ...columns],
   })

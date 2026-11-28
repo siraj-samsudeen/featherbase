@@ -46,7 +46,7 @@ describe('PLAT-007: audit logs', () => {
     await setup(admin)
     // A fresh table with no grants: the audit user (System Manager) CAN read
     // everything, so use a genuinely unreadable target for a plain user.
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Audit Sekret',
       columns: [{ column_name: 'x', column_type: 'Data' }],
     })

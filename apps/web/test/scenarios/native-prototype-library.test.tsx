@@ -290,7 +290,7 @@ describe('native-prototype-library', () => {
     })
     await step('the same screen is connected to an isolated real server', async () => {
       leaveSyntheticServer()
-      await admin.post('/api/table_def', { name: 'Lab Project', title_column: 'name', columns: [
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Lab Project', title_column: 'name', columns: [
         { column_name: 'name', label: 'Name', column_type: 'Data', reqd: true, in_list_view: true },
         { column_name: 'region', label: 'Region', column_type: 'Data', in_list_view: true },
         { column_name: 'enabled', label: 'Enabled', column_type: 'Check', in_list_view: true },

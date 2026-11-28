@@ -40,7 +40,7 @@ const SECTION_MAPPING = 'Section Mapping'
 
 /** Section Mapping as a table whose list columns are exactly `listColumns`, its readers a role of their own. */
 async function sectionMappingTable(admin: TestClient, createUser: (o: { roles: string[] }) => Promise<TestClient>, listColumns: string[]) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: SECTION_MAPPING,
     id_pattern: 'prompt',
     columns: SECTION_MAPPING_COLUMNS.map((label) => ({
@@ -146,7 +146,7 @@ const DISPLAY = 'Create only for an allowed email domain'
 const UNMAPPED = 'Keep_THIS_authored_text'
 
 const definePolicy = (admin: TestClient) =>
-  admin.post('/api/table_def', {
+  admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: CONTACTS,
     columns: [{
       column_name: 'policy', label: 'Policy', column_type: 'Choice', choices: `${RAW}\n${UNMAPPED}`,
@@ -171,7 +171,7 @@ async function openPolicy(admin: TestClient, as: TestClient, value: string) {
 const SAP_PLANT = 'SAP Plant'
 
 const defineSapPlant = (admin: TestClient, kind = 'table') =>
-  admin.post('/api/table_def', { name: SAP_PLANT, module: 'Custom', kind, columns: [{ column_name: 'plant_name', column_type: 'Data' }] })
+  admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: SAP_PLANT, module: 'Custom', kind, columns: [{ column_name: 'plant_name', column_type: 'Data' }] })
 
 async function openSettings(as: TestClient, table: string) {
   cleanup()
@@ -264,7 +264,7 @@ describe('tables-and-fields', () => {
       before = [...(await registry())]
     })
     await step('the user creates a table "Site" and adds the site "Riverside"', async () => {
-      await admin.post('/api/table_def', {
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: 'Site', module: 'Custom',
         columns: [{ column_name: 'site_name', label: 'Site Name', column_type: 'Data', in_list_view: true }],
       })
@@ -392,7 +392,7 @@ describe('tables-and-fields', () => {
 
   scenario('Generated labels leave authored wording intact', async ({ admin }, step) => {
     await step('the user defines a contact list with an unlabelled client identifier and an authored service label', async () => {
-      await admin.post('/api/table_def', {
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: CONTACTS,
         columns: [
           { column_name: 'client_id', column_type: 'Data', in_list_view: true },
@@ -587,7 +587,7 @@ describe('tables-and-fields', () => {
     const user = userEvent.setup()
     const source = 'Chenai'
     await step('a table "SAP Plant" whose plant 8151 a person corrected to "Chennai"', async () => {
-      await admin.post('/api/table_def', { name: SAP_PLANT, module: 'Custom', columns: PLANT_COLUMNS })
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: SAP_PLANT, module: 'Custom', columns: PLANT_COLUMNS })
       await importPlant(admin, SAP_PLANT, 8151, source, 'source-1')
       const rowId = await plantId(admin, SAP_PLANT, 8151)
       const row = await admin.get<{ updated_at: string }>(`/api/table/${enc(SAP_PLANT)}/${enc(rowId)}`)
@@ -623,7 +623,7 @@ describe('tables-and-fields', () => {
 
   scenario('The old address says where the Table went', async ({ admin }, step) => {
     await step('the table "SAP Plant" was renamed to "Plant"', async () => {
-      await admin.post('/api/table_def', { name: SAP_PLANT, module: 'Custom', columns: PLANT_COLUMNS })
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: SAP_PLANT, module: 'Custom', columns: PLANT_COLUMNS })
       await admin.post(`/api/table_def/${enc(SAP_PLANT)}/rename`, { to: 'Plant' })
     })
     await step('the user opens the old address of "SAP Plant"', () => renderApp(`/featherbase/admin/table/${tableSlug(SAP_PLANT)}`, admin))

@@ -37,8 +37,8 @@ function recordCalls(): string[] {
 /** The Roles and Tables the shell scenarios share: a clerk who reads only Shelf Note. */
 async function seedShelf(admin: Admin) {
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Shelf Clerk' } })
-  await admin.post('/api/table_def', { name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
-  await admin.post('/api/table_def', { name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   await grantRole(admin, { table: 'Shelf Note', role: 'Shelf Clerk', can_read: true })
 }
 
@@ -49,7 +49,7 @@ describe('permissions-and-roles', () => {
     let person: TestClient
     let session!: Session
     await step("a role may read a quote's title and unit cost but may change only its title", async () => {
-      await admin.post('/api/table_def', {
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: QUOTES,
         columns: [
           { column_name: 'quote_title', label: 'Title', column_type: 'Data', in_list_view: true },

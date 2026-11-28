@@ -17,7 +17,7 @@ afterEach(() => {
 })
 
 databaseTest('screen starter retains its search and draft while the native list remembers its filter', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Lab Project',
     columns: [{ column_name: 'region', column_type: 'Data', label: 'Region', in_list_view: true }],
   })

@@ -72,7 +72,7 @@ describe('UI-018: comment @mention notifications', () => {
 const CMT_DT = 'Cmt Req Doc'
 
 async function commentWorld(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: CMT_DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },
@@ -200,7 +200,7 @@ describe('See a row\'s whole history in order', () => {
 
   test('a date set or cleared is recorded as the day or empty; a date and time keeps its instant', async ({ admin }) => {
     const name = 'Cmt Req Moments'
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name,
       columns: [
         { column_name: 'due', column_type: 'Date' },
@@ -223,7 +223,7 @@ describe('See a row\'s whole history in order', () => {
   })
 
   test('a Table that does not keep change history shows comments only', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Cmt Req NoHist', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Cmt Req NoHist', columns: [{ column_name: 'title', column_type: 'Data' }] })
     await sql`update table_def set track_changes = false where name = 'Cmt Req NoHist'`
     invalidateMeta('Cmt Req NoHist')
     const doc = await admin.post<{ row_id: string; updated_at: string }>('/api/save_row', { table: 'Cmt Req NoHist', row: { title: 'a' } })

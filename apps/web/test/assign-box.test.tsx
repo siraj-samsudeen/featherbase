@@ -9,7 +9,7 @@ import { test, expect, renderApp } from './pg-test'
 
 test('typing a colleague\'s email assigns the row to them, and the list shows their name', async ({ admin }) => {
   const user = userEvent.setup()
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Ab Ticket',
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],
   })

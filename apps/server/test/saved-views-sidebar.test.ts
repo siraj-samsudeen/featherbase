@@ -14,7 +14,7 @@ type Client = { get: <T>(path: string) => Promise<T>; post: <T>(path: string, bo
 
 async function tables(admin: Client) {
   for (const name of [OPEN, CLOSED])
-    await admin.post('/api/table_def', { name, id_pattern: 'prompt', columns: [{ column_name: 'store', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name, id_pattern: 'prompt', columns: [{ column_name: 'store', column_type: 'Data' }] })
   // Everyone reads the Department list; Payroll stays closed.
   await grantRole(admin as never, { table: OPEN, role: 'All', can_read: true })
 }

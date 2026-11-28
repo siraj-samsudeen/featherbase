@@ -15,7 +15,7 @@ const DT = 'Td Unwanted Zones'
 const ENC = encodeURIComponent(DT)
 
 async function seed(admin: { post: (p: string, b: unknown) => Promise<unknown> }) {
-  await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'zone_name', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'zone_name', column_type: 'Data' }] })
   await admin.post(`/api/table/${ENC}:import`, {
     rows: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map((zone_name) => ({ zone_name })),
   })
@@ -62,7 +62,7 @@ describe('Only the builder authority can delete a table, and confirmation names 
 
   test('DEL-J1: confirming deletes the Table and lands on All tables, which no longer lists it', async ({ admin }) => {
     await seed(admin)
-    await admin.post('/api/table_def', { name: 'Td Kept Zones', columns: [{ column_name: 'zone_name', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Td Kept Zones', columns: [{ column_name: 'zone_name', column_type: 'Data' }] })
     const { router } = await openAdministration(admin, DT)
     await userEvent.click(await screen.findByTestId('delete-table', undefined, { timeout: 10_000 }))
     await confirm(await screen.findByTestId('delete-table-dialog'))
@@ -77,8 +77,8 @@ describe('Only the builder authority can delete a table, and confirmation names 
 
   test('DEL-J2: a refused deletion names the referencing column, and the retry succeeds once it goes', async ({ admin }) => {
     const REF = 'Td Zone Bookings'
-    await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'zone_name', column_type: 'Data' }] })
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'zone_name', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: REF,
       columns: [{ column_name: 'zone', column_type: 'Reference', reference_table: DT }],
     })
@@ -114,7 +114,7 @@ async function confirm(dialog: HTMLElement) {
 
 describe('the delete dialog at its edges', () => {
   test('a Table of one row says 1 row will be deleted', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Td Lone Zone', columns: [{ column_name: 'zone_name', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Td Lone Zone', columns: [{ column_name: 'zone_name', column_type: 'Data' }] })
     await admin.post('/api/save_row', { table: 'Td Lone Zone', row: { zone_name: 'A' } })
     await openAdministration(admin, 'Td Lone Zone')
     await userEvent.click(await screen.findByTestId('delete-table', undefined, { timeout: 10_000 }))

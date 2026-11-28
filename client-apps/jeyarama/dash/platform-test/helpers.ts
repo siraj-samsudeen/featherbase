@@ -35,7 +35,7 @@ export async function createCoreTables(admin: TestClient, { without = [] as stri
   for (const table of BASE_TABLES.filter(t => !without.includes(t.name))) {
     // #1280: an instance whose Site has no site_kind or status yet.
     const columns = withoutSiteKind && table.name === 'Site' ? table.columns.filter((c: { column_name: string }) => !['site_kind', 'status'].includes(c.column_name)) : table.columns
-    await admin.post('/api/table_def', { ...table, columns })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, ...table, columns })
   }
   await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES) } })
 }

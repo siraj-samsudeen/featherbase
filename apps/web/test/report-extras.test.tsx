@@ -27,7 +27,7 @@ afterEach(() => {
 })
 
 async function seed(admin: Admin, inList = true) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: T,
     id_pattern: 'prompt',
     columns: [
@@ -234,7 +234,7 @@ test('a saved report naming a column the Table no longer has says it could not b
 })
 
 test('a total with a fraction shows two decimal places', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: T,
     id_pattern: 'prompt',
     columns: [

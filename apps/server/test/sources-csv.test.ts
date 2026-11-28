@@ -101,7 +101,7 @@ async function makeCsvSource(admin: {
 describe('M1: csv-folder source', () => {
   test('#821: reflection refuses another Table slug without stranded metadata', async ({ admin }) => {
     const original = 'Seed Store Master '
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: original, id_pattern: 'prompt',
       columns: [{ column_name: 'title', column_type: 'Data', label: 'Original title' }],
     })

@@ -5,7 +5,7 @@ import { tableSlug } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 
 test('a Table whose title column is called name shows its titles in the normal font, not as code', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Dg914 Shelf', title_column: 'name',
     columns: [{ column_name: 'name', column_type: 'Data', label: 'Name', in_list_view: true }],
   })

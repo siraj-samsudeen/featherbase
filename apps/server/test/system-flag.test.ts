@@ -33,7 +33,7 @@ describe('system flag: the migrations own it', () => {
 describe('system flag: rejected on the public Table API', () => {
   test('POST /api/table_def with system: true is a field-wise 417', async ({ admin }) => {
     await expect(
-      admin.post('/api/table_def', { name: 'Sys Claim A', system: true, columns: COLUMNS }),
+      admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Sys Claim A', system: true, columns: COLUMNS }),
     ).rejects.toMatchObject({
       status: 417,
       type: 'ValidationError',
@@ -44,7 +44,7 @@ describe('system flag: rejected on the public Table API', () => {
   })
 
   test('PUT /api/table_def/:name cannot escalate an existing table to system', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Sys Claim B', columns: COLUMNS })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Sys Claim B', columns: COLUMNS })
     await expect(
       admin.put('/api/table_def/Sys%20Claim%20B', { system: true, columns: COLUMNS }),
     ).rejects.toMatchObject({ status: 417, type: 'ValidationError' })
@@ -53,7 +53,7 @@ describe('system flag: rejected on the public Table API', () => {
   })
 
   test('an API-created table lands as system = false and keeps its module', async ({ admin }) => {
-    const meta = await admin.post<{ system: boolean; module: string }>('/api/table_def', {
+    const meta = await admin.post<{ system: boolean; module: string }>('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Sys Claim C',
       module: 'Custom',
       columns: COLUMNS,

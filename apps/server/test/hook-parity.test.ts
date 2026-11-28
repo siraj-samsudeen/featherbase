@@ -12,7 +12,7 @@ import { registerApp, installApp, uninstallApp } from '../src/apps'
 const DT = 'Hook Parity Note'
 
 async function makeDT(admin: TestClient, opts: { submittable?: boolean } = {}) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     is_submittable: opts.submittable ?? false,
     columns: [{ column_name: 'title', column_type: 'Data' }],

@@ -15,7 +15,7 @@ const DEPT = 'alh department raw'
 const T = { timeout: 10_000 }
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', { name: DEPT, module: 'Store Layout', id_pattern: 'prompt', title_column: 'dept_name',
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DEPT, module: 'Store Layout', id_pattern: 'prompt', title_column: 'dept_name',
     columns: [{ column_name: 'dept_name', column_type: 'Data', label: 'Department', in_list_view: true }] })
   await sql`update table_def set label = 'Job Assignment' where name = ${DEPT}`
   invalidateMeta()
@@ -88,7 +88,7 @@ test('one page of rows reads "1–3 of 3" with no Prev or Next', async ({ admin 
 })
 
 test('an empty Table shows the way forward: New and Import data', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'alh empty raw', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'alh empty raw', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
   await renderApp(tableHref('alh empty raw'), admin)
   expect(await screen.findByRole('heading', { level: 3, name: 'No rows' }, T)).toBeInTheDocument()
   expect(screen.getByTestId('list-empty-new')).toHaveTextContent(/^New Alh Empty Raw$/)

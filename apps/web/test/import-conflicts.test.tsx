@@ -11,7 +11,7 @@ const TABLE = 'Import Correction UI'
 const path = `/api/table/${encodeURIComponent(TABLE)}`
 
 test('conflicts distinguish a cleared correction from structured JSON values', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: TABLE, columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: TABLE, columns: [
     { column_name: 'code', column_type: 'Data' },
     { column_name: 'city', column_type: 'Data', label: 'City' },
     { column_name: 'details', column_type: 'JSON', label: 'Details' },
@@ -40,7 +40,7 @@ test('conflicts distinguish a cleared correction from structured JSON values', a
 })
 
 test('a Table exposes the kept correction and lets the user keep it or adopt the source', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: TABLE,
     columns: [
       { column_name: 'code', column_type: 'Data', label: 'Code', in_list_view: true },
@@ -80,7 +80,7 @@ test('a Table exposes the kept correction and lets the user keep it or adopt the
 })
 
 test('a conflict changed after opening is refused without overwriting the newer correction', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: TABLE, columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: TABLE, columns: [
     { column_name: 'code', column_type: 'Data' },
     { column_name: 'city', column_type: 'Data' },
   ] })
@@ -127,7 +127,7 @@ test('a conflict read for a deleted Table can be retried after the Table is recr
 test('the import check explains updated and protected fields before committing', async ({ admin }) => {
   const { clearSession } = await import('../src/lib/import-session')
   clearSession()
-  await admin.post('/api/table_def', { name: TABLE, columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: TABLE, columns: [
     { column_name: 'code', column_type: 'Data', label: 'Code' },
     { column_name: 'city', column_type: 'Data', label: 'City' },
     { column_name: 'phone', column_type: 'Data', label: 'Phone' },
@@ -157,7 +157,7 @@ test('the import check explains updated and protected fields before committing',
 test('the import check warns when a Table does not keep history', async ({ admin }) => {
   const { clearSession } = await import('../src/lib/import-session')
   clearSession()
-  await admin.post('/api/table_def', { name: TABLE, track_changes: false, columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: TABLE, track_changes: false, columns: [
     { column_name: 'code', column_type: 'Data', label: 'Code' },
     { column_name: 'city', column_type: 'Data', label: 'City' },
   ] })

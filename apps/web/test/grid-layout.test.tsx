@@ -24,7 +24,7 @@ async function seedForm(admin: Admin) {
       { column_name: 'qty', column_type: 'Int', label: 'Qty' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data', label: 'Title', reqd: true },
@@ -70,7 +70,7 @@ test('UI-007: child grid add/edit/delete/reorder round-trips through save', asyn
 })
 
 test('UI-008: Section and Column Breaks produce grouped sections in metadata order', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: SEC,
     columns: [
       { column_name: 'a1', column_type: 'Data', label: 'A One' },

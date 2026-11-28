@@ -44,7 +44,7 @@ type Given = { table: string; listColumns: string[]; tableColumns: string[]; row
 /** Creates the table, lets a reader role read it, and makes "the user" and "a colleague" its readers. */
 async function givenTable(admin: Client, createUser: CreateUser, def: { name: string; columns: { label: string; in_list_view: boolean; [k: string]: unknown }[] },
   rows: Record<string, unknown>[]): Promise<Given> {
-  await admin.post('/api/table_def', { id_pattern: 'prompt', ...def })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, id_pattern: 'prompt', ...def })
   for (const row of rows) await admin.post(`/api/table/${enc(def.name)}`, row)
   const role = `${def.name} Reader`
   await grantRole(admin, { role, table: def.name, can_read: true })
@@ -210,13 +210,13 @@ const ORDERS_OF: Record<string, string[]> = { 'Globex Ltd': ['Widgets', 'Sprocke
 const CUSTOMER_IDS: Record<string, string> = { 'Globex Ltd': 'cust-1', Initech: 'cust-2' }
 
 async function ordersFromCustomers(admin: Client) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: CUSTOMERS, id_pattern: 'prompt', title_column: 'customer_name',
     columns: [{ column_name: 'customer_name', label: 'Customer Name', column_type: 'Data', in_list_view: true }],
   })
   for (const [row_id, customer_name] of [['cust-1', 'Globex Ltd'], ['cust-2', 'Initech']])
     await admin.post(`/api/table/${enc(CUSTOMERS)}`, { row_id, customer_name })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: ORDERS, id_pattern: 'PKO-.###',
     columns: [
       { column_name: 'item', label: 'Item', column_type: 'Data', in_list_view: true },

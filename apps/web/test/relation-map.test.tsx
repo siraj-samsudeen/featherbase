@@ -15,11 +15,11 @@ import { REGION, seedPostings, seedSites } from './relational-fixture'
 configure({ asyncUtilTimeout: 10_000 })
 
 async function seed(admin: Parameters<typeof renderApp>[1]) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Rm Customer', id_pattern: 'prompt', title_column: 'title',
     columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Rm Order', id_pattern: 'prompt', title_column: 'title',
     columns: [
       { column_name: 'title', column_type: 'Data', in_list_view: true },
@@ -63,11 +63,11 @@ test('the map shows what a row points to and what points back, with a count', as
 // #1218 slice 1: a group whose rows all point to one Table reads as that Table.
 async function seedVisits(admin: Parameters<typeof renderApp>[1]) {
   await seed(admin)
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Rm Rep', id_pattern: 'prompt', title_column: 'title',
     columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Rm Visit', id_pattern: 'field:visit_id', title_column: 'visit_id',
     columns: [
       { column_name: 'visit_id', column_type: 'Data', label: 'Visit' },
@@ -254,11 +254,11 @@ test('a group lists and counts only the rows the viewer may read', async ({ admi
 
 // #907: a row known by a code reads by its name on the map.
 test('a code-keyed row reads by its name in its box', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Rm State', id_pattern: 'prompt', title_column: 'state_name',
     columns: [{ column_name: 'state_name', column_type: 'Data', in_list_view: true }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Rm Depot', id_pattern: 'prompt', title_column: 'title',
     columns: [
       { column_name: 'title', column_type: 'Data', in_list_view: true },
@@ -274,7 +274,7 @@ test('a code-keyed row reads by its name in its box', async ({ admin }) => {
 })
 
 test('an unconnected row says it has no related rows', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Rm Alone', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Rm Alone', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Rm Alone', row: { row_id: 'alone-1', title: 'Unconnected row' } })
   await openMap(admin, 'Rm Alone', 'alone-1')
   expect(within(screen.getByTestId('relation-map')).getByText('No related rows')).toBeInTheDocument()
@@ -290,7 +290,7 @@ test('a sub-table shows as a collection of its rows, and a row of it points back
       { column_name: 'qty', column_type: 'Int', label: 'Qty', in_list_view: true },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Rm Invoice', id_pattern: 'prompt', title_column: 'title',
     columns: [
       { column_name: 'title', column_type: 'Data', in_list_view: true },
@@ -313,7 +313,7 @@ test('a sub-table shows as a collection of its rows, and a row of it points back
 
 test('a sub-table stored with no label is named on the map by its column name', async ({ admin, db }) => {
   await admin.post('/api/table_def', { name: 'Rm Bare Line', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data', label: 'Item' }] })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Rm Bare Invoice', id_pattern: 'prompt', title_column: 'title',
     columns: [
       { column_name: 'title', column_type: 'Data', in_list_view: true },
@@ -386,7 +386,7 @@ test('a key other than Enter or Space on a map name moves nothing', async ({ adm
 
 test('a link to a row of any Table shows the row it points at (#881)', async ({ admin }) => {
   await seed(admin)
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Rm Decision', id_pattern: 'prompt',
     columns: [
       { column_name: 'about_table', label: 'About Table', column_type: 'Reference', reference_table: 'Table' },
@@ -401,7 +401,7 @@ test('a link to a row of any Table shows the row it points at (#881)', async ({ 
 test("a link's long name keeps its whole wording as the box's tooltip", async ({ admin }) => {
   await seed(admin)
   const long = 'The customer who first raised this claim with the regional office last year'
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Rm Claim', id_pattern: 'prompt',
     columns: [{ column_name: 'customer', column_type: 'Reference', reference_table: 'Rm Customer', label: long }],
   })
@@ -418,7 +418,7 @@ test("a link's long name keeps its whole wording as the box's tooltip", async ({
 // others, so its group reads as the one Table its rows point to.
 test('a group of a Table with no title reads as its far side, through itself', async ({ admin }) => {
   await seedVisits(admin)
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Rm Pairing', id_pattern: 'hash',
     columns: [
       { column_name: 'customer', column_type: 'Reference', reference_table: 'Rm Customer', label: 'Customer' },
@@ -438,7 +438,7 @@ test('a group of a Table with no title reads as its far side, through itself', a
 // the centre, and from the centre to the header of each group box beside it.
 test('the lines join the centre to each box beside it, measured where the boxes fall', async ({ admin }) => {
   await seed(admin)
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Rm Note', id_pattern: 'prompt', title_column: 'title',
     columns: [
       { column_name: 'title', column_type: 'Data', in_list_view: true },

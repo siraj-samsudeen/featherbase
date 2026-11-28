@@ -340,7 +340,7 @@ describe('re-review findings', () => {
   }) => {
     await bindAccount(admin)
     // A Reference column the Data Scope restricts: region → Sec Region.
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Sec Region',
       id_pattern: 'prompt',
       columns: [{ column_name: 'label', column_type: 'Data' }],
@@ -438,7 +438,7 @@ describe('re-review findings', () => {
   test('a direct Table definition cannot expose a credential-named primary key', async ({ admin }) => {
     await bindAccount(admin, 'read_only')
     const before = await cli`select * from sec_fixture.keyring`
-    await expectApiError(admin.post('/api/table_def', {
+    await expectApiError(admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Credential Key Binding', data_source: 'sec-fixture',
       external_schema: 'sec_fixture', external_table: 'keyring', external_pk: 'api_key',
       columns: [{ column_name: 'note', column_type: 'Data' }],
@@ -474,7 +474,7 @@ describe('re-review findings', () => {
     await bindAccount(admin)
     // Creation-time: the hand-written binding is refused outright.
     await expect(
-      admin.post('/api/table_def', {
+      admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: 'Sec Modleak',
         data_source: 'sec-fixture',
         external_schema: 'sec_fixture',
@@ -511,7 +511,7 @@ describe('re-review findings', () => {
     createUser,
   }) => {
     await bindAccount(admin)
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Sec Region',
       id_pattern: 'prompt',
       columns: [{ column_name: 'label', column_type: 'Data' }],
@@ -576,7 +576,7 @@ describe('re-review findings', () => {
     })
     // A column that does not exist on the relation.
     await expect(
-      admin.post('/api/table_def', {
+      admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: 'Sec Handwritten',
         data_source: 'sec-fixture',
         external_schema: 'sec_fixture',
@@ -587,7 +587,7 @@ describe('re-review findings', () => {
     ).rejects.toMatchObject({ status: 417 })
     // A relation that does not exist at all.
     await expect(
-      admin.post('/api/table_def', {
+      admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: 'Sec Ghost',
         data_source: 'sec-fixture',
         external_schema: 'sec_fixture',
@@ -598,7 +598,7 @@ describe('re-review findings', () => {
     ).rejects.toMatchObject({ status: 417 })
     // An unknown data source.
     await expect(
-      admin.post('/api/table_def', {
+      admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: 'Sec Nosource',
         data_source: 'does-not-exist',
         external_table: 'account',
@@ -626,7 +626,7 @@ describe('main-merge interactions: related filters and :aggregate vs bound Table
   }) => {
     await bindAccount(admin)
     // A native table whose Reference points at the bound one.
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Sec Native Ref',
       columns: [
         { column_name: 'title', column_type: 'Data' },
@@ -777,8 +777,8 @@ describe('a bound Table keeps its binding', () => {
 
   test('a bound row a local Table refers to cannot be deleted; a reference from a Settings Table does not hold it', async ({ admin }) => {
     await bindAccount(admin)
-    await admin.post('/api/table_def', { name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
-    await admin.post('/api/table_def', { name: 'Sec Prefs', kind: 'settings', columns: [{ column_name: 'home_account', column_type: 'Reference', reference_table: BOUND }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Sec Prefs', kind: 'settings', columns: [{ column_name: 'home_account', column_type: 'Reference', reference_table: BOUND }] })
     // Written straight to storage: saving such a row through the API is the defect pinned below.
     await sql`insert into ${sql(await tableRelation('Sec Holder'))} ${sql({ row_id: 'holder-1', account: 'ACC-A' })}`
     const holder = { row_id: 'holder-1' }
@@ -795,14 +795,14 @@ describe('a bound Table keeps its binding', () => {
   // linked row on the source (#535).
   test('a local row can refer to a bound row', async ({ admin }) => {
     await bindAccount(admin)
-    await admin.post('/api/table_def', { name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
     const saved = await admin.post<{ account: string }>('/api/save_row', { table: 'Sec Holder', row: { account: 'ACC-A' } })
     expect(saved.account).toBe('ACC-A')
   })
 
   test('a local row that refers to a missing bound row gets a validation error, not a 500', async ({ admin }) => {
     await bindAccount(admin)
-    await admin.post('/api/table_def', { name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
     await expectApiError(
       admin.post('/api/save_row', { table: 'Sec Holder', row: { account: 'ACC-NOPE' } }),
       { status: 417, type: 'ValidationError', fields: { account: `${BOUND} ACC-NOPE does not exist` } },
@@ -812,7 +812,7 @@ describe('a bound Table keeps its binding', () => {
   // SPEC: owner decision 27-Oct-2026 on #566 — the link can't be checked, so the save is refused.
   test('a local row that refers to a bound row is refused while its source is down', async ({ admin }) => {
     await bindAccount(admin)
-    await admin.post('/api/table_def', { name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
     const live = process.env[EXT_URL_ENV]
     process.env[EXT_URL_ENV] = 'postgres://nobody:nothing@127.0.0.1:59999/nope'
     invalidateSources()
@@ -831,7 +831,7 @@ describe('a bound Table keeps its binding', () => {
   test('a sub-table row that refers to a missing bound row names its own field', async ({ admin }) => {
     await bindAccount(admin)
     await admin.post('/api/table_def', { name: 'Sec Holder Line', kind: 'sub_table', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
-    await admin.post('/api/table_def', { name: 'Sec Holder', columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Sec Holder Line' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Sec Holder', columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Sec Holder Line' }] })
     const saved = await admin.post<{ lines: { account: string }[] }>('/api/save_row', { table: 'Sec Holder', row: { lines: [{ account: 'ACC-A' }] } })
     expect(saved.lines.map((l) => l.account)).toEqual(['ACC-A'])
     await expectApiError(

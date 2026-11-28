@@ -166,7 +166,7 @@ const actorNamesOn = (client: { post: <T>(path: string, body: unknown) => Promis
   client.post<{ names: Record<string, string | null> }>('/api/people/actor_names', { table, ids }).then((r) => r.names)
 
 test('a list names who made or changed the rows a viewer may read, without Person read; anyone else stays unnamed', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Act Note', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Act Note', columns: [{ column_name: 'body', column_type: 'Data' }] })
   await grantRole(admin, { role: 'Act Note Reader', table: 'Act Note', can_read: true })
   await grantRole(admin, { role: 'Act Note Writer', table: 'Act Note', can_read: true, can_create: true, can_write: true })
   const writer = await createUser({ roles: ['Act Note Writer'], fullName: 'Act Writer' })
@@ -186,7 +186,7 @@ test('a list names who made or changed the rows a viewer may read, without Perso
 })
 
 test('rows the viewer may not read name nobody: creator-only reach, and a Table they cannot read', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Act Private', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Act Private', columns: [{ column_name: 'body', column_type: 'Data' }] })
   await grantRole(admin, { role: 'Act Private Writer', table: 'Act Private', can_read: true, can_create: true })
   await grantRole(admin, { role: 'Act Private Own', table: 'Act Private', can_read: true, own_rows_only: true })
   const writer = await createUser({ roles: ['Act Private Writer'], fullName: 'Private Writer' })
@@ -220,7 +220,7 @@ test('a sub-table names nobody through its rows; anyone the rule does not name i
 })
 
 test('a row shared directly with someone names who made it, though they may read neither the Table nor Person', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Act Shared', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Act Shared', columns: [{ column_name: 'body', column_type: 'Data' }] })
   await grantRole(admin, { role: 'Act Shared Writer', table: 'Act Shared', can_read: true, can_create: true })
   const writer = await createUser({ roles: ['Act Shared Writer'], fullName: 'Shared Writer' })
   const row = await writer.post<{ row_id: string }>('/api/save_row', { table: 'Act Shared', row: { body: 'for you' } })
@@ -234,7 +234,7 @@ test('a row shared directly with someone names who made it, though they may read
 
 test('more than a hundred shared rows: an actor on the last one is still named', async ({ admin, createUser }) => {
   const { sql } = await import('../src/db')
-  await admin.post('/api/table_def', { name: 'Act Many', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Act Many', columns: [{ column_name: 'body', column_type: 'Data' }] })
   await grantRole(admin, { role: 'Act Many Writer', table: 'Act Many', can_read: true, can_create: true })
   const busy = await createUser({ roles: ['Act Many Writer'], fullName: 'Busy Writer' })
   const late = await createUser({ roles: ['Act Many Writer'], fullName: 'Late Writer' })
@@ -247,7 +247,7 @@ test('more than a hundred shared rows: an actor on the last one is still named',
 }, 120_000)
 
 test('a View or a Settings Table answers too: matched actors named, the rest looked up as before', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Act Base', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Act Base', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/table_def', { name: 'Act Base View', kind: 'view', view_of: 'Act Base', view_filters: [['title', '=', 'x']] })
   await grantRole(admin, { role: 'Act Base Writer', table: 'Act Base', can_read: true, can_create: true })
   const writer = await createUser({ roles: ['Act Base Writer'], fullName: 'Base Writer' })
@@ -258,7 +258,7 @@ test('a View or a Settings Table answers too: matched actors named, the rest loo
 })
 
 test('who archived a View is named to a reader of its rows, though they never touched a row', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Act Arch Base', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Act Arch Base', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/table_def', { name: 'Act Arch View', kind: 'view', view_of: 'Act Arch Base', view_filters: [['title', '=', 'x']] })
   await admin.post('/api/save_row', { table: 'Act Arch Base', row: { title: 'x' } })
   await grantRole(admin, { role: 'Act Arch Reader', table: 'Act Arch Base', can_read: true })
@@ -277,7 +277,7 @@ test('no ids, or only empty ones, name nobody; a Table that does not exist names
 test('a row that names someone who no longer exists reads as acted but unnamed', async ({ admin, createUser }) => {
   const { sql } = await import('../src/db')
   const { tableRelation } = await import('../src/table-engine')
-  await admin.post('/api/table_def', { name: 'Act Ghost', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Act Ghost', columns: [{ column_name: 'body', column_type: 'Data' }] })
   await grantRole(admin, { role: 'Act Ghost Reader', table: 'Act Ghost', can_read: true })
   const row = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Act Ghost', row: { body: 'old' } })
   const ghost = 'psn_ghostghostghostghos'
@@ -293,7 +293,7 @@ test('a system-written Table, which has no retirement, names who wrote its rows 
 })
 
 test("a share without read opens nothing, so it names nobody", async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Act Unread', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Act Unread', columns: [{ column_name: 'body', column_type: 'Data' }] })
   await grantRole(admin, { role: 'Act Unread Writer', table: 'Act Unread', can_read: true, can_create: true })
   const writer = await createUser({ roles: ['Act Unread Writer'], fullName: 'Unread Writer' })
   const row = await writer.post<{ row_id: string }>('/api/save_row', { table: 'Act Unread', row: { body: 'not for you' } })

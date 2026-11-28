@@ -6,7 +6,7 @@ const table = 'Override Editor Shelf'
 const path = tableHref('Metadata Override')
 
 test('a column adjustment receives its ID from the generic form', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: table, columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: table, columns: [
     { column_name: 'floor', column_type: 'Data', label: 'Floor' },
   ] })
   await renderApp(`${path}/new?prefill=${encodeURIComponent(JSON.stringify({ table_name: table }))}`, admin)
@@ -27,7 +27,7 @@ test('a column adjustment receives its ID from the generic form', async ({ admin
 })
 
 test('an adjustment saved before a column is chosen asks for a column or Whole Table', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: table, columns: [{ column_name: 'floor', column_type: 'Data', label: 'Floor' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: table, columns: [{ column_name: 'floor', column_type: 'Data', label: 'Floor' }] })
   await renderApp(`${path}/new?prefill=${encodeURIComponent(JSON.stringify({ table_name: table }))}`, admin)
   const column = await screen.findByLabelText('Column')
   await waitFor(() => expect(column).toHaveTextContent('floor'))
@@ -38,7 +38,7 @@ test('an adjustment saved before a column is chosen asks for a column or Whole T
 })
 
 test("a column's choices are edited one per line", async ({ admin }) => {
-  await admin.post('/api/table_def', { name: table, columns: [{ column_name: 'floor', column_type: 'Choice', choices: 'G\n1' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: table, columns: [{ column_name: 'floor', column_type: 'Choice', choices: 'G\n1' }] })
   await admin.post('/api/table/Metadata%20Override', {
     row_id: 'editor-choices', table_name: table, column_name: 'floor', property: 'choices', value: 'G\n1\n2',
   })
@@ -51,7 +51,7 @@ test("a column's choices are edited one per line", async ({ admin }) => {
 
 for (const value of ['false', '0', 'true', '1']) {
   test(`editing stored boolean text ${value} uses a checkbox`, async ({ admin }) => {
-    await admin.post('/api/table_def', { name: table, columns: [{ column_name: 'floor', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: table, columns: [{ column_name: 'floor', column_type: 'Data' }] })
     await admin.post('/api/table/Metadata%20Override', {
       row_id: 'editor-existing', table_name: table, column_name: 'floor', property: 'hidden', value,
     })
@@ -70,7 +70,7 @@ for (const value of ['false', '0', 'true', '1']) {
 
 test('moving an adjustment refreshes already visited target forms', async ({ admin }) => {
   for (const name of ['Editor Warm Source', 'Editor Warm Destination'])
-    await admin.post('/api/table_def', { name, columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name, columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   const row = await admin.post<{ row_id: string }>('/api/table/Metadata%20Override', {
     table_name: 'Editor Warm Source', column_name: 'title', property: 'label', value: 'Headline',
   })

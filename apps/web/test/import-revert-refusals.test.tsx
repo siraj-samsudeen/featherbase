@@ -14,7 +14,7 @@ type Admin = Parameters<typeof renderApp>[1]
 
 test('history excludes pre-run-id logs without hiding a current revertable import', async ({ admin }) => {
   clearSession()
-  await admin.post('/api/table_def', { name: 'Iwv Shelf', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Iwv Shelf', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/table/Iwv%20Shelf:import', {
     rows: [{ title: 'old shelf' }], context: { run_id: 'legacy-run', file_name: 'legacy.csv' },
   })
@@ -38,7 +38,7 @@ test('history excludes pre-run-id logs without hiding a current revertable impor
 
 async function importedShelf(admin: Admin) {
   clearSession()
-  await admin.post('/api/table_def', { name: 'Iwv Shelf', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Iwv Shelf', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/table/Iwv%20Shelf:import', {
     rows: [{ row_id: 'shelf-9', title: 'top' }, { row_id: 'shelf-10', title: 'bottom' }],
     context: { batch_id: 'iwv-batch', run_id: 'iwv-run', file_name: 'shelves.csv' },
@@ -51,7 +51,7 @@ test('the revert preview can be cancelled; a row another Table points at is not 
   const user = userEvent.setup()
   const history = await importedShelf(admin)
   // A link needs its target Table to exist first (#511).
-  await admin.post('/api/table_def', { name: 'Iwv Bin', columns: [{ column_name: 'shelf', column_type: 'Reference', reference_table: 'Iwv Shelf' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Iwv Bin', columns: [{ column_name: 'shelf', column_type: 'Reference', reference_table: 'Iwv Shelf' }] })
   await admin.post('/api/save_row', { table: 'Iwv Bin', row: { shelf: 'shelf-9' } })
 
   await user.click(history.getByTestId('iw-revert-open-h0'))

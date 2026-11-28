@@ -161,7 +161,7 @@ describe('declared transactional runtime actions', () => {
   // #912: an administrator lets an app read named instance Tables, as the caller, never write them.
   test('linked_tables: read as the caller, never written, and nothing without the listing', async ({ admin, createUser }) => {
     await discoverPackages([directory]); await admin.post('/api/install_app', { name: 'actionproof' })
-    await admin.post('/api/table_def', { name: 'Linked Probe', columns: [{ column_name: 'label', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Linked Probe', columns: [{ column_name: 'label', column_type: 'Data' }] })
     const row = await admin.post<any>('/api/save_row', { table: 'Linked Probe', row: { label: 'visible' } })
     const probe = (client: TestClient, operation: string, extra: object) => client.post<any>(action + 'probe', { idempotencyKey: randomUUID(), payload: { operation, table: 'Linked Probe', ...extra } })
     await expectRefused(probe(admin, 'list', { values: { fields: ['label'] } }), 417)

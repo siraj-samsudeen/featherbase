@@ -52,6 +52,6 @@ test('asking for a Table that was never made, before the Access Log exists, is a
 
 test('a Table created before row security exists is created without it', async ({ admin }) => {
   await sql.unsafe('alter function featherbase.fc_has_read(text) rename to fc_has_read_not_yet')
-  await admin.post('/api/table_def', { name: 'Early Table', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Early Table', columns: [{ column_name: 'title', column_type: 'Data' }] })
   expect(await sql`select relrowsecurity from pg_class where oid = 'featherbase.early_table'::regclass`).toEqual([{ relrowsecurity: false }])
 })

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
 
 test('a workflow state approval checkbox saves its boolean choice', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Approval Mark Task', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Approval Mark Task', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/save_row', {
     table: 'Workflow',
     row: { row_id: 'Approval Mark Flow', ref_table: 'Approval Mark Task', is_active: false,

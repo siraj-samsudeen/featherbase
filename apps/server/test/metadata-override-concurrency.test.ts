@@ -16,7 +16,7 @@ it('concurrent creates for one setting admit one adjustment', async () => {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
   try {
-    await expectStatus(await send('/api/table_def', { name: table, columns: [{ column_name: 'title', column_type: 'Data' }] }), 201)
+    await expectStatus(await send('/api/table_def', { row_rule: { kind: 'all' }, name: table, columns: [{ column_name: 'title', column_type: 'Data' }] }), 201)
     const results = await Promise.all(Array.from({ length: 8 }, (_, i) => send('/api/table/Metadata%20Override', {
       table_name: table, column_name: 'title', property: 'label', value: `Headline ${i}`,
     })))

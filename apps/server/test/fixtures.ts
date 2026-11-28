@@ -180,6 +180,8 @@ export function tableRef(name: string): TableRef {
 export async function makeTable(admin: TestClient, def: TableDef): Promise<TableRef> {
   const { columns, ...rest } = def
   await admin.post('/api/table_def', {
+    // #1459: a Table with no row rule is read by System Managers only; a test Table reads whole unless it says otherwise.
+    ...(rest.kind === 'sub_table' || rest.kind === 'view' ? {} : { row_rule: { kind: 'all' } }),
     ...rest,
     ...(columns ? { columns: columns.map(toColumn) } : {}),
   })

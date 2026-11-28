@@ -12,7 +12,7 @@ afterEach(() => vi.restoreAllMocks())
 
 const TABLE = 'Pp Probe'
 async function aTable(admin: Client) {
-  await admin.post('/api/table_def', { name: TABLE, id_pattern: 'prompt', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: TABLE, id_pattern: 'prompt', columns: [{ column_name: 'note', column_type: 'Data' }] })
 }
 
 /** The network drops every request with this method whose address contains `part`, until `restore`. */
@@ -47,7 +47,7 @@ test.for([
 
 test('a Table the viewer may not read says they cannot open it, with the way to the Admin home', async ({ admin, createUser }) => {
   await aTable(admin)
-  await admin.post('/api/table_def', { name: 'Pp Desk', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Pp Desk', columns: [{ column_name: 'code', column_type: 'Data' }] })
   await grantRole(admin, { table: 'Pp Desk', role: 'Pp Reader', can_read: true })
   const reader = await createUser({ roles: ['Pp Reader'] })
   await renderApp('/featherbase/admin/table/pp-probe/row/NOPE', reader)
@@ -93,7 +93,7 @@ test('a list whose rows the network drops says it could not load them, and Try a
 
 test('a Portal Table the viewer may not read leads to Featherbase, not the Admin home', async ({ admin, createUser }) => {
   await aTable(admin)
-  await admin.post('/api/table_def', { name: 'Pp Desk', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Pp Desk', columns: [{ column_name: 'code', column_type: 'Data' }] })
   await grantRole(admin, { table: 'Pp Desk', role: 'Pp Reader', can_read: true })
   const reader = await createUser({ roles: ['Pp Reader'] })
   await renderApp('/featherbase/portal/pp-probe/NOPE', reader)

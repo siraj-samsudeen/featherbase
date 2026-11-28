@@ -18,7 +18,7 @@ const enc = encodeURIComponent
 const field = (name: string) => document.querySelector<HTMLInputElement>(`[data-field=${name}]`) as HTMLInputElement
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Fx Store', id_pattern: 'prompt',
     columns: [{ column_name: 'city', column_type: 'Data', label: 'City' }],
   })
@@ -26,7 +26,7 @@ async function seed(admin: Admin) {
     name: 'Fx Step', kind: 'sub_table',
     columns: [{ column_name: 'step', column_type: 'Data', label: 'Step' }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Fx Visit', id_pattern: 'prompt',
     columns: [
       { column_name: 'store', column_type: 'Reference', label: 'Store', reference_table: 'Fx Store' },

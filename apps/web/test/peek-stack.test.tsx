@@ -12,16 +12,16 @@ configure({ asyncUtilTimeout: 10_000 })
 type Client = Parameters<typeof renderApp>[1]
 
 async function seed(admin: Client) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Pk Rep', id_pattern: 'prompt', title_column: 'title',
     columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
   })
   await admin.post('/api/save_row', { table: 'Pk Rep', row: { row_id: 'r1', title: 'Anu Rep' } })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Pk Customer', id_pattern: 'prompt', title_column: 'title',
     columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Pk Order', id_pattern: 'prompt', title_column: 'title',
     columns: [
       { column_name: 'title', column_type: 'Data', in_list_view: true },
@@ -99,7 +99,7 @@ test('a group in the pane shows its first 4 rows, then + N more', async ({ admin
 // muted "+ N tables with none".
 test("the pane's empty groups fold behind + N tables with none", async ({ admin }) => {
   await seed(admin)
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Pk Note', id_pattern: 'prompt', title_column: 'title',
     columns: [{ column_name: 'title', column_type: 'Data' }, { column_name: 'rep', column_type: 'Reference', reference_table: 'Pk Rep' }],
   })
@@ -125,11 +125,11 @@ test('a record nothing points at says so, with the empty tables folded beside th
 // #1348 board 4: the pane draws a record's values as the list does: a status chip under the name (and not in
 // the kicker), the source as the shared tag, a code small mono grey, a run time as time, a yes/no muted.
 test("the pane draws a record's values in the calmer look", async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Pk Shop', id_pattern: 'prompt', title_column: 'title',
     columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Pk Visit', id_pattern: 'prompt', title_column: 'title',
     columns: [
       { column_name: 'title', column_type: 'Data', in_list_view: true },

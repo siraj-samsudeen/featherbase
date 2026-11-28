@@ -59,7 +59,7 @@ test('the New Table command opens the Table builder', async ({ admin }) => {
 })
 
 test('picking a suggested Table opens its list and empties the bar', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Ase Gadget', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ase Gadget', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
   const { app, bar } = await openBar(admin)
   fireEvent.change(bar, { target: { value: 'Ase Gad' } })
   const [hit] = await screen.findAllByTestId('awesomebar-table')
@@ -79,7 +79,7 @@ test('on a phone, the drawer closes when its backdrop is tapped', async ({ admin
 })
 
 test('someone whose recent actions are all searches finds their frequent list under Frequent, and it opens', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Ase Stock', columns: [{ column_name: 'sku', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ase Stock', columns: [{ column_name: 'sku', column_type: 'Data', in_list_view: true }] })
   const now = Date.now()
   for (const back of [90, 80, 70])
     recordAction('Administrator', { kind: 'list', key: 'list:Ase Stock?', label: 'Ase Stock', path: '/featherbase/admin/table/ase-stock' }, now - back * 60_000)

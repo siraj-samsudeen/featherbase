@@ -67,7 +67,7 @@ test("a new Table's column whose display name was cleared is made with its own l
 })
 
 async function stockTable(admin: Parameters<typeof renderApp>[1]) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Iwc Stock',
     columns: [
       { column_name: 'iwc_sku', label: 'iwc_sku', column_type: 'Data' },

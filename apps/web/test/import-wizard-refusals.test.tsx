@@ -24,7 +24,7 @@ async function upload(csv: string, name = 'zones.csv') {
 type Admin = Parameters<typeof renderApp>[1]
 
 async function zoneTable(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Iwr Zone',
     columns: [
       { column_name: 'zone_name', column_type: 'Data', label: 'Zone name', unique: true },
@@ -208,7 +208,7 @@ test('a long sheet previews its first fifty rows, then the failing rows past the
 
 test('#851 a changed database invalidates a previously typed import count', async ({ admin }) => {
   clearSession()
-  await admin.post('/api/table_def', { name: 'Iwr Zone', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Iwr Zone', columns: [
     { column_name: 'zone_name', column_type: 'Data' },
     { column_name: 'pop', column_type: 'Int' },
   ] })
@@ -234,7 +234,7 @@ test('#851 a changed database invalidates a previously typed import count', asyn
 
 async function consentZones(admin: Admin, count = 21) {
   clearSession()
-  await admin.post('/api/table_def', { name: 'Iwr Zone', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Iwr Zone', columns: [
     { column_name: 'zone_name', column_type: 'Data', label: 'Zone name' },
     { column_name: 'pop', column_type: 'Int' },
     { column_name: 'note', column_type: 'Data' },

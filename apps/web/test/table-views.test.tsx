@@ -12,14 +12,14 @@ import { openListMenu } from './list-menus'
 type Admin = Parameters<typeof renderApp>[1]
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Vwd Site',
     columns: [
       { column_name: 'site_name', column_type: 'Data', label: 'Site name', in_list_view: true },
       { column_name: 'is_store', column_type: 'Check', label: 'Is store', in_list_view: true },
     ],
   })
-  await admin.post('/api/table_def', { name: 'Vwd Taken', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Vwd Taken', columns: [{ column_name: 'title', column_type: 'Data' }] })
 }
 
 test('a refused name is said in the dialog, which stays open when focus leaves it', async ({ admin }) => {
@@ -110,7 +110,7 @@ test("a view's row opens as its base's row", async ({ admin }) => {
 
 test('a link to a row that has left its view says so, and keeps the link', async ({ admin }) => {
   const id = await seedStores(admin)
-  await admin.post('/api/table_def', { name: 'Vwd Sale', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Vwd Sale', columns: [
     { column_name: 'amount', column_type: 'Int', label: 'Amount' },
     { column_name: 'store', column_type: 'Reference', reference_table: 'Vwd Store', label: 'Store' },
   ] })

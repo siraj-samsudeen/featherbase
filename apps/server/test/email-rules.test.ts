@@ -86,7 +86,7 @@ const SUBJ_CREATE = 'EmlSave created'
 const SUBJ_RESOLVED = 'EmlSave resolved'
 
 async function setupSaveRules(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: SAVE_DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },

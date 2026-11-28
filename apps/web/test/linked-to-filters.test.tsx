@@ -28,7 +28,7 @@ async function seed(admin: Admin) {
     [VEHICLE, [title]], [ACCIDENT, [title, ref('vehicle', VEHICLE), { column_name: 'cost', column_type: 'Currency', label: 'Cost', in_list_view: true }]],
     [SERVICE, [title, ref('vehicle', VEHICLE)]], [CLAIM, [title, ref('accident', ACCIDENT)]],
   ] as const)
-    await admin.post('/api/table_def', { name, title_column: 'title', columns })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name, title_column: 'title', columns })
   const insert = async (table: string, row: Record<string, unknown>) =>
     (await admin.post<{ row_id: string }>('/api/save_row', { table, row })).row_id
   const v1 = await insert(VEHICLE, { title: 'Truck 1' })
@@ -200,10 +200,10 @@ test('a link cell offers Filter and Go there on hover', async ({ admin }) => {
 
 test('Filter on a link to a row of any Table keeps its Table too, since an id may repeat across Tables', async ({ admin }) => {
   for (const name of ['Xe Plant', 'Xe Unit']) {
-    await admin.post('/api/table_def', { name, id_pattern: 'prompt', title_column: 'title', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name, id_pattern: 'prompt', title_column: 'title', columns: [{ column_name: 'title', column_type: 'Data' }] })
     await admin.post('/api/save_row', { table: name, row: { row_id: 'R1', title: `${name} one` } })
   }
-  await admin.post('/api/table_def', { name: 'Xe Decision', title_column: 'title', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Xe Decision', title_column: 'title', columns: [
     { column_name: 'title', column_type: 'Data', in_list_view: true },
     { column_name: 'shapes_table', column_type: 'Reference', reference_table: 'Table' },
     { column_name: 'shapes', label: 'Shapes', column_type: 'Reference', table_column: 'shapes_table', choices: 'Xe Plant\nXe Unit', in_list_view: true },
@@ -219,9 +219,9 @@ test('Filter on a link to a row of any Table keeps its Table too, since an id ma
 
 /** Orders holding lines that point at items: a sub-table both ways. */
 async function seedLines(admin: Admin) {
-  await admin.post('/api/table_def', { name: 'Xe Item', id_pattern: 'prompt', title_column: 'title', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Xe Item', id_pattern: 'prompt', title_column: 'title', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
   await admin.post('/api/table_def', { name: 'Xe Order Line', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Reference', reference_table: 'Xe Item', in_list_view: true }] })
-  await admin.post('/api/table_def', { name: 'Xe Order', id_pattern: 'prompt', title_column: 'title', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Xe Order', id_pattern: 'prompt', title_column: 'title', columns: [
     { column_name: 'title', column_type: 'Data', in_list_view: true }, { column_name: 'lines', column_type: 'Sub-table', row_table: 'Xe Order Line' },
   ] })
 }

@@ -25,7 +25,7 @@ const DT = 'Url Cred Doc'
 const READER_ROLE = 'Url Cred Reader'
 
 async function setup(admin: TestClient, createUser: CreateUserFn) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })

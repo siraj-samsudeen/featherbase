@@ -31,7 +31,7 @@ export async function exploreSource(admin: TestClient, schema: string) {
     [EXPLORE_STORE, 'store', [{ column_name: 'label', column_type: 'Data' }]],
     [EXPLORE_FLOOR, 'floor', [{ column_name: 'label', column_type: 'Data' },
       { column_name: 'store', column_type: 'Reference', reference_table: EXPLORE_STORE, source_column: 'store_id' }]],
-  ] as const) await admin.post('/api/table_def', {
+  ] as const) await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name, title_column: 'label', data_source: `${schema.replaceAll('_', '-')}-source`, external_schema: schema,
     external_table: relation, external_pk: 'code', columns,
   })

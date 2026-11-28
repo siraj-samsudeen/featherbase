@@ -42,7 +42,7 @@ test("Enter on a page's name opens that page", async ({ admin }) => {
 /** A Table with one findable row, so a search has a record to offer. */
 async function aRecord(admin: Admin, rowId: string) {
   const table = 'Cbp Probe'
-  await admin.post('/api/table_def', { name: table, id_pattern: 'prompt', columns: [{ column_name: 'note', column_type: 'Data' }] }).catch(() => {})
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: table, id_pattern: 'prompt', columns: [{ column_name: 'note', column_type: 'Data' }] }).catch(() => {})
   await admin.post(`/api/table/${encodeURIComponent(table)}`, { row_id: rowId, note: 'probe' })
 }
 
@@ -142,7 +142,7 @@ test('g then n on the address of a Table that is not there opens no new row', as
 })
 
 test('visits the server could not record leave the history as it was', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Cbp Bin', columns: [{ column_name: 'sku', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Cbp Bin', columns: [{ column_name: 'sku', column_type: 'Data', in_list_view: true }] })
   await renderApp('/featherbase/admin/table/cbp-bin', admin)
   await screen.findByTestId('list-view', {}, T)
   // The network drops as the visit is sent.
@@ -170,7 +170,7 @@ test('the command bar offers rows opened often but not lately under Frequent', a
   const now = Date.now()
   for (let t = 1; t <= 8; t++) {
     const name = `Cbp Shelf ${t}`
-    await admin.post('/api/table_def', { name, columns: [{ column_name: 'sku', column_type: 'Data', in_list_view: true }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name, columns: [{ column_name: 'sku', column_type: 'Data', in_list_view: true }] })
     const entry = { kind: 'list' as const, key: `list:${name}?`, label: name, path: `/featherbase/admin/table/cbp-shelf-${t}` }
     // The first two were opened many times, but longest ago.
     for (let visit = 0; visit < (t <= 2 ? 6 : 1); visit++) recordAction('Administrator', entry, now - (100 - t) * 60_000 - visit * 1000)

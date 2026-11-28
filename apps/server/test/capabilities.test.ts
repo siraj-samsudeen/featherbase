@@ -18,7 +18,7 @@ async function capsOf(client: { get: <T>(path: string) => Promise<T> }): Promise
 
 async function seedRoleAndTable(admin: Admin) {
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Shelf Clerk' } })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Shelf Note',
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],
   })
@@ -88,7 +88,7 @@ describe('#410 capabilities in whoami', () => {
     const viewer = await createUser({ email: 'viewer-all@example.com' })
     expect(await capsOf(viewer)).toEqual({ manage: false, admin: false, own_grant: false, tables: [GLOSSARY, 'Shelf Note'], creatable: [], deletable: [], archived: [] })
     // With a grant of their own, the same person earns the shell and still sees the All-granted Table.
-    await admin.post('/api/table_def', { name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
     await grantRole(admin, { table: 'Back Office', role: 'Shelf Clerk', can_read: true })
     const clerk = await createUser({ email: 'clerk5@example.com', roles: ['Shelf Clerk'] })
     expect(await capsOf(clerk)).toMatchObject({ admin: true, tables: ['Back Office', GLOSSARY, 'Shelf Note'] })

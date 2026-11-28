@@ -18,7 +18,7 @@ afterEach(() => {
 
 async function importedShelves(admin: Admin) {
   clearSession()
-  await admin.post('/api/table_def', { name: 'Iwh Shelf', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Iwh Shelf', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/table/Iwh%20Shelf:import', {
     rows: [{ row_id: 'shelf-1', title: 'top' }, { row_id: 'shelf-2', title: 'bottom' }],
     context: { run_id: 'iwh-run', file_name: 'shelves.csv' },
@@ -29,7 +29,7 @@ async function importedShelves(admin: Admin) {
 
 test('a reverted run, logged with no counts, says it was reverted and counts nothing', async ({ admin, db }) => {
   clearSession()
-  await admin.post('/api/table_def', { name: 'Iwh Shelf', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Iwh Shelf', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/table/Iwh%20Shelf:import', {
     rows: [{ row_id: 'shelf-1', title: 'top' }], context: { run_id: 'iwh-reverted', file_name: 'shelves.csv' },
   })
@@ -64,7 +64,7 @@ test("a run's added rows deleted permanently from the history strip are marked g
 
 test('a choice changed while Import is still checking stops the import and asks for it again', async ({ admin }) => {
   clearSession()
-  await admin.post('/api/table_def', { name: 'Iwh Zone', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Iwh Zone', columns: [
     { column_name: 'zone_name', column_type: 'Data', label: 'Zone name' },
     { column_name: 'pop', column_type: 'Int' },
     { column_name: 'note', column_type: 'Data' },
@@ -88,7 +88,7 @@ test('a choice changed while Import is still checking stops the import and asks 
 
 test('matching columns that could not be checked say so, and Try again checks them', async ({ admin }) => {
   clearSession()
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Iwh Zone',
     columns: [{ column_name: 'zone_name', column_type: 'Data', label: 'Zone name', unique: true }],
   })

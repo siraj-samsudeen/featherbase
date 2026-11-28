@@ -38,7 +38,7 @@ afterAll(async () => {
 })
 
 async function world(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: STORE,
     id_pattern: 'prompt',
     title_column: 'label',
@@ -117,7 +117,7 @@ describe('getScopeMap: a scoped service account is narrowed everywhere', () => {
 
   test('realtime: a row scoped through a Reference is neither watchable nor announced', async ({ admin }) => {
     const { id } = await world(admin)
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Scope Invoice',
       columns: [{ column_name: 'store', column_type: 'Reference', reference_table: STORE }],
     })

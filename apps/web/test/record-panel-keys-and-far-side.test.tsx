@@ -12,12 +12,12 @@ const STUDENT = 'Kp Student'
 const ENROL = 'Kp Enrolment'
 
 async function seed(admin: Parameters<typeof renderApp>[1]) {
-  await admin.post('/api/table_def', { name: COURSE, id_pattern: 'prompt', title_column: 'course_name',
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: COURSE, id_pattern: 'prompt', title_column: 'course_name',
     columns: [{ column_name: 'course_name', column_type: 'Data', label: 'Course name', in_list_view: true }] })
-  await admin.post('/api/table_def', { name: STUDENT, id_pattern: 'prompt', title_column: 'student_name',
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: STUDENT, id_pattern: 'prompt', title_column: 'student_name',
     columns: [{ column_name: 'student_name', column_type: 'Data', label: 'Student name', in_list_view: true }] })
   // A link table: its title is its own id, so its rows read by what they link to.
-  await admin.post('/api/table_def', { name: ENROL, id_pattern: 'field:enrolment_id', title_column: 'enrolment_id',
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: ENROL, id_pattern: 'field:enrolment_id', title_column: 'enrolment_id',
     columns: [
       { column_name: 'enrolment_id', column_type: 'Data', label: 'Enrolment', in_list_view: true },
       { column_name: 'course', column_type: 'Reference', reference_table: COURSE, label: 'Course', in_list_view: true },

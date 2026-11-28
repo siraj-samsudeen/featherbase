@@ -123,7 +123,7 @@ describe('DOC: what a save refuses, and the field it names', () => {
 
   test('nested rows sent as anything but a list are refused on that field', async ({ admin }) => {
     await admin.post('/api/table_def', { name: 'Doc Line', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data' }] })
-    await admin.post('/api/table_def', { name: 'Doc Order', columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Doc Line' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Doc Order', columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Doc Line' }] })
     await expectApiError(admin.post('/api/save_row', { table: 'Doc Order', row: { lines: { item: 'bolt' } } }), {
       status: 417, fields: { lines: 'lines must be an array of rows' },
     })
@@ -131,7 +131,7 @@ describe('DOC: what a save refuses, and the field it names', () => {
 
   test('a nested row sent as a bare value is refused, and nothing is saved', async ({ admin }) => {
     await admin.post('/api/table_def', { name: 'Doc Line', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data' }] })
-    await admin.post('/api/table_def', { name: 'Doc Order', columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Doc Line' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Doc Order', columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Doc Line' }] })
     await expectApiError(admin.post('/api/save_row', { table: 'Doc Order', row: { lines: ['bolt'] } }), { status: 417 })
     expect(await sql`select row_id from featherbase.doc_order`).toEqual([])
   })

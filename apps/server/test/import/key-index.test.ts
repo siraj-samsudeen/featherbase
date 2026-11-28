@@ -14,7 +14,7 @@ const DT = 'Index Demand Target'
 const PATH = `/api/table/${encodeURIComponent(DT)}:import`
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: 'IDX-.###',
     columns: [

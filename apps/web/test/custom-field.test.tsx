@@ -10,7 +10,7 @@ const DT = 'Cf Target'
 const FIELD = 'priority_note'
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],

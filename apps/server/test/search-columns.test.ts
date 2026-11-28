@@ -39,7 +39,7 @@ describe('#1346: a Table\'s searched columns', () => {
 
   test('only a real column of the Table can be listed, never a stored secret; an update that leaves it out keeps it', async ({ admin }) => {
     for (const bad of ['no_such_column', 'details_break']) {
-      const res = await admin.fetch('/api/table_def', { method: 'POST', body: JSON.stringify({
+      const res = await admin.fetch('/api/table_def', { method: 'POST', body: JSON.stringify({ row_rule: { kind: 'all' },
         name: bad === 'no_such_column' ? 'Sc Bad Unknown' : 'Sc Bad Break', search_columns: [bad],
         columns: [{ column_name: 'label', column_type: 'Data' }, { column_name: 'details_break', column_type: 'Section Break' }],
       }) })
@@ -47,7 +47,7 @@ describe('#1346: a Table\'s searched columns', () => {
       expect(await res.json(), bad).toMatchObject({ error: { fields: { search_columns: `${bad} is not a column of this Table that search can match` } } })
     }
     // A column named like a stored secret is never searched.
-    const secret = await admin.fetch('/api/table_def', { method: 'POST', body: JSON.stringify({
+    const secret = await admin.fetch('/api/table_def', { method: 'POST', body: JSON.stringify({ row_rule: { kind: 'all' },
       name: 'Sc Bad secret', search_columns: ['password_hash'], columns: [{ column_name: 'password_hash', column_type: 'Data' }] }) })
     expect(secret.status).toBe(417)
     const table = await makeTable(admin, { name: 'Sc Kept', search_columns: ['login'], columns: ['login', 'label'] })

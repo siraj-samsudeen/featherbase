@@ -15,7 +15,7 @@ const REPORT = 'Aeo Mine'
 const AER = 'Aeo Weekly'
 
 async function setup(admin: TestClient, createUser: CreateUserFn, columns = ['title']) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },

@@ -41,13 +41,13 @@ const CUSTOMERS = 'Pick Customer'
 const ORDERS = 'Pick Order'
 
 async function ordersFromCustomers(admin: Client) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: CUSTOMERS, id_pattern: 'prompt', title_column: 'customer_name',
     columns: [{ column_name: 'customer_name', label: 'Customer Name', column_type: 'Data', in_list_view: true }],
   })
   for (const [row_id, customer_name] of [['cust-1', 'Globex Ltd'], ['cust-2', 'Initech']])
     await admin.post(`/api/table/${enc(CUSTOMERS)}`, { row_id, customer_name })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: ORDERS, id_pattern: 'PKO-.###',
     columns: [
       { column_name: 'item', label: 'Item', column_type: 'Data', in_list_view: true },
@@ -183,7 +183,7 @@ const columnHidden = async (admin: Client, table: string, column: string) =>
     .columns.find((c) => c.column_name === column)?.hidden
 
 async function shelf(admin: Client) {
-  await admin.post('/api/table_def', { name: SHELF, columns: [{ column_name: 'floor', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: SHELF, columns: [{ column_name: 'floor', column_type: 'Data', in_list_view: true }] })
   await admin.post('/api/save_row', { table: 'Custom Field', row: { row_id: `${SHELF}-note`, dt: SHELF, column_name: 'note', column_type: 'Data', label: 'Note' } })
 }
 
@@ -211,7 +211,7 @@ async function saveHidden(user: ReturnType<typeof userEvent.setup>, view: View, 
 
 /** Points the adjustment at the other Table, "Editor Shelf Other", with its column aisle. */
 async function changeTarget(admin: Client, user: ReturnType<typeof userEvent.setup>) {
-  await admin.post('/api/table_def', { name: OTHER, columns: [{ column_name: 'aisle', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: OTHER, columns: [{ column_name: 'aisle', column_type: 'Data' }] })
   const picker = within(form()).getByLabelText('Table', { exact: true })
   await user.clear(picker)
   fireEvent.change(picker, { target: { value: OTHER } })
@@ -279,7 +279,7 @@ describe('core-forms', () => {
   scenario('The parcel counter keeps its two sections', async ({ admin, createUser }, step) => {
     let user!: Client
     await step('a parcel counter table its builder laid out in two sections', async () => {
-      await admin.post('/api/table_def', {
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: COUNTER, id_pattern: 'prompt',
         columns: [
           { column_name: 'sender', label: 'Sender', column_type: 'Data' },
@@ -627,7 +627,7 @@ describe('core-forms', () => {
 
   scenario('Read a configured reference notice', async ({ admin }, step) => {
     await step('the user can read a reference notice with a configured reading presentation', async () => {
-      await admin.post('/api/table_def', {
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: 'Reference Notice', reading_presentation: { title: 'title', headers: ['count'], body: 'message' },
         columns: [
           { column_name: 'title', column_type: 'Data' },
@@ -638,7 +638,7 @@ describe('core-forms', () => {
       await admin.post('/api/table/Reference%20Notice', { row_id: 'notice', title: 'Reference title', count: 7, message: 'Reference body' })
       // A Table the platform writes: read-only to people, so it reads as configured.
       await sql`update featherbase.table_def set system_written = true where name = 'Reference Notice'`
-      await admin.post('/api/table_def', {
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: 'Writable Notice', reading_presentation: { title: 'title', headers: [], body: 'message' },
         columns: [
           { column_name: 'title', column_type: 'Data' },

@@ -10,7 +10,7 @@ test('#251 refuses a mismatched body name before replacing either definition', a
   const names = ['Rename Source', 'Rename Target']
   const definitions = []
   for (const name of names) {
-    await admin.post('/api/table_def', { name, columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name, columns: [
       { column_name: 'title', column_type: 'Data' },
       { column_name: 'amount', column_type: 'Int' },
     ] })
@@ -47,7 +47,7 @@ describe('META-003: Table save generates its physical table', () => {
   test('creates <name> with standard + column columns of correct types', async ({ admin }) => {
     const res = await admin.fetch('/api/table_def', {
       method: 'POST',
-      body: JSON.stringify({
+      body: JSON.stringify({ row_rule: { kind: 'all' },
         name: DT,
         columns: [
           { column_name: 'title', column_type: 'Data', reqd: true },
@@ -122,7 +122,7 @@ describe('META-003: Table save generates its physical table', () => {
     await sql.unsafe(`create table if not exists featherbase.ddl_ghost (row_id text)`)
     const res = await admin.fetch('/api/table_def', {
       method: 'POST',
-      body: JSON.stringify({
+      body: JSON.stringify({ row_rule: { kind: 'all' },
         name: 'Ddl Ghost',
         columns: [{ column_name: 'x', column_type: 'Data' }],
       }),
@@ -140,7 +140,7 @@ describe('META-003: Table save generates its physical table', () => {
     const before = await registry()
     const res = await admin.fetch('/api/table_def', {
       method: 'POST',
-      body: JSON.stringify({ name: 'Site', columns: [{ column_name: 'site_name', column_type: 'Data' }] }),
+      body: JSON.stringify({ row_rule: { kind: 'all' }, name: 'Site', columns: [{ column_name: 'site_name', column_type: 'Data' }] }),
     })
     await expectStatus(res, 201)
     await admin.post('/api/save_row', { table: 'Site', row: { site_name: 'Riverside' } })
@@ -157,7 +157,7 @@ describe('META-003: Table save generates its physical table', () => {
     await sql.unsafe(`create type featherbase.ddl_ghost2 as (a int)`)
     const res = await admin.fetch('/api/table_def', {
       method: 'POST',
-      body: JSON.stringify({
+      body: JSON.stringify({ row_rule: { kind: 'all' },
         name: 'Ddl Ghost2',
         columns: [{ column_name: 'x', column_type: 'Data' }],
       }),

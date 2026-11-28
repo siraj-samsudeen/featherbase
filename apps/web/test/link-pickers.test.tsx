@@ -14,13 +14,13 @@ const CUSTOMER = 'Lp Customer'
 const ORDER = 'Lp Order'
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: CUSTOMER, id_pattern: 'prompt', title_column: 'customer_name',
     columns: [{ column_name: 'customer_name', column_type: 'Data', label: 'Customer Name' }],
   })
   for (const [row_id, customer_name] of [['c-1', 'Globex Ltd'], ['c-2', 'Initech']])
     await admin.post('/api/save_row', { table: CUSTOMER, row: { row_id, customer_name } })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: ORDER, id_pattern: 'prompt',
     columns: [
       { column_name: 'item', column_type: 'Data', label: 'Item', in_list_view: true },
@@ -97,13 +97,13 @@ test('a quick link filter drops typing that picked nothing and carries no peek o
 // title column, or a target Table the viewer cannot read at all, leaves the
 // link searched and shown by its row id.
 async function seedRestricted(admin: Admin, createUser: Parameters<typeof createUserWithRole>[1], customerRead: boolean) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: CUSTOMER, id_pattern: 'prompt', title_column: 'customer_name',
     columns: [{ column_name: 'customer_name', column_type: 'Data', label: 'Customer Name', tier: 'restricted' }],
   })
   for (const [row_id, customer_name] of [['c-1', 'Globex Ltd'], ['c-2', 'Initech']])
     await admin.post('/api/save_row', { table: CUSTOMER, row: { row_id, customer_name } })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: ORDER, id_pattern: 'prompt',
     columns: [
       { column_name: 'item', column_type: 'Data', label: 'Item', in_list_view: true },

@@ -13,7 +13,7 @@ type Admin = Parameters<typeof renderApp>[1]
 const DT = 'Kbn Item'
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     title_column: 'title',
     columns: [

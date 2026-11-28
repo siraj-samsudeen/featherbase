@@ -12,7 +12,7 @@ const DT = 'Set4 Item'
 const LIST = `/featherbase/admin/table/${tableSlug(DT)}`
 
 async function seed(admin: Admin, settings: Record<string, unknown>) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: 'prompt',
     columns: [

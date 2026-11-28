@@ -10,9 +10,9 @@ type Counts = { counts: Record<string, number> }
 
 test('every Table is counted exactly, a big one too; a view has no count', async ({ admin }) => {
   const { sql } = await import('../src/db')
-  await admin.post('/api/table_def', { name: 'Tc Small', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Tc Small', columns: [{ column_name: 'note', column_type: 'Data' }] })
   for (const note of ['a', 'b', 'c']) await admin.post('/api/save_row', { table: 'Tc Small', row: { note } })
-  await admin.post('/api/table_def', { name: 'Tc Big', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Tc Big', columns: [{ column_name: 'note', column_type: 'Data' }] })
   const big = 12_000
   const { tableRelation } = await import('../src/table-engine')
   const relation = await tableRelation('Tc Big')
@@ -26,7 +26,7 @@ test('every Table is counted exactly, a big one too; a view has no count', async
 })
 
 test('someone who does not manage the instance gets no counts', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Tc Other', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Tc Other', columns: [{ column_name: 'note', column_type: 'Data' }] })
   const reader = await createUserWithRole(admin, createUser, { role: 'Tc Reader', table: 'Tc Other', can_read: true })
   expect((await reader.get<Counts>('/api/table_counts')).counts).toEqual({})
 })
@@ -50,7 +50,7 @@ test("a manager who may not read others' private rows counts only their own", as
 
 test('a Table the manager may not read is left out, and every other Table is still counted', async ({ admin }) => {
   const shut = await makeTable(admin, { name: 'Tc Shut', access_policy: { version: 1, roles: ['Tc Shut Member'] }, columns: ['title'] })
-  await admin.post('/api/table_def', { name: 'Tc Open', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Tc Open', columns: [{ column_name: 'note', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Tc Open', row: { note: 'a' } })
   const { counts } = await admin.get<Counts>('/api/table_counts')
   expect(counts[shut.name]).toBeUndefined()

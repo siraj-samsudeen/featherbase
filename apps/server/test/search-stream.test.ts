@@ -6,7 +6,7 @@ import { test } from './pg-test'
 import { searchLines } from './fixtures'
 
 test('the groups come first, each by label; every group answers once; done comes last', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Ss Store', title_column: 'store_name', columns: [{ column_name: 'store_name', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ss Store', title_column: 'store_name', columns: [{ column_name: 'store_name', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Ss Store', row: { store_name: 'Mohammad Stores' } })
   const lines = await searchLines(admin, 'mohammad')
   const groups = (lines[0] as { groups: { table: string; label: string }[] }).groups
@@ -20,23 +20,23 @@ test('the groups come first, each by label; every group answers once; done comes
 
 // Codex review (round 3): what names nothing is decided by the Table's id rule, not the id's look.
 test("a code people gave is found, even all digits; a Table of machine-made keys gives nothing", async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Ss Coded', id_pattern: 'prompt', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ss Coded', id_pattern: 'prompt', columns: [{ column_name: 'note', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Ss Coded', row: { row_id: '010101001', note: 'x' } })
   const coded = (await searchLines(admin, '010101001')).find((l) => l.table === 'Ss Coded') as { hits: { title: string }[] }
   expect(coded.hits.map((h) => h.title)).toEqual(['010101001'])
-  await admin.post('/api/table_def', { name: 'Ss Hashed', id_pattern: 'hash', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ss Hashed', id_pattern: 'hash', columns: [{ column_name: 'note', column_type: 'Data' }] })
   const row = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Ss Hashed', row: { note: 'y' } })
   const hashed = (await searchLines(admin, row.row_id)).find((l) => l.table === 'Ss Hashed') as { hits: unknown[] }
   expect(hashed.hits).toEqual([])
 })
 
 test("a title that looks like an id is still a name; nameless rows never crowd out a named one", async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Ss Titled', title_column: 'label', columns: [{ column_name: 'label', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ss Titled', title_column: 'label', columns: [{ column_name: 'label', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Ss Titled', row: { label: '12345678' } })
   const titled = (await searchLines(admin, '12345678')).find((l) => l.table === 'Ss Titled') as { hits: { title: string }[] }
   expect(titled.hits.map((h) => h.title)).toEqual(['12345678'])
   // Three people with no name (named only by their opaque ids) and one with a name, all matching "zz".
-  await admin.post('/api/table_def', { name: 'Ss People', id_pattern: 'prompt', title_column: 'label', columns: [{ column_name: 'label', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ss People', id_pattern: 'prompt', title_column: 'label', columns: [{ column_name: 'label', column_type: 'Data' }] })
   for (const n of ['a', 'b', 'c']) await admin.post('/api/save_row', { table: 'Ss People', row: { row_id: `zz-${n}`, label: `psn_zz${n}aaaaaaaaaaaaaaaaa` } })
   await admin.post('/api/save_row', { table: 'Ss People', row: { row_id: 'zz-d', label: 'Named zz person' } })
   const people = (await searchLines(admin, 'zz')).find((l) => l.table === 'Ss People') as { hits: { title: string }[] }
@@ -56,7 +56,7 @@ test('a search whose client went away stops and yields nothing more', async ({ a
 
 // Codex round 4: a machine-keyed row with no title of its own is no hit, and never crowds out a named one.
 test('rows of machine-made keys with an empty title neither show nor crowd out a named match', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Ss Hash Titled', id_pattern: 'hash', title_column: 'label', columns: [{ column_name: 'label', column_type: 'Data' }, { column_name: 'note', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ss Hash Titled', id_pattern: 'hash', title_column: 'label', columns: [{ column_name: 'label', column_type: 'Data' }, { column_name: 'note', column_type: 'Data' }] })
   const { sql } = await import('../src/db')
   const { tableRelation } = await import('../src/table-engine')
   const relation = await tableRelation('Ss Hash Titled')
@@ -92,7 +92,7 @@ test('a client that reads the first line and leaves stops the stream', async ({ 
 // Codex round 5: a Table that fails while the caller is still reading earlier lines ends the search as failed, never done.
 test('a Table that fails while earlier answers are being read ends the search with an error, never done', async ({ admin }) => {
   // Searched last (by name), after the others have answered.
-  await admin.post('/api/table_def', { name: 'Zz Broken', title_column: 'note', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Zz Broken', title_column: 'note', columns: [{ column_name: 'note', column_type: 'Data' }] })
   const { sql } = await import('../src/db')
   const { tableRelation } = await import('../src/table-engine')
   await sql`alter table ${sql(await tableRelation('Zz Broken'))} rename to zz_broken_gone`
@@ -117,14 +117,14 @@ test('searchHits rejects a search that ended in an error line', async ({ admin }
 // #1311: each Table answers its best three: a row named or coded exactly as typed, then
 // the shortest starting with it, then the rest, so an exact match is never left out.
 test('an exact match by name or by code is never crowded out by rows that only contain the text', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Ss Staff', id_pattern: 'prompt', title_column: 'full_name', columns: [{ column_name: 'full_name', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ss Staff', id_pattern: 'prompt', title_column: 'full_name', columns: [{ column_name: 'full_name', column_type: 'Data' }] })
   for (const [row_id, full_name] of [['S-1', 'Rekha C S'], ['S-2', 'Rekha V S'], ['S-3', 'Rekha C'], ['S-4', 'Surekha M'], ['S-5', 'Rekha']])
     await admin.post('/api/save_row', { table: 'Ss Staff', row: { row_id, full_name } })
   const staff = (await searchLines(admin, 'rekha')).find((l) => l.table === 'Ss Staff') as { hits: { title: string }[] }
   // The exact name, then the shortest that start with it; one that only contains it waits.
   expect(staff.hits.map((h) => h.title)).toEqual(['Rekha', 'Rekha C', 'Rekha C S'])
 
-  await admin.post('/api/table_def', { name: 'Ss Site', id_pattern: 'prompt', title_column: 'site_name', columns: [{ column_name: 'site_name', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ss Site', id_pattern: 'prompt', title_column: 'site_name', columns: [{ column_name: 'site_name', column_type: 'Data' }] })
   for (const [row_id, site_name] of [['ATK-CAR-PARK', 'Car park'], ['ATK-HOSTEL', 'Hostel'], ['ATK-STORE', 'Store building'], ['ATK', 'Attakulangara']])
     await admin.post('/api/save_row', { table: 'Ss Site', row: { row_id, site_name } })
   // Three rows named exactly ATK do not push out the row coded ATK (Codex round 3).

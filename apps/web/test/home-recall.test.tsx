@@ -176,13 +176,13 @@ test('a pinned workspace this version cannot read counts as none, so the routine
 // the trail is made in the app itself — a row opened, a list opened, a search
 // run — and the home page then offers one tile back to each.
 test('after opening a row, then a list, then running a search, the home page has a tile back to each', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Hr Shelf',
     id_pattern: 'prompt',
     title_column: 'title',
     columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
   })
-  await admin.post('/api/table_def', { name: 'Hr Aisle', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Hr Aisle', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
   await admin.post('/api/save_row', { table: 'Hr Shelf', row: { row_id: 'shelf-quokka', title: 'Quokka shelf' } })
   const here = (r: { router: unknown }) =>
     decodeURIComponent((r.router as { state: { location: { pathname: string } } }).state.location.pathname)

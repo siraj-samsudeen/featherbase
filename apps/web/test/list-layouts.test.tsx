@@ -16,7 +16,7 @@ const QUEUE = 'Lv Requests'
 type Admin = Parameters<typeof renderApp>[1]
 
 async function seed(admin: Admin, name = DT, queue = false) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name, ...(queue ? { queue: true } : {}),
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true }],
   })

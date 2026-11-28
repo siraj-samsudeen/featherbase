@@ -13,7 +13,7 @@ const WAIT = { timeout: 8000 }
 const pathOf = (r: { router: unknown }) => (r.router as { state: { location: { pathname: string } } }).state.location.pathname
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
   await admin.post('/api/save_row', {
     table: 'Dashboard',
     row: { row_id: 'hpj-board', label: 'Hpj Board', config: JSON.stringify({ cards: [{ label: 'All', table: DT }] }) },
@@ -56,7 +56,7 @@ test('the Home Pages are headed like every other sidebar group', async ({ admin 
 })
 
 test("the open module is marked: its Home Page, and any Table of its module", async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Hpj Shelf', module: 'Hpj Shop', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Hpj Shelf', module: 'Hpj Shop', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
   const { pages } = await admin.get<{ pages: { row_id: string; module: string | null }[] }>('/api/home_pages')
   const shop = pages.find((p) => p.module === 'Hpj Shop')!.row_id
   await renderApp(tableHref('Hpj Shelf'), admin)
@@ -67,7 +67,7 @@ test("the open module is marked: its Home Page, and any Table of its module", as
 
 test('a Table on the System page marks System, which has no module of its own', async ({ admin }) => {
   // Person's module is Core, the default, and a Core page may exist: where it is listed decides.
-  await admin.post('/api/table_def', { name: 'Hpj Core Note', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Hpj Core Note', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
   await renderApp('/featherbase/admin/table/person', admin)
   await waitFor(() => expect(screen.getByTestId('home-page-link-system')).toHaveAttribute('aria-current', 'page'), WAIT)
 })

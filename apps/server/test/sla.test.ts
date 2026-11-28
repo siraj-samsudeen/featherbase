@@ -36,7 +36,7 @@ async function setup(admin: TestClient) {
     row_id: 'sla-hr-1', created_by: 'Administrator', updated_by: 'Administrator',
     parent: MGR, parenttype: 'Person', parentfield: 'roles', position: 1, role: ROLE,
   })}`
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },
@@ -148,7 +148,7 @@ describe('SLA: deadline stamping + escalation', () => {
 // deliberate exception to the HTTP-first idiom) since the point is the
 // SLA-stamping function's edge paths, not the save request around it.
 async function makeSlaTable(admin: TestClient, name: string) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name,
     columns: [
       { column_name: 'title', column_type: 'Data' },

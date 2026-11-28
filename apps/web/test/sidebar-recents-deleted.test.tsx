@@ -15,7 +15,7 @@ const WAIT = { timeout: 15_000 }
 type Admin = Parameters<typeof renderApp>[1]
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', { name: TABLE, title_column: 'bin_name', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: TABLE, title_column: 'bin_name', columns: [
     { column_name: 'bin_name', column_type: 'Data' },
   ] })
   const row = (bin_name: string) => admin.post<{ row_id: string }>(`/api/table/${encodeURIComponent(TABLE)}`, { bin_name })

@@ -175,7 +175,7 @@ test('the sidebar links to Jobs for a System Manager (item 1)', async ({ admin }
 
 test('someone without the System Manager role is sent to the Admin home (item 1)', async ({ admin, createUser }) => {
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Shelf Clerk' } })
-  await admin.post('/api/table_def', { name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   await grantRole(admin, { table: 'Shelf Note', role: 'Shelf Clerk', can_read: true })
   const clerk = await createUser({ email: 'clerk.jobs@example.com', roles: ['Shelf Clerk'] })
   await renderApp('/featherbase/admin/jobs', clerk)

@@ -19,7 +19,7 @@ async function world(admin: Tickets['admin'], createUser: ConstructorParameters<
   const t = new Tickets(admin, createUser)
   await t.access()
   const ticket = t.ticket.row_id
-  await admin.post('/api/table_def', { name: ROWS, columns: [ticketColumn('Data'), affected] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: ROWS, columns: [ticketColumn('Data'), affected] })
   for (const [cites, row] of [[ticket, 'Plant 1100'], [ticket, 'Plant 1200'], [STRAY, 'Plant 1300']])
     await admin.post('/api/save_row', { table: ROWS, row: { ticket: cites, affected_row: row } })
   return ticket

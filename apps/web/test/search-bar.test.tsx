@@ -11,12 +11,12 @@ const here = (r: { router: unknown }) =>
 const field = (name: string) => document.querySelector<HTMLInputElement>(`[data-field=${name}]`) as HTMLInputElement
 
 async function seed(admin: Parameters<typeof renderApp>[1]) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Sb Gadget',
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Sb Home',
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true }],
   })
@@ -223,7 +223,7 @@ test('#737 reopening the command bar discovers Tables added in the same session'
   await screen.findByTestId('awesomebar-table')
   fireEvent.keyDown(bar, { key: 'Escape' })
 
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Sb Added Later',
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })

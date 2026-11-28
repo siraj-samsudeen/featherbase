@@ -11,7 +11,7 @@ const LIST = `/featherbase/admin/table/${tableSlug(DT)}`
 const COLUMNS = [{ column_name: 'site', label: 'Site', column_type: 'Data' as const }]
 
 test('of two rows of one list, the filtered one reads as its filter; the unfiltered one stays its name', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: DT, columns: [{ ...COLUMNS[0], in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ ...COLUMNS[0], in_list_view: true }] })
   const now = Date.now()
   recordAction('Administrator', actionForLocation(LIST, {}, DT)!, now - 60_000)
   recordAction('Administrator', actionForLocation(LIST, { filters: '[["site","=","Head Office"]]' }, DT, undefined, COLUMNS)!, now)
@@ -31,7 +31,7 @@ test('of two rows of one list, the filtered one reads as its filter; the unfilte
 })
 
 test('the same list remembered with no filters and with an empty filter list is one row', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: DT, columns: [{ ...COLUMNS[0], in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ ...COLUMNS[0], in_list_view: true }] })
   const now = Date.now()
   recordAction('Administrator', actionForLocation(LIST, {}, DT)!, now - 60_000)
   recordAction('Administrator', actionForLocation(LIST, { filters: '[]' }, DT)!, now)
@@ -54,7 +54,7 @@ test('roleLine: System Manager for a manager; else the first role and how many m
 })
 
 test("in the rail, the Recently Opened menu says a shared name's filters after it", async ({ admin }) => {
-  await admin.post('/api/table_def', { name: DT, columns: [{ ...COLUMNS[0], in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ ...COLUMNS[0], in_list_view: true }] })
   const now = Date.now()
   recordAction('Administrator', actionForLocation(LIST, {}, DT)!, now - 60_000)
   recordAction('Administrator', actionForLocation(LIST, { filters: '[["site","=","Head Office"]]' }, DT, undefined, COLUMNS)!, now)

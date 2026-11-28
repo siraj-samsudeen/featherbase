@@ -102,7 +102,7 @@ const DT = 'Untick Doc'
 const UT_ROLE = 'Untick Role'
 const utList = `/api/table/${encodeURIComponent(DT)}`
 async function editedReadGrant(admin: TestClient) {
-  await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: UT_ROLE } })
   const read = await admin.post<{ row_id: string }>('/api/save_row', {
     table: 'Permission', row: { ref_table: DT, role: UT_ROLE, operation: 'read', scope_mode: 'all' },
@@ -377,7 +377,7 @@ describe('permissions-and-roles', () => {
           { column_name: 'unit_cost', column_type: 'Currency', tier: 'restricted' },
         ],
       })
-      await admin.post('/api/table_def', {
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: PARENT, id_pattern: 'prompt',
         columns: [{ column_name: 'customer', column_type: 'Data' }, { column_name: 'lines', column_type: 'Sub-table', row_table: CHILD }],
       })
@@ -524,7 +524,7 @@ describe('permissions-and-roles', () => {
     await step('the user creates a table named "ACTIVITY  LOG"', async () => {
       attempt = await manager.fetch('/api/table_def', {
         method: 'POST',
-        body: JSON.stringify({ name: 'ACTIVITY  LOG', columns: [{ column_name: 'note', column_type: 'Data' }] }),
+        body: JSON.stringify({ row_rule: { kind: 'all' }, name: 'ACTIVITY  LOG', columns: [{ column_name: 'note', column_type: 'Data' }] }),
       })
     })
     await step('it is refused, because two tables can never share the same storage', async () => {
@@ -800,7 +800,7 @@ describe('permissions-and-roles', () => {
       manager = await createUser({ email: 'scn.manager.both@example.com', roles: [DASH_ROLE] })
     })
     await step("the user is also given a grant to read one of the instance's own tables", async () => {
-      await admin.post('/api/table_def', { name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
       await grantRole(admin, { table: 'Back Office', role: 'Office Clerk', can_read: true })
       const person = await admin.get<{ updated_at: string; roles: { role: string }[] }>(`/api/table/Person/${encodeURIComponent(manager.user!)}`)
       await admin.post('/api/save_row', {
@@ -847,7 +847,7 @@ describe('permissions-and-roles', () => {
     let planner!: TestClient
     let savedId = ''
     await step("the user's role may create orders but not edit them", async () => {
-      await admin.post('/api/table_def', { name: 'Cog Order', columns: [{ column_name: 'title', column_type: 'Data' }] })
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Cog Order', columns: [{ column_name: 'title', column_type: 'Data' }] })
       planner = await createUserWithRole(admin, createUser, { role: 'Cog Planner', table: 'Cog Order', tier: 'basic', can_read: true, can_create: true })
     })
     await step('the user saves a new order titled "Planner order"', async () => {

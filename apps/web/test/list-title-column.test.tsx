@@ -20,13 +20,13 @@ const leader = (rowId: string) =>
   [...document.querySelectorAll<HTMLAnchorElement>('tbody a')].find((a) => a.getAttribute('href')?.endsWith(`/row/${rowId}`))
 
 async function regions(admin: Admin) {
-  await admin.post('/api/table_def', { name: 'Ltc Region', id_pattern: 'prompt', title_column: 'region_name', columns: [{ column_name: 'region_name', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ltc Region', id_pattern: 'prompt', title_column: 'region_name', columns: [{ column_name: 'region_name', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Ltc Region', row: { row_id: 'N1', region_name: 'North Zone' } })
 }
 
 test("a row titled by a link to another Table's row leads with that row's title", async ({ admin }) => {
   await regions(admin)
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Ltc Store',
     id_pattern: 'prompt',
     title_column: 'region',
@@ -38,7 +38,7 @@ test("a row titled by a link to another Table's row leads with that row's title"
 })
 
 test('a row titled by a Choice leads with the choice', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Ltc Ticket',
     id_pattern: 'prompt',
     title_column: 'stage',
@@ -51,7 +51,7 @@ test('a row titled by a Choice leads with the choice', async ({ admin }) => {
 
 async function decisions(admin: Admin) {
   await regions(admin)
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Ltc Decision',
     id_pattern: 'prompt',
     title_column: 'shapes',

@@ -96,7 +96,7 @@ export type OrgIds = Record<string, Record<string, string>>
 
 /** Seeds the organisation masters. Returns the row ids by table and name. */
 export async function seedOrganisation(admin: Client): Promise<OrgIds> {
-  for (const table of TABLES) await admin.post('/api/table_def', DEFS[table])
+  for (const table of TABLES) await admin.post('/api/table_def', { row_rule: { kind: 'all' }, ...DEFS[table] })
   const ids: OrgIds = Object.fromEntries(TABLES.map((t) => [t, {}]))
   for (const name of ['Kerala', 'Tamil Nadu']) ids.Region![name] = await add(admin, 'Region', { name })
   for (const site of SITES) ids[SITE]![site.name] = await add(admin, SITE, { ...site, region: ids.Region![site.region] })

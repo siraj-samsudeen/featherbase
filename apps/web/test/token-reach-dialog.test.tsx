@@ -15,7 +15,7 @@ async function openIssue(admin: Parameters<typeof renderApp>[1]) {
 }
 
 test('#852 a new service account: the dialog lists what its token reaches and warns it has no role', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Reach Dock', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Reach Dock', columns: [{ column_name: 'code', column_type: 'Data' }] })
   const svc = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'dock-importer' })
   const user = await openIssue(admin)
 

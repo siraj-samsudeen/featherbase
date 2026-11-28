@@ -16,7 +16,7 @@ const T = { timeout: 10_000 }
 const ATK = ['store', '=', 'Attakulangara']
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DEPT, id_pattern: 'prompt', title_column: 'dept_name',
     columns: [
       { column_name: 'dept_name', column_type: 'Data', label: 'Department', in_list_view: true },

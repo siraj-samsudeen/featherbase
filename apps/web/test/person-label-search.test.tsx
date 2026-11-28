@@ -22,7 +22,7 @@ async function code(person: string, value: string) {
 
 /** Three made-up people who share a name, each on a made-up staff list under their own code. */
 async function threeNilas(admin: Client) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Pls Staff', id_pattern: 'field:staff_code', title_column: 'full_name', person_column: 'person', search_columns: ['staff_code'],
     columns: [{ column_name: 'staff_code', column_type: 'Data' }, { column_name: 'full_name', column_type: 'Data' },
       { column_name: 'person', column_type: 'Reference', reference_table: 'Person' }],

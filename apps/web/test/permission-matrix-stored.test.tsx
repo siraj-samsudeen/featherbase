@@ -15,7 +15,7 @@ const ENC = encodeURIComponent(DT)
 const ROLE = 'Pms Depot Clerk'
 
 async function seed(admin: TestClient) {
-  await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'depot', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'depot', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
   await grantRole(admin, { table: DT, role: ROLE, can_read: true })
 }

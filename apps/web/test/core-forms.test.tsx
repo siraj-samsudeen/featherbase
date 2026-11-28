@@ -16,7 +16,7 @@ const enc = encodeURIComponent
 const field = (name: string) => document.querySelector<HTMLInputElement>(`[data-field=${name}]`) as HTMLInputElement
 
 async function seedNote(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Core Note',
     columns: [
       { column_name: 'title', column_type: 'Data', label: 'Title', reqd: true },
@@ -102,18 +102,18 @@ test('A save that arrives too late is refused: the other person\'s change stands
 
 // #910: the drill pane replaces peek (core-forms delta: peek is removed).
 test('a linked row opens in the drill pane beside the form; its own link moves the pane, and closing leaves the form unchanged', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Peek Country',
     columns: [{ column_name: 'label', column_type: 'Data', label: 'Label' }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Peek City',
     columns: [
       { column_name: 'label', column_type: 'Data', label: 'Label' },
       { column_name: 'country', column_type: 'Reference', label: 'Country', reference_table: 'Peek Country' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Peek Shop',
     columns: [
       { column_name: 'label', column_type: 'Data', label: 'Label' },
@@ -154,11 +154,11 @@ test('a linked row opens in the drill pane beside the form; its own link moves t
 })
 
 test("a link field's pane and open buttons never name the linked row's id", async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Hint Parent',
     columns: [{ column_name: 'label', column_type: 'Data', label: 'Label' }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Hint Child',
     columns: [
       { column_name: 'label', column_type: 'Data', label: 'Label' },
@@ -174,11 +174,11 @@ test("a link field's pane and open buttons never name the linked row's id", asyn
 })
 
 test('a linked row in the drill pane: Open row page goes to that row\'s own form', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Peek Parent',
     columns: [{ column_name: 'label', column_type: 'Data', label: 'Label' }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Peek Child',
     columns: [
       { column_name: 'label', column_type: 'Data', label: 'Label' },
@@ -204,14 +204,14 @@ test('a linked row in the drill pane: Open row page goes to that row\'s own form
 })
 
 test('Pick a linked row by typing: matching rows are offered, picking one fills the field and saves, and a new one can be created from the list', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Pick Customer',
     id_pattern: 'prompt',
     columns: [{ column_name: 'city', column_type: 'Data', label: 'City' }],
   })
   for (const name of ['Acme Ltd', 'Globex Ltd', 'Formco'])
     await admin.post('/api/save_row', { table: 'Pick Customer', row: { row_id: name, city: 'x' } })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Pick Order',
     columns: [
       { column_name: 'label', column_type: 'Data', label: 'Label' },
@@ -243,7 +243,7 @@ test('Pick a linked row by typing: matching rows are offered, picking one fills 
 })
 
 async function seedAllTypes(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Types Form',
     columns: [
       { column_name: 'title', column_type: 'Data', label: 'Title' },
@@ -293,7 +293,7 @@ test('Read-only and hidden fields: a read-only field cannot be edited, and a hid
 // #324: a Table whose rows are named by whoever creates them (id pattern
 // 'prompt') — the new-row form must ask for that name and send it.
 async function seedPromptNamed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Core Shelf', id_pattern: 'prompt',
     columns: [{ column_name: 'aisle', column_type: 'Data', label: 'Aisle' }],
   })
@@ -384,13 +384,13 @@ test('An existing row of a Table whose rows are named by their creator opens wit
 
 // Moved from the deleted e2e/formview.spec.ts (UI-004, UI-005).
 test('Each field gets a control that fits its type: a link is a picker holding the linked row, a sub-table lists its rows', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Core Cust', id_pattern: 'prompt', columns: [{ column_name: 'city', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Core Cust', id_pattern: 'prompt', columns: [{ column_name: 'city', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Core Cust', row: { row_id: 'Formco', city: 'Chennai' } })
   await admin.post('/api/table_def', {
     name: 'Core Line', kind: 'sub_table',
     columns: [{ column_name: 'item', column_type: 'Data', label: 'Item' }, { column_name: 'qty', column_type: 'Int', label: 'Qty' }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Core Order',
     columns: [
       { column_name: 'title', column_type: 'Data', label: 'Title' },
@@ -475,7 +475,7 @@ test('A save that cannot reach the server keeps the typed values, and saving aga
 
 test('A rename that cannot reach the server keeps the new name to retry, and renames once connected', async ({ admin }) => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
-  await admin.post('/api/table_def', { name: 'Core Bin', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Core Bin', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   await admin.post('/api/save_row', { table: 'Core Bin', row: { row_id: 'bin-old', title: 'rename target' } })
   const { router } = await renderApp('/featherbase/admin/table/core-bin/row/bin-old', admin)
   await waitFor(() => expect(field('title')).toHaveValue('rename target'))

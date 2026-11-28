@@ -19,7 +19,7 @@ async function setup(admin: TestClient) {
       { column_name: 'qty', column_type: 'Int', default_value: '1' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: PARENT,
     columns: [
       { column_name: 'title', column_type: 'Data' },
@@ -35,7 +35,7 @@ describe('META-007: child table linkage', () => {
   test('rejects a Sub-table column pointing at a non-child Table', async ({ admin }) => {
     await setup(admin)
     await expect(
-      admin.post('/api/table_def', {
+      admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: 'Chd Bad Parent',
         columns: [{ column_name: 'rows', column_type: 'Sub-table', row_table: PARENT }],
       }),
@@ -81,7 +81,7 @@ describe('META-007: child table linkage', () => {
   }) => {
     await setup(admin)
     const ownParent = 'Chd Own Order'
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: ownParent,
       columns: [{ column_name: 'items', column_type: 'Sub-table', row_table: CHILD }],
     })
@@ -258,7 +258,7 @@ describe('#231: a reqd Sub-table column must hold at least one row', () => {
       kind: 'sub_table',
       columns: [{ column_name: 'item', column_type: 'Data', reqd: true }],
     })
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: REQ_PARENT,
       columns: [
         { column_name: 'title', column_type: 'Data' },

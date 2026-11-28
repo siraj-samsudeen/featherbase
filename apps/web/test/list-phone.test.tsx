@@ -31,7 +31,7 @@ afterEach(() => {
 })
 
 async function seedTickets(admin: Admin, name: string, count = 3) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name,
     columns: [
       { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true },
@@ -109,7 +109,7 @@ test('On a phone a card shows its nested rows in place and hides them again', as
     kind: 'sub_table',
     columns: [{ column_name: 'item', column_type: 'Data', label: 'Item' }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Lp Order',
     columns: [
       { column_name: 'customer', column_type: 'Data', label: 'Customer', in_list_view: true },
@@ -152,7 +152,7 @@ test('On a phone an empty list says so and offers the first row', async ({ admin
 // never the opaque id, as the same column does in the wide table.
 test('On a phone a card titled by a person shows their name, linking to the row', async ({ admin }) => {
   await sql`insert into person ${sql({ row_id: 'psn_lpcardownerlpcardown', created_by: 'Administrator', updated_by: 'Administrator', email: 'lp-owner@example.com', full_name: 'Meena Raman', enabled: true })}`
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Lp Owned',
     title_column: 'owner',
     columns: [
@@ -173,7 +173,7 @@ test('On a phone a card titled by a person shows their name, linking to the row'
 test('In the wide table a row titled by a person is selected by their name', async ({ admin }) => {
   window.matchMedia = real
   await sql`insert into person ${sql({ row_id: 'psn_lpwideownerlpwideown', created_by: 'Administrator', updated_by: 'Administrator', email: 'lp-wide@example.com', full_name: 'Meena Raman', enabled: true })}`
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Lp Owned Wide',
     title_column: 'owner',
     columns: [{ column_name: 'owner', column_type: 'Reference', label: 'Owner', reference_table: 'Person', in_list_view: true }],
@@ -206,7 +206,7 @@ test('On a phone a descending sort turns back to ascending', async ({ admin }) =
 })
 
 test('On a phone a Table with no title and no listed columns titles each card by its id', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Lp Bare', id_pattern: 'prompt', columns: [{ column_name: 'secret', column_type: 'Data', hidden: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Lp Bare', id_pattern: 'prompt', columns: [{ column_name: 'secret', column_type: 'Data', hidden: true }] })
   await admin.post('/api/save_row', { table: 'Lp Bare', row: { row_id: 'B-1' } })
   await openList(admin, 'Lp Bare')
   await waitFor(() => expect(titles()).toEqual(['B-1']))

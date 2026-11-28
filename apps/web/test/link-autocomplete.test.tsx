@@ -11,14 +11,14 @@ const field = (name: string) => document.querySelector<HTMLInputElement>(`[data-
 const WAIT = { timeout: 8000 }
 
 async function seed(admin: Admin, customer: string | null = null) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Lac Customer',
     id_pattern: 'prompt',
     columns: [{ column_name: 'city', column_type: 'Data', label: 'City' }],
   })
   for (const name of ['Acme Ltd', 'Globex Ltd'])
     await admin.post('/api/save_row', { table: 'Lac Customer', row: { row_id: name, city: 'x' } })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Lac Order',
     id_pattern: 'prompt',
     columns: [
@@ -63,10 +63,10 @@ test('UI-006: a no-match query offers create-new in a new tab, keeping the form'
 })
 
 async function depots(admin: Admin) {
-  await admin.post('/api/table_def', { name: 'Lac Depot', id_pattern: 'prompt', title_column: 'depot_name', columns: [{ column_name: 'depot_name', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Lac Depot', id_pattern: 'prompt', title_column: 'depot_name', columns: [{ column_name: 'depot_name', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Lac Depot', row: { row_id: 'D1', depot_name: 'North' } })
   await admin.post('/api/save_row', { table: 'Lac Depot', row: { row_id: 'D2' } })
-  await admin.post('/api/table_def', { name: 'Lac Load', id_pattern: 'prompt', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Lac Load', id_pattern: 'prompt', columns: [
     { column_name: 'label', column_type: 'Data' },
     { column_name: 'depot', column_type: 'Reference', reference_table: 'Lac Depot' },
   ] })

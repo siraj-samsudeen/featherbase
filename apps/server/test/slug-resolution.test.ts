@@ -13,7 +13,7 @@ import { expectStatus } from './fixtures'
 const DT = 'Slug Test Note'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
   })
@@ -55,8 +55,8 @@ describe('#56: Table slugs in resource URLs', () => {
   }
 
   test('a second Table with the same slug is refused at creation', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Slug Twin', kind: 'settings', columns: [{ column_name: 'a', column_type: 'Data' }] })
-    const res = await admin.fetch('/api/table_def', { method: 'POST', body: JSON.stringify({ name: 'SLUG Twin', kind: 'settings', columns: [{ column_name: 'b', column_type: 'Data' }] }) })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Slug Twin', kind: 'settings', columns: [{ column_name: 'a', column_type: 'Data' }] })
+    const res = await admin.fetch('/api/table_def', { method: 'POST', body: JSON.stringify({ row_rule: { kind: 'all' }, name: 'SLUG Twin', kind: 'settings', columns: [{ column_name: 'b', column_type: 'Data' }] }) })
     await expectStatus(res, 409)
   })
 
@@ -66,7 +66,7 @@ describe('#56: Table slugs in resource URLs', () => {
     await admin.post('/api/save_row', { table: definition.name, row: { row_id: 'kept', title: 'Original content' } })
     const before = await admin.get('/api/table/probe-twin:meta')
     const refused = await admin.fetch('/api/table_def', {
-      method: 'POST', body: JSON.stringify({ ...definition, name: 'Probe Twin ' }),
+      method: 'POST', body: JSON.stringify({ row_rule: { kind: 'all' }, ...definition, name: 'Probe Twin ' }),
     })
     await expectStatus(refused, 409)
     expect(await admin.get('/api/table/probe-twin:meta')).toEqual(before)
@@ -75,7 +75,7 @@ describe('#56: Table slugs in resource URLs', () => {
     expect(await sql`select to_regclass('featherbase.probe_twin_') as stranded`).toEqual([{ stranded: null }])
 
     // Distinct slugs still work, retaining the supplied column label and identity.
-    await admin.post('/api/table_def', { ...definition, name: 'Probe Other' })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, ...definition, name: 'Probe Other' })
     expect(await admin.get('/api/table/probe-other:meta')).toMatchObject({ name: 'Probe Other', columns: [{ label: 'Original probe label' }] })
   })
 
@@ -97,13 +97,13 @@ describe('#56: Table slugs in resource URLs', () => {
   })
 
   test('Table address resolution prefers live metadata before ambiguous deletion history', async ({ admin }) => {
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Grave Probe',
       id_pattern: 'prompt',
       columns: [{ column_name: 'title', column_type: 'Data' }],
     })
     await admin.delete('/api/table_def/Grave%20Probe')
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'grave probe',
       id_pattern: 'prompt',
       columns: [{ column_name: 'title', column_type: 'Data' }],
@@ -147,7 +147,7 @@ describe('#56: Table slugs in resource URLs', () => {
     await expectStatus(await admin.fetch('/api/table/inval-note'), 404)
     // …then create it: creation invalidates the meta cache, which must drop
     // the slug map too, or the new name would stay unreachable by slug.
-    await admin.post('/api/table_def', { name: 'Inval Note', columns: [{ column_name: 'a', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Inval Note', columns: [{ column_name: 'a', column_type: 'Data' }] })
     await expectStatus(await admin.fetch('/api/table/inval-note'), 200)
   })
 })

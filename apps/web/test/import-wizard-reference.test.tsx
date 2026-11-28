@@ -13,7 +13,7 @@ type Admin = Parameters<typeof renderApp>[1]
 const CSV = 'store_name,cluster\nEast,VLM\nWest,NOPE\nNorth,VLM\n'
 
 async function clusters(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Iwl Cluster',
     id_pattern: 'field:cluster_code',
     title_column: 'cluster_name',
@@ -98,7 +98,7 @@ test('Check names a value with no row in the target, and makes nothing', async (
 
 test('a value matches a row by its ID: a name matches a Table named by name, not one keyed by code', async ({ admin }) => {
   await clusters(admin)
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Iwl Zone',
     id_pattern: 'field:zone_name',
     columns: [{ column_name: 'zone_name', column_type: 'Data' }],
@@ -172,7 +172,7 @@ test('the imported link reads by the linked row\'s title in the new list, and le
 // address, and 600 long ones passed the real Node server's 16 KB header limit
 // (431). The in-process server has no such limit, so the addresses are measured.
 test('Check reads many long values in reads whose addresses stay under the server\'s 16 KB limit', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Iwl Long Names', id_pattern: 'field:zone_name', columns: [{ column_name: 'zone_name', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Iwl Long Names', id_pattern: 'field:zone_name', columns: [{ column_name: 'zone_name', column_type: 'Data' }] })
   const value = (i: number) => `Vellayambalam Regional Distribution Centre ${String(i).padStart(4, '0')}`
   await admin.post('/api/save_row', { table: 'Iwl Long Names', row: { zone_name: value(0) } })
   const csv = ['store_name,zone', ...Array.from({ length: 600 }, (_, i) => `S${i},${value(i)}`)].join('\n')

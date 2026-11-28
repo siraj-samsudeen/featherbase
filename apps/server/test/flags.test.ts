@@ -16,7 +16,7 @@ function save(admin: TestClient, row: Record<string, unknown>) {
 // is now the reserved draft/submitted/cancelled lifecycle column and a
 // custom column may not shadow it.
 async function makeDT(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data', reqd: true },
@@ -84,7 +84,7 @@ describe('A column can be marked unique', () => {
   // repeated values is refused naming the column and the value, and the
   // Table is left as it was.
   test('making a column unique while its rows repeat a value is refused, naming the column', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Flag Late Unique', columns: [{ column_name: 'code', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Flag Late Unique', columns: [{ column_name: 'code', column_type: 'Data' }] })
     for (let i = 0; i < 2; i++)
       await admin.post('/api/save_row', { table: 'Flag Late Unique', row: { code: 'A' } })
     const res = await admin.fetch(`/api/table_def/${encodeURIComponent('Flag Late Unique')}`, {
@@ -103,7 +103,7 @@ describe('A column can be marked unique', () => {
 
   test('a column whose filled-in values are distinct becomes unique, however many rows leave it empty', async ({ admin }) => {
     const T = 'Flag Distinct Unique'
-    await admin.post('/api/table_def', { name: T, columns: [{ column_name: 'code', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: T, columns: [{ column_name: 'code', column_type: 'Data' }] })
     for (const code of ['A', 'B', null, null]) await admin.post('/api/save_row', { table: T, row: { code } })
     await admin.put(`/api/table_def/${encodeURIComponent(T)}`, { columns: [{ column_name: 'code', column_type: 'Data', unique: true }] })
     await expectRefused(admin.post('/api/save_row', { table: T, row: { code: 'A' } }), 417)
@@ -111,7 +111,7 @@ describe('A column can be marked unique', () => {
 
   test('putting a removed column back as unique over its kept repeats is refused the same way', async ({ admin }) => {
     const T = 'Flag Back Unique'
-    await admin.post('/api/table_def', { name: T, columns: [{ column_name: 'title', column_type: 'Data' }, { column_name: 'code', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: T, columns: [{ column_name: 'title', column_type: 'Data' }, { column_name: 'code', column_type: 'Data' }] })
     for (let i = 0; i < 2; i++) await admin.post('/api/save_row', { table: T, row: { title: `t${i}`, code: 'B' } })
     await admin.put(`/api/table_def/${encodeURIComponent(T)}`, { columns: [{ column_name: 'title', column_type: 'Data' }], remove_columns: ['code'] })
     const res = await admin.fetch(`/api/table_def/${encodeURIComponent(T)}`, {
@@ -128,7 +128,7 @@ describe('A column can be marked unique', () => {
     const T = 'Flag Removed Unique'
     const title = { column_name: 'title', column_type: 'Data' }
     const put = (body: object) => admin.fetch(`/api/table_def/${encodeURIComponent(T)}`, { method: 'PUT', body: JSON.stringify(body) })
-    await admin.post('/api/table_def', { name: T, columns: [title, { column_name: 'code', column_type: 'Data', unique: true }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: T, columns: [title, { column_name: 'code', column_type: 'Data', unique: true }] })
     await admin.post('/api/save_row', { table: T, row: { title: 't0', code: 'C' } })
     await expectStatus(await put({ columns: [title], remove_columns: ['code'] }), 200)
     // Put back without unique: the old rule must not linger out of sight.
@@ -144,7 +144,7 @@ describe('A column can be marked unique', () => {
   test('a long repeated value is shortened in the refusal', async ({ admin }) => {
     const T = 'Flag Long Unique'
     const long = 'x'.repeat(130)
-    await admin.post('/api/table_def', { name: T, columns: [{ column_name: 'code', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: T, columns: [{ column_name: 'code', column_type: 'Data' }] })
     for (let i = 0; i < 2; i++) await admin.post('/api/save_row', { table: T, row: { code: long } })
     const res = await admin.fetch(`/api/table_def/${encodeURIComponent(T)}`, {
       method: 'PUT',

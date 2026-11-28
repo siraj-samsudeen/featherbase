@@ -19,7 +19,7 @@ type Admin = Parameters<typeof renderApp>[1]
 const enc = encodeURIComponent
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', { name: DT, id_pattern: 'hash', title_column: 'shelf_name', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, id_pattern: 'hash', title_column: 'shelf_name', columns: [
     { column_name: 'shelf_name', column_type: 'Data', label: 'Shelf', in_list_view: true },
     { column_name: 'aisle', column_type: 'Data', label: 'Aisle', in_list_view: true },
     { column_name: 'bay', column_type: 'Int', label: 'Bay' },
@@ -46,7 +46,7 @@ test("a fresh person opens on the Table's default: its columns, sort and compact
 
 // Codex adversarial round 2: a default sorted by a column this reader may not read never breaks their list.
 test("a default's sort on a column the reader may not read gives way to the Table's own order", async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Tvd Locker', id_pattern: 'hash', title_column: 'locker_name', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Tvd Locker', id_pattern: 'hash', title_column: 'locker_name', columns: [
     { column_name: 'locker_name', column_type: 'Data', label: 'Locker', in_list_view: true },
     { column_name: 'code', column_type: 'Data', label: 'Code', tier: 'restricted' },
   ] })
@@ -233,7 +233,7 @@ test('a Reset the server refuses says the list could not be saved', async ({ adm
 
 test("choosing a board's grouping remembers it", async ({ admin }) => {
   await seed(admin)
-  await admin.post('/api/table_def', { name: 'Tvd Bin', id_pattern: 'hash', title_column: 'bin_name', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Tvd Bin', id_pattern: 'hash', title_column: 'bin_name', columns: [
     { column_name: 'bin_name', column_type: 'Data', label: 'Bin', in_list_view: true },
     { column_name: 'state', column_type: 'Choice', label: 'State', choices: 'Full\nEmpty' },
     { column_name: 'size', column_type: 'Choice', label: 'Size', choices: 'Small\nLarge' },
@@ -244,7 +244,7 @@ test("choosing a board's grouping remembers it", async ({ admin }) => {
 })
 
 test("a board's grouping that could not be saved still holds for this visit", async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Tvd Crate', id_pattern: 'hash', title_column: 'crate_name', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Tvd Crate', id_pattern: 'hash', title_column: 'crate_name', columns: [
     { column_name: 'crate_name', column_type: 'Data', label: 'Crate', in_list_view: true },
     { column_name: 'state', column_type: 'Choice', label: 'State', choices: 'Full\nEmpty' },
     { column_name: 'size', column_type: 'Choice', label: 'Size', choices: 'Small\nLarge' },

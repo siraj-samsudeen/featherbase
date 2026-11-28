@@ -27,7 +27,7 @@ const cellTexts = (col: string) =>
   [...rowsEl().querySelectorAll(`[data-testid="cell-${col}"]`)].map((e) => e.textContent ?? '')
 
 async function seedTickets(admin: Admin, name: string, count = 3, choice_labels?: Record<string, string>) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name,
     columns: [
       { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true },
@@ -90,7 +90,7 @@ test('Browse a table\'s rows: the list pages through the rows and the total keep
 // Moved from the deleted e2e/listview.spec.ts (UI-002): the one list takes its
 // columns from each Table's own metadata.
 test('Browse a table\'s rows: each listed column is headed by its label', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Lv Cities',
     columns: [
       { column_name: 'city', column_type: 'Data', label: 'City', in_list_view: true },
@@ -103,7 +103,7 @@ test('Browse a table\'s rows: each listed column is headed by its label', async 
 })
 
 test('Browse a table\'s rows: a ticked yes/no reads Yes, an unticked one No (#1348 board 2)', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Lv Ticks',
     columns: [
       { column_name: 'city', column_type: 'Data', label: 'City', in_list_view: true },
@@ -300,7 +300,7 @@ test('Act on many rows at once: setting a field on selected rows changes all of 
 
 test('Bulk Check edits persist true and false only on rows selected after clearing the header selection', async ({ admin }) => {
   const table = 'Lv Bulk Check'
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: table,
     id_pattern: 'prompt',
     columns: [
@@ -393,7 +393,7 @@ test('Act on many rows at once: backing out of the delete confirmation deletes n
 
 test('See a row\'s nested rows without opening it: expanding shows references, zero totals and empty lines, and collapsing hides them', async ({ admin, createUser }) => {
   const owner = await createUser({ email: 'lv.lines@example.test', fullName: 'Lila Lines' })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Lv Item',
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],
@@ -408,7 +408,7 @@ test('See a row\'s nested rows without opening it: expanding shows references, z
       { column_name: 'amount', column_type: 'Currency', label: 'Amount' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Lv Order',
     columns: [
       { column_name: 'customer', column_type: 'Data', label: 'Customer', in_list_view: true },
@@ -458,7 +458,7 @@ test('A list that cannot load says why instead of reading as empty', async ({ ad
 })
 
 test('Dates and numbers read the same way everywhere: dates as day-month-year, amounts and counts grouped the Indian way', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Lv Formats',
     columns: [
       { column_name: 'label', column_type: 'Data', label: 'Label', in_list_view: true },
@@ -476,7 +476,7 @@ test('Dates and numbers read the same way everywhere: dates as day-month-year, a
 })
 
 test('Nothing shown by colour alone: a status in the list is a chip with its words, its dot only a mark (#1348)', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Lv Status',
     columns: [
       { column_name: 'label', column_type: 'Data', label: 'Label', in_list_view: true },
@@ -550,7 +550,7 @@ test('a date-and-time cell reads the viewer\'s day and time on one line', async 
   const before = process.env.TZ
   process.env.TZ = 'Asia/Kolkata'
   try {
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Lv Moments',
       columns: [
         { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true },

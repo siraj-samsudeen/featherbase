@@ -22,7 +22,7 @@ const PATH = `/api/table/${encodeURIComponent(DT)}:import`
 const ROLE = 'Upsert Tester Role'
 
 async function setup(admin: TestClient, extra: Record<string, unknown> = {}) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: 'UPST-.###',
     columns: [

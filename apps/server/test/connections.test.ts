@@ -16,12 +16,12 @@ const LINE = 'Cnx Order Line'
 const ORDER = 'Cnx Order'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: EMP,
     id_pattern: 'prompt',
     columns: [{ column_name: 'dept', column_type: 'Data' }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: ATT,
     columns: [
       { column_name: 'employee', column_type: 'Reference', reference_table: EMP },
@@ -36,7 +36,7 @@ async function setup(admin: TestClient) {
       { column_name: 'qty', column_type: 'Int', default_value: '1' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: ORDER,
     id_pattern: 'prompt',
     columns: [
@@ -143,7 +143,7 @@ describe('NAV-001: row connections', () => {
       kind: 'sub_table',
       columns: [{ column_name: 'employee', column_type: 'Reference', reference_table: EMP }],
     })
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Cnx Settings',
       kind: 'settings',
       columns: [

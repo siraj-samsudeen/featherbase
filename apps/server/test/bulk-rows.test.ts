@@ -23,7 +23,7 @@ const remove = (client: TestClient, rows: string[]) =>
   client.post(`/api/table/${enc(T)}:bulk-delete`, { rows })
 
 async function seed(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: T,
     id_pattern: 'prompt',
     is_submittable: true,
@@ -142,7 +142,7 @@ describe('on a connected Table', () => {
     await admin.post('/api/table/Data%20Source', {
       row_id: 'bulk-src', engine: 'postgres', url_env: ENV, default_schema: 'bulk_fixture', access: 'read_write',
     })
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: BOUND,
       data_source: 'bulk-src',
       external_schema: 'bulk_fixture',

@@ -13,7 +13,7 @@ const T = 'Pri Plant'
 const field = (name: string) => document.querySelector<HTMLInputElement>(`[data-field=${name}]`) as HTMLInputElement
 
 async function seed(admin: Admin, id_pattern?: string) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: T,
     ...(id_pattern ? { id_pattern } : {}),
     columns: [

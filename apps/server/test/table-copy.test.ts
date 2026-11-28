@@ -643,7 +643,7 @@ describe('Copy a warehouse table into Featherbase', () => {
   })
 
   test('a Table that is not copied may rename a column of the marker\'s name', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Marker Plain', columns: [{ column_name: 'deleted_at_source', column_type: 'Check' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Marker Plain', columns: [{ column_name: 'deleted_at_source', column_type: 'Check' }] })
     await admin.post('/api/table_def/Marker%20Plain/rename_column', { from: 'deleted_at_source', to: 'gone' })
     const meta = await admin.get<{ columns: { column_name: string }[] }>('/api/table/Marker%20Plain:meta')
     expect(meta.columns.map(c => c.column_name)).toContain('gone')

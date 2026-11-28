@@ -16,12 +16,12 @@ const DECISION = 'Atw Decision'
 const box = (name: string) => document.querySelector<HTMLInputElement>(`[data-field=${name}]`) as HTMLInputElement
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', { name: PLANT, id_pattern: 'prompt', title_column: 'city', columns: [{ column_name: 'city', column_type: 'Data' }] })
-  await admin.post('/api/table_def', { name: UNIT, id_pattern: 'prompt', title_column: 'label', columns: [{ column_name: 'label', column_type: 'Data' }] })
-  await admin.post('/api/table_def', { name: OTHER, id_pattern: 'prompt', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: PLANT, id_pattern: 'prompt', title_column: 'city', columns: [{ column_name: 'city', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: UNIT, id_pattern: 'prompt', title_column: 'label', columns: [{ column_name: 'label', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: OTHER, id_pattern: 'prompt', columns: [{ column_name: 'note', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: PLANT, row: { row_id: '8151', city: 'Palakkad' } })
   await admin.post('/api/save_row', { table: UNIT, row: { row_id: 'PKN-GOLD', label: 'Gold jewellery' } })
-  await admin.post('/api/table_def', { name: DECISION, columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DECISION, columns: [
     { column_name: 'title', column_type: 'Data', in_list_view: true },
     ...columnsToAdd({ label: 'Shapes', column_name: 'shapes', column_type: ANY_TABLE_LINK, target: `${PLANT}\n${UNIT}`, nameTouched: false })
       .map((c) => ({ ...c, in_list_view: true })),
@@ -114,7 +114,7 @@ test('a Sub-table row links to a row of any Table, its Table first', async ({ ad
   await admin.post('/api/table_def', { name: 'Atw Step', kind: 'sub_table', columns: [
     ...columnsToAdd({ label: 'Shapes', column_name: 'shapes', column_type: ANY_TABLE_LINK, target: `${PLANT}\n${UNIT}`, nameTouched: false }),
   ] })
-  await admin.post('/api/table_def', { name: 'Atw Plan', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Atw Plan', columns: [
     { column_name: 'label', column_type: 'Data' },
     { column_name: 'steps', column_type: 'Sub-table', label: 'Steps', row_table: 'Atw Step' },
   ] })

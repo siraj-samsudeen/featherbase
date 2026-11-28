@@ -157,7 +157,7 @@ describe('PLAT-002: app doc_events fire alongside the core controller', () => {
     registerApps()
     try {
       // A core controller owns CORE_DT and reacts to after_save.
-      await admin.post('/api/table_def', {
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: CORE_DT,
         id_pattern: 'prompt',
         columns: [{ column_name: 'title', column_type: 'Data' }],
@@ -187,7 +187,7 @@ describe('PLAT-002: app doc_events fire alongside the core controller', () => {
 // edges — a table this app owns end to end, and rewiring hooks after a
 // simulated process restart.
 async function makeSimpleTable(admin: TestClient, name: string) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name,
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })

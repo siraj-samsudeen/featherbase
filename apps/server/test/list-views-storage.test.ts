@@ -30,7 +30,7 @@ describe('#1259: a saved view keeps its view', () => {
 
 describe('#1259: a Table can be marked as a queue', () => {
   test('a new Table is not a queue; marking one keeps it, and a later update that leaves it out keeps it too', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Lv Queue', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Lv Queue', columns: [{ column_name: 'title', column_type: 'Data' }] })
     const before = await admin.get<{ queue?: boolean }>('/api/table/Lv%20Queue:meta')
     expect(before.queue ?? false).toBe(false)
     await admin.put('/api/table_def/Lv%20Queue', { queue: true, columns: [{ column_name: 'title', column_type: 'Data' }] })
@@ -40,7 +40,7 @@ describe('#1259: a Table can be marked as a queue', () => {
   })
 
   test('a Table made as a queue is one from the start', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Lv Born Queue', queue: true, columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Lv Born Queue', queue: true, columns: [{ column_name: 'title', column_type: 'Data' }] })
     expect((await admin.get<{ queue?: boolean }>('/api/table/Lv%20Born%20Queue:meta')).queue).toBe(true)
   })
 })

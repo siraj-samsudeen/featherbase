@@ -134,7 +134,7 @@ test('a scheduled job whose last run failed is one problem in the banner and rea
 test('someone without the System Manager role sees no banner, no link and never asks (item 13)', async ({ admin, createUser }) => {
   await sql`delete from instance_settings_apply`
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Shelf Clerk' } })
-  await admin.post('/api/table_def', { name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   await grantRole(admin, { table: 'Shelf Note', role: 'Shelf Clerk', can_read: true })
   const clerk = await createUser({ email: 'clerk.health@example.com', roles: ['Shelf Clerk'] })
   const urls: string[] = []
@@ -154,7 +154,7 @@ test('someone without the System Manager role sees no banner, no link and never 
 test('a page the person cannot open is never remembered, so Last view and Recently opened never offer it (#476 rule)', async ({ admin, createUser }) => {
   const { recentActions } = await import('../src/lib/recents')
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Shelf Clerk' } })
-  await admin.post('/api/table_def', { name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   await grantRole(admin, { table: 'Shelf Note', role: 'Shelf Clerk', can_read: true })
   const clerk = await createUser({ email: 'clerk.recents@example.com', roles: ['Shelf Clerk'] })
   await renderApp('/featherbase/admin/instance-health', clerk)

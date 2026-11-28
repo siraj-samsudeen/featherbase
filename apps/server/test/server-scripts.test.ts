@@ -11,7 +11,7 @@ import { expectRefused, expectStatus } from './fixtures'
 const DT = 'SS Srv Doc'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'amount', column_type: 'Int' },

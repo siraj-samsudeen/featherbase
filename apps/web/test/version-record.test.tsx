@@ -15,7 +15,7 @@ const ENC = encodeURIComponent(T)
 type Admin = Parameters<typeof renderApp>[1]
 
 async function editedPlant(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: T,
     columns: [
       { column_name: 'plant_name', label: 'Plant name', column_type: 'Data' },

@@ -30,7 +30,7 @@ test('reading roles round-trip through the Table definition contract', async ({ 
     { column_name: 'message', column_type: 'Text' },
   ]
   const reading = { title: 'title', headers: ['created_at'], body: 'message' }
-  await admin.post('/api/table_def', { name: 'Reading Note', columns, reading_presentation: reading })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Reading Note', columns, reading_presentation: reading })
   expect(await admin.get('/api/table/Reading%20Note:meta')).toMatchObject({ reading_presentation: reading })
   await admin.put('/api/table_def/Reading%20Note', { columns, reading_presentation: { ...reading, body: 'title' } })
   expect(await admin.get('/api/table/Reading%20Note:meta')).toMatchObject({ reading_presentation: { ...reading, body: 'title' } })

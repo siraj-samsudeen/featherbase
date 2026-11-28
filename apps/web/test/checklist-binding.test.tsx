@@ -53,7 +53,7 @@ test('discovery reaches a checklist in the third Sub-table, past two near-misses
   ])
     await admin.post('/api/table_def', child)
 
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Third Sub Parent',
     module: 'Custom',
     title_column: 'run_title',
@@ -104,7 +104,7 @@ test('discovery reaches a checklist in the third Sub-table, past two near-misses
 
 async function bareChecklist(admin: Parameters<typeof renderApp>[1], title?: string) {
   await admin.post('/api/table_def', subTable('Bare Step', [dataCol('item_label'), checkCol('done')]))
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Bare Run',
     module: 'Custom',
     ...(title ? { title_column: title } : {}),

@@ -371,7 +371,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     expect(other).not.toHaveProperty('task_title')
     await expectRefused(member.post('/api/save_row', { table: 'other.task', row: { ...other, quantity: 18 } }), 403)
     await expectRefused(admin.post('/api/save_row', { table: 'other.task', row: { ...other, quantity: -2 } }), 417)
-    await admin.post('/api/table_def', { name: 'Package pointer', id_pattern: 'prompt', columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Package pointer', id_pattern: 'prompt', columns: [
       { column_name: 'target', column_type: 'Reference', reference_table: 'other.task' },
     ] })
     await admin.post('/api/save_row', { table: 'Package pointer', row: { row_id: 'explicit', target: id } })

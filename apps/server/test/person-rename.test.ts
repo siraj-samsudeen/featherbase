@@ -62,7 +62,7 @@ describe('person-rename: the human record is a Person', () => {
     await expectRefused(admin.post('/api/table/Person', { row_id: 'psn_chosen', email: 'chosen@x.test' }), 417)
     // Nor through the amendment path: `amended_from` does not let a chosen id
     // in on an opaque-id Table (Codex review on #384).
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Opaque Doc', is_submittable: true, id_pattern: 'opaque:opq_',
       columns: [{ column_name: 'title', column_type: 'Data' }],
     })

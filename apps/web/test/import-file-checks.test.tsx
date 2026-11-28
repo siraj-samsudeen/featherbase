@@ -11,7 +11,7 @@ const DT = 'Iw Skip Target'
 
 test('rows with nothing in any mapped column are counted and skipped, before and after the import', async ({ admin }) => {
   clearSession()
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'sku', column_type: 'Data' },
@@ -58,7 +58,7 @@ test('a file that is not a CSV or spreadsheet is refused with a message, and not
 
 test('several rows with nothing to import are counted together', async ({ admin }) => {
   clearSession()
-  await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'sku', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'sku', column_type: 'Data' }] })
   await renderApp(`/featherbase/admin/import?table=${encodeURIComponent(DT)}`, admin)
   const csv = 'sku,note\nA-1,first\n,a note\n,another note\n'
   const bytes = new TextEncoder().encode(csv).buffer

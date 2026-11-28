@@ -17,7 +17,7 @@ const FILE = tableRef('File')
 const COMMENT = tableRef('Comment')
 
 async function setup(admin: TestClient, createUser: CreateUserFn) {
-  await admin.post('/api/table_def', { name: PLAIN, columns: [{ column_name: 'subject', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: PLAIN, columns: [{ column_name: 'subject', column_type: 'Data' }] })
   // The agent reads only the rows they created, but holds broad read, edit
   // and delete on Comment and File.
   const agent = await createUserWithRole(admin, createUser, {
@@ -123,7 +123,7 @@ describe('#609: attaching follows the row too', () => {
 
   test('files on settings follow the settings read grant', async ({ admin, createUser }) => {
     const { agent } = await setup(admin, createUser)
-    await admin.post('/api/table_def', { name: 'Rafd Settings', kind: 'settings', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Rafd Settings', kind: 'settings', columns: [{ column_name: 'title', column_type: 'Data' }] })
     await grantRole(admin, { role: ROLE, table: 'Rafd Settings', can_read: true })
     await admin.post('/api/save_row', { table: 'File', row: { file_name: 'settings.pdf', ref_table: 'Rafd Settings', ref_name: 'Rafd Settings' } })
     expect(await fileNames(agent, [['ref_table', '=', 'Rafd Settings']])).toEqual(['settings.pdf'])
@@ -199,7 +199,7 @@ describe('#609: attaching follows the row too', () => {
 
   test('the files on a source-bound row show to whoever may read every row of it', async ({ admin, createUser }) => {
     const { agent } = await setup(admin, createUser)
-    await admin.post('/api/table_def', { name: 'Rafd Outside', id_pattern: 'prompt', columns: [{ column_name: 'subject', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Rafd Outside', id_pattern: 'prompt', columns: [{ column_name: 'subject', column_type: 'Data' }] })
     await admin.post('/api/save_row', { table: 'Rafd Outside', row: { row_id: 'o-1', subject: 'Outside' } })
     await grantRole(admin, { role: ROLE, table: 'Rafd Outside', tier: 'basic', can_read: true })
     await admin.post('/api/save_row', { table: 'File', row: { file_name: 'outside.pdf', ref_table: 'Rafd Outside', ref_name: 'o-1' } })
@@ -210,7 +210,7 @@ describe('#609: attaching follows the row too', () => {
 
   test('the files on a source-bound row stay hidden from a reader of only some of its rows', async ({ admin, createUser }) => {
     const { agent } = await setup(admin, createUser)
-    await admin.post('/api/table_def', { name: 'Rafd Outside', id_pattern: 'prompt', columns: [{ column_name: 'subject', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Rafd Outside', id_pattern: 'prompt', columns: [{ column_name: 'subject', column_type: 'Data' }] })
     await admin.post('/api/save_row', { table: 'Rafd Outside', row: { row_id: 'o-1', subject: 'Outside' } })
     await admin.post('/api/save_row', { table: 'File', row: { file_name: 'outside.pdf', ref_table: 'Rafd Outside', ref_name: 'o-1' } })
     await sql`update table_def set data_source = 'outside-db' where name = 'Rafd Outside'`

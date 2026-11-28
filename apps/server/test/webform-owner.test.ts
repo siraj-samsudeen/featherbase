@@ -14,7 +14,7 @@ const ROLE = 'Wf Owner Customer'
 const ROUTE = 'wfown-request'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [{ column_name: 'subject', column_type: 'Data', reqd: true }],
   })

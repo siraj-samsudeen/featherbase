@@ -12,7 +12,7 @@ import type { TestClient } from 'feather-testing-postgres'
 const DT = 'Cache Probe DT'
 
 async function makeDT(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Old Label' }],
   })

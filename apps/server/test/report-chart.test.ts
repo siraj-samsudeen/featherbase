@@ -15,7 +15,7 @@ const DASH = 'Rc Srv Dashboard'
 // Each test rebuilds the Table, rows, report, and dashboard inside its own
 // rolled-back transaction.
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: 'prompt',
     columns: [

@@ -8,12 +8,12 @@ const DT = 'Sbm Expense'
 const PLAIN = 'Sbm Plain'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     is_submittable: true,
     columns: [{ column_name: 'amount', column_type: 'Currency' }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: PLAIN,
     columns: [{ column_name: 'x', column_type: 'Data' }],
   })

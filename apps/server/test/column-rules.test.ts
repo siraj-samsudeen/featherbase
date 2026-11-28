@@ -12,7 +12,7 @@ const DT = 'Cr Note'
 const ROLE = 'Cr Note Reader'
 
 async function setup(admin: TestClient, createUser: CreateUserFn) {
-  await admin.post('/api/table_def', { name: DT, title_column: 'secret', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, title_column: 'secret', columns: [
     { column_name: 'code', column_type: 'Data' },
     { column_name: 'secret', column_type: 'Data', tier: 'restricted' },
   ] })
@@ -53,7 +53,7 @@ describe('creator-scoped Columns', () => {
     await admin.post('/api/table_def', { name: 'Cr Line', kind: 'sub_table', columns: [
       { column_name: 'qty', column_type: 'Int' }, { column_name: 'unit_price', column_type: 'Float' },
     ] })
-    await admin.post('/api/table_def', { name: 'Cr Order', columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Cr Order', columns: [
       { column_name: 'label', column_type: 'Data' }, { column_name: 'lines', column_type: 'Sub-table', row_table: 'Cr Line' },
     ] })
     const order = await admin.post<{ row_id: string; updated_at: string; lines: { row_id: string }[] }>('/api/save_row', {
@@ -84,12 +84,12 @@ describe('creator-scoped Columns', () => {
 
 describe('line items outside a grant', () => {
   async function order(admin: TestClient) {
-    await admin.post('/api/table_def', { name: 'Cg Person Ref', columns: [{ column_name: 'label', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Cg Person Ref', columns: [{ column_name: 'label', column_type: 'Data' }] })
     const who = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Cg Person Ref', row: { label: 'Known' } })
     await admin.post('/api/table_def', { name: 'Cg Line', kind: 'sub_table', columns: [
       { column_name: 'qty', column_type: 'Int' }, { column_name: 'who', column_type: 'Reference', reference_table: 'Cg Person Ref' },
     ] })
-    await admin.post('/api/table_def', { name: 'Cg Order', columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Cg Order', columns: [
       { column_name: 'label', column_type: 'Data' }, { column_name: 'lines', column_type: 'Sub-table', row_table: 'Cg Line' },
     ] })
     const row = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Cg Order', row: { label: 'O-1', lines: [{ qty: 1, who: who.row_id }] } })
@@ -170,7 +170,7 @@ describe('listed grants on platform Tables', () => {
   })
 
   test('an unchanged default Settings value does not block a permitted change', async ({ admin, createUser }) => {
-    await admin.post('/api/table_def', { name: 'Cr Settings', kind: 'settings', columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Cr Settings', kind: 'settings', columns: [
       { column_name: 'greeting', column_type: 'Data' }, { column_name: 'region', column_type: 'Data', default_value: 'South' },
     ] })
     const settings = await admin.get<{ columns: { row_id: string; column_name: string }[] }>('/api/table/Table/Cr%20Settings')
@@ -190,7 +190,7 @@ describe('listed grants on platform Tables', () => {
 describe('history of a row with line items', () => {
   test('a reader who sees every Column and line-item Column reads its history; a hidden line-item Column withholds it', async ({ admin, createUser }) => {
     await admin.post('/api/table_def', { name: 'Hv Line', kind: 'sub_table', columns: [{ column_name: 'qty', column_type: 'Int' }] })
-    await admin.post('/api/table_def', { name: 'Hv Order', columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Hv Order', columns: [
       { column_name: 'label', column_type: 'Data' }, { column_name: 'lines', column_type: 'Sub-table', row_table: 'Hv Line' },
     ] })
     const order = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Hv Order', row: { label: 'H-1', lines: [{ qty: 1 }] } })

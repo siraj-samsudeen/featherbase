@@ -12,7 +12,7 @@ import { test, expect, renderApp } from './pg-test'
 const DT = 'Pv Order'
 
 async function setup(admin: TestClient, customer = 'Wayne Enterprises') {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: 'prompt',
     columns: [
@@ -141,7 +141,7 @@ test('PRN-001: print view shows labels, values, and child tables with no chrome'
       { column_name: 'qty', column_type: 'Int' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Pv Lined',
     id_pattern: 'prompt',
     columns: [
@@ -188,7 +188,7 @@ test('a letterhead chosen and then set back to automatic prints the default agai
 
 test('a choice prints as its label, and a Sub-table with no rows says so', async ({ admin }) => {
   await admin.post('/api/table_def', { name: 'Pv Line', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data' }] })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Pv Ticket',
     id_pattern: 'prompt',
     columns: [
@@ -224,7 +224,7 @@ test('a format with no wording prints an empty page body', async ({ admin }) => 
 
 test('columns and a Sub-table stored with no label print under their column names', async ({ admin, db }) => {
   await admin.post('/api/table_def', { name: 'Pv Bare Line', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data' }] })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Pv Bare',
     id_pattern: 'prompt',
     columns: [

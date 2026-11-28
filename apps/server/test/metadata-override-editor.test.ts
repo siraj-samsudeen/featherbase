@@ -29,7 +29,7 @@ test('unknown supplied IDs still refuse an accidental update', async ({ admin })
 
 test('moving an adjustment restores the old target served metadata', async ({ admin }) => {
   for (const name of ['Editor Source', 'Editor Destination'])
-    await admin.post('/api/table_def', { name, columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name, columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   const row = await admin.post<{ row_id: string; updated_at: string }>('/api/table/Metadata%20Override', {
     table_name: 'Editor Source', column_name: 'title', property: 'label', value: 'Headline',
   })
@@ -46,7 +46,7 @@ test('moving an adjustment restores the old target served metadata', async ({ ad
 })
 
 test('a column setting has one editable adjustment', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Editor Unique', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Editor Unique', columns: [
     { column_name: 'title', column_type: 'Data' }, { column_name: 'other', column_type: 'Data' },
   ] })
   const adjustment = { table_name: 'Editor Unique', column_name: 'title', property: 'label', value: 'Headline' }
@@ -61,7 +61,7 @@ test('a column setting has one editable adjustment', async ({ admin }) => {
 })
 
 test('Whole Table uniqueness normalizes empty scope', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Editor Whole', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Editor Whole', columns: [{ column_name: 'title', column_type: 'Data' }] })
   const adjustment = { table_name: 'Editor Whole', property: 'label', value: 'Whole label' }
   await admin.post('/api/table/Metadata%20Override', { ...adjustment, column_name: null })
   await expect(admin.post('/api/table/Metadata%20Override', { ...adjustment, column_name: '' })).rejects.toMatchObject({
@@ -72,7 +72,7 @@ test('Whole Table uniqueness normalizes empty scope', async ({ admin }) => {
 
 test('retargeting to an occupied setting refuses the move', async ({ admin }) => {
   for (const name of ['Editor Occupied', 'Editor Original'])
-    await admin.post('/api/table_def', { name, columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name, columns: [{ column_name: 'title', column_type: 'Data' }] })
   const adjustment = { column_name: 'title', property: 'label', value: 'Headline' }
   await admin.post('/api/table/Metadata%20Override', { ...adjustment, table_name: 'Editor Occupied' })
   const row = await admin.post<{ row_id: string; updated_at: string }>('/api/table/Metadata%20Override', {
@@ -85,7 +85,7 @@ test('retargeting to an occupied setting refuses the move', async ({ admin }) =>
 })
 
 test('an adjustment to a Column the Table no longer has changes nothing', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Editor Dropped', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Editor Dropped', columns: [
     { column_name: 'title', column_type: 'Data', label: 'Title' }, { column_name: 'gone', column_type: 'Data', label: 'Gone' },
   ] })
   await admin.post('/api/table/Metadata%20Override', { table_name: 'Editor Dropped', column_name: 'gone', property: 'label', value: 'Was here' })

@@ -25,7 +25,7 @@ test("a list's own title cell is the name alone", async ({ admin }) => {
 
 test('a link to a row with a made-up id shows no code', async ({ admin }) => {
   await seedSites(admin)
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Nv Audit', id_pattern: 'hash',
     columns: [
       { column_name: 'topic', column_type: 'Data', in_list_view: true },

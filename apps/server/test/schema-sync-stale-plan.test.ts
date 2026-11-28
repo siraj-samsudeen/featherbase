@@ -62,7 +62,7 @@ describe('META-004: schema sync does not leave stale prepared statements', () =>
   it('reads and writes keep working across repeated column additions', async () => {
     const created = await areq('/api/table_def', {
       method: 'POST',
-      body: JSON.stringify({ name: DT, columns: [{ column_name: 'a', column_type: 'Data' }] }),
+      body: JSON.stringify({ row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'a', column_type: 'Data' }] }),
     })
     await expectStatus(created, 201)
     const doc = (await (

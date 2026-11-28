@@ -12,14 +12,14 @@ const CUSTOMER = 'Rn Customer'
 const ORDER = 'Rn Order'
 
 async function seed(admin: Parameters<typeof renderApp>[1]) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: CUSTOMER, id_pattern: 'prompt', title_column: 'customer_name',
     columns: [
       { column_name: 'customer_name', label: 'Customer Name', column_type: 'Data', in_list_view: true },
       { column_name: 'city', label: 'City', column_type: 'Data', in_list_view: true },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: ORDER, id_pattern: 'prompt',
     columns: [
       { column_name: 'item', label: 'Item', column_type: 'Data', in_list_view: true },

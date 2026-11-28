@@ -37,7 +37,7 @@ test('the Gantt view skips malformed external dates without hiding valid neighbo
   await admin.post('/api/table/Data%20Source', { row_id: 'web-gantt', engine: 'postgres', url_env: ENV, default_schema: 'web_sb', access: 'read_only' })
   // The external driver returns the real source's text. No native Date
   // write, fabricated metadata or callback can supply this malformed value.
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'External Schedule', data_source: 'web-gantt', external_schema: 'web_sb', external_table: 'schedule', external_pk: 'id',
     columns: [
       { column_name: 'start', column_type: 'Date', source_column: 'starts' },

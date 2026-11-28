@@ -18,9 +18,9 @@ const T = { timeout: 10_000 }
 /** Two Tables whose labels differ from their names, the way an app's Tables are
  *  installed (an app's manifest names "tickets.ticket" and labels it "Ticket"). */
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', { name: VISIT, id_pattern: 'prompt', title_column: 'place',
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: VISIT, id_pattern: 'prompt', title_column: 'place',
     columns: [{ column_name: 'place', column_type: 'Data', label: 'Place', in_list_view: true }] })
-  await admin.post('/api/table_def', { name: NOTE, id_pattern: 'prompt',
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: NOTE, id_pattern: 'prompt',
     columns: [{ column_name: 'visit', column_type: 'Reference', reference_table: VISIT, label: 'Visit', in_list_view: true }] })
   await sql`update table_def set label = case name when ${VISIT} then 'Store visit' else 'Visit note' end where name in (${VISIT}, ${NOTE})`
   invalidateMeta()

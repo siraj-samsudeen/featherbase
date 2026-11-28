@@ -152,7 +152,7 @@ describe("the scope provider's read context", () => {
   // #967: an app may name an instance Table it reads without the mark, so role grants decide who edits it.
   test('reads an unmarked instance Table the app names, and still not one it only declares', async ({ admin, createUser }) => {
     const { user, roster } = await setup(admin, createUser)
-    await admin.post('/api/table_def', { name: 'Roster Extra', columns: [{ column_name: 'note', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Roster Extra', columns: [{ column_name: 'note', column_type: 'Data' }] })
     await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
     roster.faults.readInstance = true
     const binding = await findScopeProvider()
@@ -162,7 +162,7 @@ describe("the scope provider's read context", () => {
 
   test.for([[false, 403], [true, 200]] as const)('reads a declared instance Table only when it is marked as deciding scope (marked: %s)', async ([marked, status], { admin, createUser }) => {
     const { user, roster } = await setup(admin, createUser)
-    await admin.post('/api/table_def', { name: 'Roster Extra', decides_scope: marked, columns: [{ column_name: 'note', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Roster Extra', decides_scope: marked, columns: [{ column_name: 'note', column_type: 'Data' }] })
     await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
     roster.faults.readInstance = true
     const response = await user.fetch(read + 'places', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: {} }) })
@@ -226,7 +226,7 @@ export const scopeProviders = {
   test('refuses a marked Table with a Sub-table, so its child rows never reach the provider', async ({ admin, createUser }) => {
     const { user, roster } = await setup(admin, createUser)
     await admin.post('/api/table_def', { name: 'Roster Extra Line', kind: 'sub_table', columns: [{ column_name: 'code', column_type: 'Data' }] })
-    await admin.post('/api/table_def', { name: 'Roster Extra', decides_scope: true, columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Roster Extra', decides_scope: true, columns: [
       { column_name: 'note', column_type: 'Data' }, { column_name: 'lines', column_type: 'Sub-table', row_table: 'Roster Extra Line' }] })
     const parent = await admin.post<{ row_id: string }>(tableRef('Roster Extra').url, { note: 'x', lines: [{ code: 'hidden-child' }] })
     roster.faults.getInstance = parent.row_id
@@ -900,7 +900,7 @@ describe('a scope provider checking whether a Table is installed', () => {
   })
 
   test('an installed Table it may read is available, and reads as before', async ({ admin, createUser }) => {
-    await admin.post('/api/table_def', { name: 'Buyer Desk', columns: [{ column_name: 'store', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Buyer Desk', columns: [{ column_name: 'store', column_type: 'Data' }] })
     await admin.post('/api/save_row', { table: 'Buyer Desk', row: { store: 'N2' } })
     const { user, binding } = await bind(admin, createUser, async documents => {
       if (!(await documents.available('Buyer Desk'))) return []
@@ -912,7 +912,7 @@ describe('a scope provider checking whether a Table is installed', () => {
 
   // #1280: a provider may ask for columns too, to read one an instance may not have yet without failing everyone's scope.
   test('with columns named, a Table is available only where it has every one of them', async ({ admin, createUser }) => {
-    await admin.post('/api/table_def', { name: 'Buyer Desk', columns: [{ column_name: 'store', column_type: 'Data' }, { column_name: 'kind', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Buyer Desk', columns: [{ column_name: 'store', column_type: 'Data' }, { column_name: 'kind', column_type: 'Data' }] })
     const seen: boolean[] = []
     const { user, binding } = await bind(admin, createUser, async documents => {
       seen.push(await documents.available('Buyer Desk', []), await documents.available('Buyer Desk', ['store', 'kind']),
@@ -926,7 +926,7 @@ describe('a scope provider checking whether a Table is installed', () => {
   // Codex round 4 on #1280: an optional column is read only after the run confirmed it, so marking a column
   // optional can never hide a read that would fail on an instance without it.
   test('an optional column read without checking it first refuses the scope, even where it exists; checked first, it reads', async ({ admin, createUser }) => {
-    await admin.post('/api/table_def', { name: 'Buyer Desk', columns: [{ column_name: 'store', column_type: 'Data' }, { column_name: 'kind', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Buyer Desk', columns: [{ column_name: 'store', column_type: 'Data' }, { column_name: 'kind', column_type: 'Data' }] })
     await admin.post('/api/save_row', { table: 'Buyer Desk', row: { store: 'N2', kind: 'Store' } })
     const more = { tables: ['placeroster.position', 'Buyer Desk'], unmarkedTables: ['Buyer Desk'], optionalColumns: { 'Buyer Desk': ['kind'] } }
     const { user, binding } = await bind(admin, createUser, async () => place, more)
@@ -983,7 +983,7 @@ describe('a scope provider checking whether a Table is installed', () => {
   })
 
   test('a Table the provider did not declare, or may not read unmarked, is not available', async ({ admin, createUser }) => {
-    await admin.post('/api/table_def', { name: 'Buyer Desk', columns: [{ column_name: 'store', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Buyer Desk', columns: [{ column_name: 'store', column_type: 'Data' }] })
     const seen: boolean[] = []
     const { user, binding } = await bind(admin, createUser, async documents => {
       seen.push(await documents.available('Buyer Desk'), await documents.available('scopeproof.object'))

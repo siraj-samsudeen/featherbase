@@ -8,6 +8,7 @@ const date = column_name => ({ column_name, column_type: 'Date' })
 const check = column_name => ({ column_name, column_type: 'Check' })
 const choice = (column_name, ...choices) => ({ column_name, column_type: 'Choice', choices: choices.join('\n') })
 export const JOBS = ['Staff', 'Team Leader', 'Department Manager', 'Floor Manager', 'Store Manager', 'Cluster Manager', 'Chief Operating Officer', 'Director', 'Managing Director', 'Head office staff']
+// #1459: each says who reads which of its rows: every row, to whoever is granted the Table (Master Data Editor).
 export const BASE_TABLES = [
   { name: 'Cluster', module: 'Organisation', id_pattern: 'field:code', title_column: 'name', columns: [data('code'), data('name'), data('cluster_manager')] },
   { name: 'Operating Region', module: 'Organisation', id_pattern: 'field:region', title_column: 'region', columns: [data('region')] },
@@ -38,7 +39,7 @@ export const BASE_TABLES = [
   { name: 'Merchandise Assignment', module: 'Organisation', id_pattern: 'field:assignment_id', title_column: 'assignment_id', columns: [data('assignment_id'), ref('employee', 'Employee'),
     choice('responsibility', 'Buyer', 'Category head', 'Subdivision head', 'Division head', 'Merchandising head'), ref('division', 'Division'), ref('subdivision', 'Subdivision'),
     ref('category', 'Category'), ref('subcategory', 'Subcategory'), ref('operating_region', 'Operating Region'), date('starts_on'), date('ends_on'), data('source_key')] },
-]
+].map(table => ({ row_rule: { kind: 'all' }, ...table }))
 const NOT_LINKED = new Set(['Operating Region', 'Division', 'Subdivision', 'Category'])
 /** What the instance's `dash.linked_tables` setting lists: the manifest's `baseTables.read`. */
 export const LINKED_TABLES = BASE_TABLES.map(table => table.name).filter(name => !NOT_LINKED.has(name))

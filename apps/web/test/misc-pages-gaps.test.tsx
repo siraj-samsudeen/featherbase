@@ -26,13 +26,13 @@ test('the Google callback with a code the server does not know goes back to the 
 })
 
 test('the print page of a row that is not there says it cannot be loaded', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Mpg Order', id_pattern: 'prompt', columns: [{ column_name: 'item', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Mpg Order', id_pattern: 'prompt', columns: [{ column_name: 'item', column_type: 'Data' }] })
   await renderApp(`/featherbase/print/mpg-order/no-such-order`, admin)
   expect(await screen.findByText('Cannot load Mpg Order no-such-order', {}, { timeout: 8000 })).toBeInTheDocument()
 })
 
 test('Print opens the browser print dialog', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Mpg Order', id_pattern: 'prompt', columns: [{ column_name: 'item', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Mpg Order', id_pattern: 'prompt', columns: [{ column_name: 'item', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Mpg Order', row: { row_id: 'ord-1', item: 'tea' } })
   const print = vi.spyOn(window, 'print').mockImplementation(() => {})
   await renderApp(`/featherbase/print/mpg-order/ord-1`, admin)

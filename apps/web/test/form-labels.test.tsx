@@ -7,7 +7,7 @@ test('generated labels resolve real controls, stay stable on edits, and distingu
     name: 'Label Line', kind: 'sub_table',
     columns: [{ column_name: 'description', column_type: 'Data', label: 'Description' }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Label Form',
     columns: [
       { column_name: 'description', column_type: 'Data', label: 'Description' },

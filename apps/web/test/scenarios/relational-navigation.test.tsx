@@ -317,12 +317,12 @@ describe('relational-navigation', () => {
 
   scenario("A section's job assignments read as its employees", async ({ admin }, step) => {
     await step('a section has job assignments, each linking the section to an employee', async () => {
-      await admin.post('/api/table_def', { name: 'Sc Section', id_pattern: 'prompt', title_column: 'section_name',
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Sc Section', id_pattern: 'prompt', title_column: 'section_name',
         columns: [{ column_name: 'section_name', column_type: 'Data', label: 'Section', in_list_view: true },
           { column_name: 'floor', column_type: 'Data', label: 'Floor', in_list_view: true }] })
-      await admin.post('/api/table_def', { name: 'Sc Employee', id_pattern: 'prompt', title_column: 'employee_name',
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Sc Employee', id_pattern: 'prompt', title_column: 'employee_name',
         columns: [{ column_name: 'employee_name', column_type: 'Data', label: 'Name', in_list_view: true }] })
-      await admin.post('/api/table_def', { name: 'Sc Job Assignment', id_pattern: 'field:assignment_id', title_column: 'assignment_id', columns: [
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Sc Job Assignment', id_pattern: 'field:assignment_id', title_column: 'assignment_id', columns: [
         { column_name: 'assignment_id', column_type: 'Data', label: 'Assignment' },
         { column_name: 'section', column_type: 'Reference', reference_table: 'Sc Section', label: 'Section' },
         { column_name: 'employee', column_type: 'Reference', reference_table: 'Sc Employee', label: 'Employee' },

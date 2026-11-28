@@ -54,7 +54,7 @@ async function threeMeenas(admin: TestClient) {
 
 describe('#1345: a Table names the column through which its rows are a person\'s record', () => {
   test('it must be a Reference to Person; an update that leaves it out keeps it; a rename carries it', async ({ admin }) => {
-    const bad = await admin.fetch('/api/table_def', { method: 'POST', body: JSON.stringify({
+    const bad = await admin.fetch('/api/table_def', { method: 'POST', body: JSON.stringify({ row_rule: { kind: 'all' },
       name: 'Pl Bad', person_column: 'note', columns: [{ column_name: 'note', column_type: 'Data' }] }) })
     expect(bad.status).toBe(417)
     expect(await bad.json()).toMatchObject({ error: { fields: { person_column: 'note is not a Reference to Person on this Table' } } })

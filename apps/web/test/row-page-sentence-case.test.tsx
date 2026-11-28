@@ -9,7 +9,7 @@ const TABLE = 'Sc Ticket'
 type Admin = Parameters<typeof renderApp>[1]
 
 async function openTab(admin: Admin, tab: string) {
-  await admin.post('/api/table_def', { name: TABLE, columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: TABLE, columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   for (const property of ['enable_tags', 'enable_discussion', 'enable_assignments', 'enable_files'])
     await admin.post('/api/save_row', { table: 'Metadata Override', row: { table_name: TABLE, property, value: 'true' } })
   const row = (await admin.post('/api/save_row', { table: TABLE, row: { title: 'Leaking roof' } })) as { row_id: string }

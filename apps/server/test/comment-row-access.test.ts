@@ -19,7 +19,7 @@ const COMMENT = tableRef('Comment')
 const VERSION = tableRef('Version')
 
 async function setup(admin: TestClient, createUser: CreateUserFn) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     track_changes: true,
     columns: [
@@ -27,7 +27,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn) {
       { column_name: 'payout', column_type: 'Currency', tier: 'restricted' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: PLAIN,
     track_changes: true,
     columns: [{ column_name: 'subject', column_type: 'Data' }],

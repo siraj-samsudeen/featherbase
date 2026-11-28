@@ -25,7 +25,7 @@ async function fixture() {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
   const table = `Security race ${randomBytes(6).toString('hex')}`
-  await expectStatus(await send('/api/table_def', { name: table, id_pattern: 'prompt', columns: [{ column_name: 'amount', column_type: 'Int' }] }), 201)
+  await expectStatus(await send('/api/table_def', { row_rule: { kind: 'all' }, name: table, id_pattern: 'prompt', columns: [{ column_name: 'amount', column_type: 'Int' }] }), 201)
   const relation = await tableRelation(table)
   const url = `/api/table/${encodeURIComponent(table)}/original`
   const save = (table: string, row: Record<string, unknown>) => send('/api/save_row', { table, row })

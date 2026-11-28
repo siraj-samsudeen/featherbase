@@ -22,7 +22,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn, tier: 'basic' 
       { column_name: 'unit_cost', column_type: 'Currency', tier: 'restricted', default_value: '1' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: PARENT,
     columns: [
       { column_name: 'customer', column_type: 'Data' },

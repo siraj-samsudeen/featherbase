@@ -13,7 +13,7 @@ type Admin = Parameters<typeof renderApp>[1]
 const T = 'Tnm Store'
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: T,
     columns: [{ column_name: 'code', column_type: 'Data', label: 'Store code' }],
   })
@@ -66,7 +66,7 @@ test('the Naming page opens from the Table administration menu of the list', asy
 
 test('switching a random-id Table to a series offers the prefix taken from its name, and stores the series', async ({ admin }) => {
   const user = userEvent.setup()
-  await admin.post('/api/table_def', { name: 'Naming Demo', id_pattern: 'hash', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Naming Demo', id_pattern: 'hash', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await renderApp('/featherbase/admin/table/naming-demo/naming', admin)
   const naming = await screen.findByTestId('naming-naming', {}, { timeout: 8000 })
   expect(naming).toHaveValue('hash')
@@ -81,7 +81,7 @@ test('switching a random-id Table to a series offers the prefix taken from its n
 
 test('choosing a random id stores that rule', async ({ admin }) => {
   const user = userEvent.setup()
-  await admin.post('/api/table_def', { name: 'Tnm Bin', id_pattern: 'prompt', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Tnm Bin', id_pattern: 'prompt', columns: [{ column_name: 'code', column_type: 'Data' }] })
   await renderApp(`/featherbase/admin/table/tnm-bin/naming`, admin)
   await user.selectOptions(await screen.findByTestId('naming-naming', {}, { timeout: 8000 }), 'hash')
   await user.click(screen.getByTestId('naming-save'))

@@ -11,10 +11,10 @@ const salesOrg = (type: 'Data' | 'Reference') =>
   ({ column_name: 'sales_org', label: 'Sales org', column_type: type, ...(type === 'Reference' ? { reference_table: ORG } : {}) })
 
 async function seed(admin: TestClient, codes: string[]) {
-  await admin.post('/api/table_def', { name: ORG, id_pattern: 'prompt', columns: [{ column_name: 'org_name', label: 'Org name', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: ORG, id_pattern: 'prompt', columns: [{ column_name: 'org_name', label: 'Org name', column_type: 'Data' }] })
   for (const [id, org_name] of [['1150', 'Ramachandran'], ['1160', 'Lakshmi']])
     await admin.post('/api/save_row', { table: ORG, row: { row_id: id, org_name } })
-  await admin.post('/api/table_def', { name: PLANT, columns: [{ column_name: 'plant_name', label: 'Plant name', column_type: 'Data' }, salesOrg('Data')] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: PLANT, columns: [{ column_name: 'plant_name', label: 'Plant name', column_type: 'Data' }, salesOrg('Data')] })
   const rows: { row_id: string; updated_at: string }[] = []
   for (const [i, code] of codes.entries())
     rows.push(await admin.post('/api/save_row', { table: PLANT, row: { plant_name: `Plant ${i + 1}`, sales_org: code } }))
@@ -89,7 +89,7 @@ test('a text column still cannot become a number', async ({ admin }) => {
 
 test('a link to a settings Table is refused: its rows are not stored as rows', async ({ admin }) => {
   await seed(admin, ['1150'])
-  await admin.post('/api/table_def', { name: 'Tcl Prefs', kind: 'settings', columns: [{ column_name: 'home', label: 'Home', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Tcl Prefs', kind: 'settings', columns: [{ column_name: 'home', label: 'Home', column_type: 'Data' }] })
   const response = await admin.fetch(`/api/table_def/${encodeURIComponent(PLANT)}`, {
     method: 'PUT',
     body: JSON.stringify({ columns: [{ column_name: 'plant_name', label: 'Plant name', column_type: 'Data' }, { ...salesOrg('Reference'), reference_table: 'Tcl Prefs' }] }),

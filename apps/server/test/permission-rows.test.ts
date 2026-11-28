@@ -18,10 +18,10 @@ const ROLE = 'Pr Clerk'
 
 async function setup(admin: TestClient) {
   await admin.post('/api/table_def', { name: 'Pr Line', kind: 'sub_table', columns: [{ column_name: 'qty', column_type: 'Int' }] })
-  await admin.post('/api/table_def', { name: DT, columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [
     { column_name: 'title', column_type: 'Data' }, { column_name: 'lines', column_type: 'Sub-table', row_table: 'Pr Line' },
   ] })
-  await admin.post('/api/table_def', { name: 'Pr Other', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Pr Other', columns: [{ column_name: 'note', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
   const columns = async (table: string) => (await admin.get<{ columns: { row_id: string; column_name: string }[] }>(
     `/api/table/Table/${encodeURIComponent(table)}`)).columns
@@ -185,7 +185,7 @@ describe('a grant reaches only what its rows allow', () => {
     await admin.post('/api/table_def', { name: 'Pr Cost Line', kind: 'sub_table', columns: [
       { column_name: 'note', column_type: 'Data' }, { column_name: 'cost', column_type: 'Data', tier: 'restricted' },
     ] })
-    await admin.post('/api/table_def', { name: 'Pr Costed', columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Pr Costed', columns: [
       { column_name: 'title', column_type: 'Data' }, { column_name: 'margin', column_type: 'Data', tier: 'restricted' },
       { column_name: 'lines', column_type: 'Sub-table', row_table: 'Pr Cost Line' },
     ] })
@@ -212,9 +212,9 @@ describe('a grant reaches only what its rows allow', () => {
   })
 
   test('a related filter through a grid outside the listed Columns is refused', async ({ admin, createUser }) => {
-    await admin.post('/api/table_def', { name: 'Pr Ref', columns: [{ column_name: 'code', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Pr Ref', columns: [{ column_name: 'code', column_type: 'Data' }] })
     await admin.post('/api/table_def', { name: 'Pr Ref Line', kind: 'sub_table', columns: [{ column_name: 'who', column_type: 'Reference', reference_table: 'Pr Ref' }] })
-    await admin.post('/api/table_def', { name: 'Pr Holder', columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Pr Holder', columns: [
       { column_name: 'title', column_type: 'Data' }, { column_name: 'lines', column_type: 'Sub-table', row_table: 'Pr Ref Line' },
     ] })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Pr Lister' } })
@@ -243,7 +243,7 @@ describe('a grant reaches only what its rows allow', () => {
   })
 
   test('a reader of listed Columns can list a Table sorted by one they cannot read', async ({ admin, createUser }) => {
-    await admin.post('/api/table_def', { name: 'Pr Sorted', columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Pr Sorted', columns: [
       { column_name: 'title', column_type: 'Data' }, { column_name: 'unit_cost', column_type: 'Data' },
     ] })
     await sql`update table_def set sort_column = 'unit_cost', sort_order = 'asc' where name = 'Pr Sorted'`

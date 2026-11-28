@@ -11,7 +11,7 @@ const REPORT = 'Rc Report'
 const DASH = 'Rc Board'
 
 test('RPT-006: the chart reflects the report rows, and pinning shows it on the dashboard', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'region', column_type: 'Choice', choices: 'North\nSouth', in_list_view: true },

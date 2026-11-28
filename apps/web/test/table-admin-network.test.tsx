@@ -15,7 +15,7 @@ const DT = 'Tan Plant'
 const T = { timeout: 10_000 }
 
 async function openAdministration(admin: Admin, search = '') {
-  await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'city', column_type: 'Data', label: 'City', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'city', column_type: 'Data', label: 'City', in_list_view: true }] })
   await admin.post('/api/save_row', { table: DT, row: { city: 'Chennai' } })
   await renderApp(`/featherbase/admin/table/${tableSlug(DT)}${search}`, admin)
   await screen.findByTestId('list-view', {}, T)
@@ -56,7 +56,7 @@ test('an archive the network drops says in words that it failed', async ({ admin
 })
 
 test('an un-archive the network drops says in words that it failed', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'city', column_type: 'Data', label: 'City', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'city', column_type: 'Data', label: 'City', in_list_view: true }] })
   await admin.post(`/api/table_def/${encodeURIComponent(DT)}/archive`, { note: 'old' })
   await renderApp(`/featherbase/admin/table/${tableSlug(DT)}`, admin)
   const banner = await screen.findByTestId('archived-banner', {}, T)
@@ -78,7 +78,7 @@ test('deleting the Table when the network drops says in words that it failed', a
 
 test('a view the network drops says in words that it was not saved', async ({ admin }) => {
   const filters = encodeURIComponent(JSON.stringify([['city', '=', 'Chennai']]))
-  await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'city', column_type: 'Data', label: 'City', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'city', column_type: 'Data', label: 'City', in_list_view: true }] })
   await renderApp(`/featherbase/admin/table/${tableSlug(DT)}?filters=${filters}`, admin)
   await screen.findByTestId('list-view', {}, T)
   await openListMenu('Table administration')

@@ -188,7 +188,7 @@ async function seedVisits(admin: Parameters<typeof renderApp>[1]) {
     name: 'Nv Visit Line', kind: 'sub_table',
     columns: [{ column_name: 'site', column_type: 'Reference', reference_table: SITE, label: 'Site', in_list_view: true }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Nv Visit', id_pattern: 'prompt', title_column: 'visit_name',
     columns: [
       { column_name: 'visit_name', column_type: 'Data', label: 'Visit name', in_list_view: true },

@@ -11,7 +11,7 @@ type Meta = { columns: { column_name: string; column_type: string; reqd?: boolea
 
 test('a table built from cards stores what the cards said', async ({ admin }) => {
   const user = userEvent.setup()
-  await admin.post('/api/table_def', { name: 'Cc Region', columns: [{ column_name: 'label', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Cc Region', columns: [{ column_name: 'label', column_type: 'Data' }] })
   await renderApp('/featherbase/admin/new-table', admin)
   await screen.findByTestId('table-builder')
   await user.type(screen.getByTestId('dt-name'), 'Cc Depot')
