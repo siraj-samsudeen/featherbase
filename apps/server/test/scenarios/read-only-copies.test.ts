@@ -254,6 +254,27 @@ describe('read-only-copies', () => {
       expect(JSON.stringify(jobCalls())).not.toContain('GJ02'))
   })
 
+  scenario('The team leader hears that her line moved', async ({ admin, createUser }, step) => {
+    let lead!: TestClient
+    await step('the forecast lines copy holds run "Dec-1" with 1000 for store "LKS", subcategory "GJ01"',
+      () => holdingDec1(admin, [LKS_GJ01], { onNewLoad: 'carry_changes' }))
+    await step('the app tells the team leader of each subcategory that moves', async () => {
+      lead = await createUser({ email: 'team.leader@example.test', roles: [] })
+      ;(globalThis as { __copyproofLead?: string }).__copyproofLead = lead.user!
+    })
+    await step('run "Dec-2" replaces it with 1120 for "GJ01"', async () => {
+      await warehouse.publish('Dec-2', [run2(LKS_GJ01, '1120.00')])
+      const { snapshot } = await load(LINES)
+      await sql`delete from background_job where job_status = 'queued'
+        and (method <> 'copyproof.carry_changes' or payload->'new_load'->>'current' is distinct from ${snapshot!})`
+      await sql`update background_job set run_at = now() where job_status = 'queued'`
+      expect(await runOneJob()).toBe(true)
+    })
+    await step('the team leader has a notice that "GJ01" moved from 1000 to 1120', async () => {
+      expect(await sql`select subject, read from notification_log where for_user = ${lead.user!}`).toEqual([{ subject: 'GJ01 moved: 1000.00 to 1120.00', read: false }])
+    })
+  })
+
   scenario('A team leader sees only her store\'s lines', async ({ admin, createUser }, step) => {
     let reader!: TestClient
     let answer!: { status: number; body: unknown }
