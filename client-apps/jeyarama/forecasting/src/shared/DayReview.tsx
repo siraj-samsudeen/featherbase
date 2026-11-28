@@ -16,7 +16,7 @@ export interface DayLevel {
   /** What one is, in words: "Store", "Section". */
   name: string
   key: (s: SubDays) => string
-  /** Its words ("ATK Attakulangara"); the key otherwise. */
+  /** Its words ("LKS Lakeside"); the key otherwise. */
   label?: (s: SubDays) => string
   /** The grey line under its name: the section's floor. */
   sub?: (s: SubDays) => string

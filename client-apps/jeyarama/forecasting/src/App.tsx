@@ -133,7 +133,7 @@ const sectionInAddress = () => {
   return out.store && out.section ? out : {}
 }
 
-/** A Store Manager's or RB's Day Review and Needs Your Attention (#4935): ?reach=store&store=ATK, ?reach=region&region=Kerala. */
+/** A Store Manager's or RB's Day Review and Needs Your Attention (#4935): ?reach=store&store=LKS, ?reach=region&region=Kerala. */
 const reachInAddress = (): Reach | null => {
   const q = new URLSearchParams(window.location.search)
   if (q.get('reach') === 'store' && q.get('store')) return { kind: 'store', store: q.get('store')! }

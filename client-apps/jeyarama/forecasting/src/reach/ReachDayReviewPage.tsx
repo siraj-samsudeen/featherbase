@@ -2,7 +2,7 @@
 // the Team Leader's Day Review (shared/DayReview.tsx) with levels above the subcategories, in the latest official Run
 // whose month has started. A Store Manager explains a section's day or a subcategory's at their store; RB reads the
 // explanations. A region arrives store by store; the page works from the first.
-// /forecasting/?view=days&reach=store&store=ATK · ?view=days&reach=region&region=Kerala
+// /forecasting/?view=days&reach=store&store=LKS · ?view=days&reach=region&region=Kerala
 import { useEffect, useMemo, useState } from 'react'
 import { Card, EmptyState, PageHeader, RecordLink, RecordPagesProvider, Select, Skeleton, StatusPill } from '@featherbase/shop-floor'
 import { saveRow } from '../api'

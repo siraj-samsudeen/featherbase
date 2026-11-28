@@ -214,7 +214,7 @@ export function NeedsAttention({ findings, header, othersAsOf, tab: chosen, onTa
   openLabel?: string
   /** A page over many sections ('section': a store's) or stores ('store': a region's) groups its rows by them. */
   over?: 'section' | 'store'
-  /** What the page covers, in words ("ATK", "Kerala"); the section by default. */
+  /** What the page covers, in words ("LKS", "Kerala"); the section by default. */
   scopeName?: string
   /** After the answer line: how much of a region has arrived. */
   progress?: ReactNode

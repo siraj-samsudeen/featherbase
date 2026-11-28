@@ -2,7 +2,7 @@
 // store) (#4935): the Team Leader's tabs and drill pane (shared/Attention.tsx) over every section of the store, or
 // every store of the region, in the newest official Run. A region arrives store by store; the page works from the
 // first. A finding opens the Store Manager's or RB's review with its subcategory open.
-// /forecasting/?view=attention&reach=store&store=ATK · ?view=attention&reach=region&region=Kerala
+// /forecasting/?view=attention&reach=store&store=LKS · ?view=attention&reach=region&region=Kerala
 import { useEffect, useMemo, useState } from 'react'
 import { Card, EmptyState, PageHeader, RecordLink, Skeleton } from '@featherbase/shop-floor'
 import { NeedsAttention } from '../shared/Attention'
