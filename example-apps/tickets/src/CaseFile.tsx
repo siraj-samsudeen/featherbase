@@ -660,7 +660,8 @@ export function CaseFile({
                         )
                       : Object.fromEntries(
                           Object.entries(structured ?? {}).filter(
-                            ([key]) => key !== 'original',
+                            // #1463: the open link is drawn as its button in the header, not as a detail.
+                            ([key]) => key !== 'original' && key !== 'open',
                           ),
                         )
                   }

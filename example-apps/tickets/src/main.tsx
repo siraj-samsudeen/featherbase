@@ -410,7 +410,7 @@ function App() {
                 <span className="ticket-meta">
                   {[short(ticket.row_id), kindLabel(ticket.kind), ticket.assigned_to ? person(ticket.assigned_to) : 'Unassigned',
                     // #1397: a parent counts its sub-tickets; a sub-ticket a search found names its parent.
-                    ...(ticket.sub_tickets ? [`${ticket.sub_tickets.count} sub-tickets, ${ticket.sub_tickets.open} open`] : []),
+                    ...(ticket.sub_tickets ? [`${ticket.sub_tickets.count} ${ticket.sub_tickets.count === 1 ? 'sub-ticket' : 'sub-tickets'}, ${ticket.sub_tickets.open} open`] : []),
                     ...(ticket.parent_ticket ? [`under ${short(ticket.parent_ticket)}`] : [])]
                     .map((part, i) => <span key={i}>{i > 0 && ' · '}<span className={i === 2 && !ticket.assigned_to ? 'meta-part unassigned' : 'meta-part'}>{part}</span></span>)}
                 </span>
