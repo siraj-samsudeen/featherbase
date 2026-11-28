@@ -25,19 +25,21 @@ export function HowBuilt({ fc, adds, month = 'December', otherLabel = 'December-
   const tones = ['bg-action', 'bg-opportunity', 'bg-positive']
   const { groups: kinds, other } = evidenceOf(fc, adds, month)
   const groups = kinds.map((g, i) => ({ ...g, tone: tones[i] }))
+  // the bar is the three kinds of evidence, filling it (the mockup); the steps after them are listed under it
+  const whole = groups.reduce((t, g) => t + Math.max(0, g.value), 0) || 1
   return (
     <Card><div className="flex max-w-3xl flex-col gap-3 p-4" data-testid="how-built">
       <div className="flex flex-wrap items-start justify-between gap-2"><div className="text-lg font-bold">{title}</div>{picker}</div>
       <div className="text-sm text-ink-muted">{facts}</div>
-      <div className="flex h-7 overflow-hidden rounded-control">{groups.filter(g => g.value / (fc || 1) > 0.005).map(g => (
-        <div key={g.name} className={`${g.tone} flex items-center justify-center text-[12px] font-bold text-white`} style={{ width: `${(g.value / (fc || 1)) * 100}%` }}>{Math.round((g.value / (fc || 1)) * 100)}%</div>))}</div>
+      <div className="flex h-7 overflow-hidden rounded-control">{groups.filter(g => g.value / whole > 0.005).map(g => (
+        <div key={g.name} className={`${g.tone} flex items-center justify-center text-[12px] font-bold text-white`} style={{ width: `${(g.value / whole) * 100}%` }}>{Math.round((g.value / whole) * 100)}%</div>))}</div>
       <div className="flex flex-col gap-2.5">{groups.map(g => (
         <div key={g.name} className="grid grid-cols-[12px_1fr_auto] items-start gap-2.5"><span className={`mt-1 size-3 rounded-sm ${g.tone}`} />
           <span><b>{g.name}</b><br /><span className="text-[13px] text-ink-muted">{g.what}</span></span><b className="tabular-nums">{fmtINR(g.value)}</b></div>))}
         {Math.abs(other) >= 1 && <div className="grid grid-cols-[12px_1fr_auto] gap-2.5"><span /><span className="text-[13px] text-ink-muted">{otherLabel}</span><span className="tabular-nums">{other > 0 ? '+' : '−'}{fmtINR(Math.abs(other))}</span></div>}
       </div>
       {note && <p className="text-[13px] text-ink-muted">{note}</p>}
-      <div><Button variant="secondary" onClick={onDays}>Open its days ›</Button></div>
+      <div><Button variant="primary" onClick={onDays}>Open its days ›</Button></div>
     </div></Card>
   )
 }

@@ -112,7 +112,7 @@ export function DayReviewPage({ viewer, href, monthHref }: {
             monthLink={{ label: days.month.name, href: monthHref }} initialScope={scope} onScope={setScope} />
           : <HowBuilt fc={fc} adds={addsOf(inView)} month={days.month.name} otherLabel={PARTS.find(p => p.key === 'adj')!.label} onDays={() => setTab('days')}
             title={<>How Feather Forecast reached {inr(fc)} for {scope || days.section}</>}
-            facts={<>{days.store} · {days.section} · Forecast {inr(fc)} · AOP {aop ? inr(aop) : '—'} · {aop ? <StatusPill tone={aopTone(fc, aop)}>{pc(fc, aop)}</StatusPill> : 'no AOP'} · {inView.length} {inView.length === 1 ? 'subcategory' : 'subcategories'}</>}
+            facts={<>{days.store} · {days.section} · Forecast {inr(fc)} · {aop ? <>AOP {inr(aop)} <StatusPill tone={aopTone(fc, aop)}>{pc(fc, aop)}</StatusPill></> : 'no AOP'} · {inView.length} {inView.length === 1 ? 'subcategory' : 'subcategories'}</>}
             picker={<Select aria-label="Whose figure" value={scope} onChange={e => setScope(e.target.value)}>
               <option value="">{days.section} (section)</option>
               {days.built.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
