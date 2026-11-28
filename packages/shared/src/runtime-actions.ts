@@ -218,11 +218,6 @@ export interface RuntimeReadContext extends Omit<RuntimeActionContext, 'document
      *  shaped the same way. Only in a read declared `outbound` (E5). */
     live(name: string, filters?: DatasetFilters): Promise<DatasetAnswer>
   }
-  /** #1454: rows of the app's own Tables declared under `scopedTables`, limited to the reader's places as a
-   *  dataset's are (a read that is not person_scope has no places, so no rows). `filters` name declared keys. */
-  readonly scopedTables: {
-    list(table: string, filters?: DatasetFilters, options?: { fields?: string[] }): Promise<Record<string, unknown>[]>
-  }
   /** #625 (E5): write one Access Log row for the viewing person. The platform
    *  fills in who, the places, and what this read served for `dataset`. */
   recordView(details?: { dataset?: string }): Promise<void>

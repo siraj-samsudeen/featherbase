@@ -53,7 +53,7 @@ interface Client {
 async function rowInScope(principal: string, table: string, rowId: string): Promise<boolean> {
   const protectedRow = await needsMandatoryRowRead(table)
   if (!protectedRow && await isPrivileged(principal)) return true
-  if (!protectedRow && !(await getScopeMap(principal)).size && !(await scopeRequired(table))) return true
+  if (!protectedRow && !(await getScopeMap(principal)).size && !(await scopeRequired(table)) && !(await placeScoped(table))) return true
   const { getDoc } = await import('./document')
   try {
     await getDoc(table, rowId, principal)
@@ -76,6 +76,12 @@ async function deletedVisible(scope: Map<string, Set<string>>, table: string, ro
   return !narrowed.refs.length
 }
 
+/** #1454: a Table read only within each person's places. */
+async function placeScoped(table: string): Promise<boolean> {
+  const { placeScopeOf } = await import('./place-scope')
+  return (await placeScopeOf(table)) !== null
+}
+
 /** #246: a Table that refuses everyone without a Data Scope on its dimensions. */
 async function scopeRequired(table: string): Promise<boolean> {
   const { getMeta } = await import('./meta')
@@ -95,6 +101,9 @@ export async function eventVisibleTo(principal: string, msg: RealtimeEvent): Pro
   const protectedRow = await needsMandatoryRowRead(payload.table)
   if (protectedRow) return msg.event !== 'deleted' && rowInScope(principal, payload.table, String(payload.row_id))
   if (await isPrivileged(principal)) return true
+  // #1454: a row of a Table about places reaches only the people whose places hold it; a deleted one, whose places
+  // can no longer be read, reaches none of them (an id can name its store)
+  if (await placeScoped(payload.table)) return msg.event !== 'deleted' && rowInScope(principal, payload.table, String(payload.row_id))
   const scope = await getScopeMap(principal)
   if (!scope.size && !(await scopeRequired(payload.table))) return true
   const rowId = String(payload.row_id)

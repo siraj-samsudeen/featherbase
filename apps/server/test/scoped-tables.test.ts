@@ -1,8 +1,7 @@
-// #1454: an app's own Tables read within the reader's places. The app
-// `scopedproof` declares one of its Tables under `scopedTables`, mapped on
-// store and section as a dataset is; its person_scope read lists that Table.
-// The places come from test-apps/fixtures/place-roster, which a test tells
-// what to answer. Every row is made up.
+// #1454: a Table about places is read only within each person's places, on the ordinary read paths. The app
+// `scopedproof` declares its answers Table under `scopedTables`, mapped on store and section; its Answer Reader role
+// reads and writes the Table whole, and the platform narrows every read and write to the reader's places. The places
+// come from test-apps/fixtures/place-roster, which a test tells what to answer. Every row is made up.
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -11,34 +10,29 @@ import { afterEach, describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
 import { expectRefused } from './fixtures'
+import { eventVisibleTo } from '../src/realtime'
 
 const APP = 'scopedproof'
 const ANSWER = `${APP}.answer`
+const REASON = `${APP}.answer_reason`
 const provider = resolve('../..', 'test-apps/fixtures/place-roster')
 
-const SERVER = `export const platformVersion = '2026-10'
-const list = (ctx) => ctx.scopedTables.list('${ANSWER}', ctx.payload.filters, ctx.payload.fields ? { fields: ctx.payload.fields } : {})
-export const reads = { answers: list, as_table_policy: list, outside: list,
-  undeclared: (ctx) => ctx.scopedTables.list('${APP}.entry') }
-`
-const scoped = { policy: { kind: 'person_scope', readRoles: ['Answer Reader'], actionRoles: [] }, authorization: { kind: 'generic' } }
 const manifest = (more: Record<string, unknown> = {}) => ({
-  manifestVersion: 1, platformVersion: '2026-10', name: APP, title: 'Scoped Table proof', entryTable: `${APP}.entry`, server: 'server.mjs',
+  manifestVersion: 1, platformVersion: '2026-10', name: APP, title: 'Scoped Table proof', entryTable: `${APP}.entry`,
   tables: [
     { name: `${APP}.entry`, label: 'entry', id_pattern: 'prompt', columns: [{ column_name: 'body', column_type: 'Data' }] },
-    { name: `${APP}.answer_reason`, label: 'answer reason', kind: 'sub_table', columns: [{ column_name: 'code', column_type: 'Data' }] },
+    { name: REASON, label: 'answer reason', kind: 'sub_table', columns: [{ column_name: 'code', column_type: 'Data' }] },
     { name: ANSWER, label: 'answer', id_pattern: 'prompt', columns: [{ column_name: 'store', column_type: 'Data' }, { column_name: 'section', column_type: 'Data' },
       { column_name: 'body', column_type: 'Data' }, { column_name: 'notes', column_type: 'Text' },
-      { column_name: 'reasons', column_type: 'Sub-table', row_table: `${APP}.answer_reason` }] },
+      { column_name: 'reasons', column_type: 'Sub-table', row_table: REASON }] },
   ],
   roles: ['Answer Reader'],
-  // The reader may open the app; nobody but an administrator may read the answers' Table itself.
-  permissions: [{ table: `${APP}.entry`, role: 'Answer Reader', can_read: true }],
+  permissions: [
+    { table: `${APP}.entry`, role: 'Answer Reader', can_read: true },
+    { table: ANSWER, role: 'Answer Reader', can_read: true, can_write: true, can_create: true },
+    { table: REASON, role: 'Answer Reader', can_read: true, can_write: true, can_create: true },
+  ],
   scopedTables: [{ table: ANSWER, keys: ['body'], filters: { store: 'store', section: 'section' } }],
-  reads: { version: 1, tables: [`${APP}.entry`, ANSWER], operations: {
-    answers: scoped, outside: { ...scoped, outbound: true }, undeclared: scoped,
-    as_table_policy: { policy: { kind: 'table' }, authorization: { kind: 'generic' } },
-  } },
   ...more,
 })
 
@@ -48,12 +42,11 @@ async function writeApp(more: Record<string, unknown> = {}) {
   const dir = await mkdtemp(resolve('test/.scoped-proof-'))
   folders.push(dir)
   await writeFile(join(dir, 'package.json'), JSON.stringify({ name: `featherbase-${APP}`, version: '1.0.0', type: 'module' }))
-  await writeFile(join(dir, 'server.mjs'), SERVER)
   await writeFile(join(dir, 'featherbase.json'), JSON.stringify(manifest(more)))
   return dir
 }
 
-/** Installs the app and the place provider, and seeds four answers at two stores. */
+/** Installs the app and the place provider, and seeds four answers at two stores (two of them with two reasons). */
 async function installed(admin: TestClient) {
   expect(await discoverPackages([await writeApp(), provider])).toEqual([])
   await admin.post('/api/install_app', { name: APP })
@@ -61,108 +54,96 @@ async function installed(admin: TestClient) {
   for (const [row_id, store, section, body] of [['a1', 'N1', 'kids', 'north kids'], ['a2', 'N1', 'mens', 'north mens'],
     ['a3', 'S1', 'kids', 'south kids'], ['a4', 'S1', 'mens', 'south mens']])
     await admin.post('/api/save_row', { table: ANSWER, row: { row_id, store, section, body, notes: 'made up',
-      reasons: row_id === 'a1' ? [{ code: 'stockout' }, { code: 'festival' }] : [] } })
+      reasons: row_id === 'a1' || row_id === 'a4' ? [{ code: `${row_id}-stockout` }, { code: `${row_id}-festival` }] : [] } })
 }
 
-async function roster(): Promise<{ faults: { result?: unknown } }> {
+/** Every made-up person's places, while `run` runs: the provider answers `places` for everyone. */
+async function withPlaces<T>(places: unknown, run: () => Promise<T>): Promise<T> {
   const digest = availableRuntimeVersions().find((p) => p.name === 'placeroster')!.digest
-  return import(`${pathToFileURL(resolve(provider, 'server.mjs')).href}?artifact=${digest}`)
+  const roster = await import(`${pathToFileURL(resolve(provider, 'server.mjs')).href}?artifact=${digest}`) as { faults: { result?: unknown } }
+  roster.faults.result = places
+  try { return await run() } finally { delete roster.faults.result }
 }
+const ids = (rows: { row_id: string }[]) => rows.map((row) => row.row_id).sort()
+const list = async (client: TestClient, table = ANSWER, filters: unknown[] = []) =>
+  (await client.get<{ data: { row_id: string }[] }>(`/api/table/${encodeURIComponent(table)}?${new URLSearchParams({ filters: JSON.stringify(filters), limit_page_length: '500' })}`)).data
+const NORTH_AND_SOUTH_KIDS = [{ label: 'North', filters: { store: ['N1'] } }, { label: 'South kids', filters: { store: ['S1'], section: ['kids'] } }]
 
-/** `client`'s read `name`, with the provider answering `places`. */
-async function readAs(client: TestClient, name: string, places: unknown, payload: Record<string, unknown> = {}) {
-  const provider = await roster()
-  provider.faults.result = places
-  try {
-    const res = await client.fetch(`/api/app_reads/${APP}/${name}`, { method: 'POST', body: JSON.stringify({ payload }),
-      headers: { 'content-type': 'application/json', 'X-Featherbase-App-Version': `${APP}@1.0.0` } })
-    return { status: res.status, body: await res.json() as { result?: Record<string, unknown>[]; error?: { message: string } } }
-  } finally { delete provider.faults.result }
-}
-const ids = (answer: { body: { result?: Record<string, unknown>[] } }) => answer.body.result?.map((row) => row.row_id)
-
-describe('a scoped Table', () => {
-  test('answers the rows the reader’s places reach, and no others', async ({ admin, createUser }) => {
+describe('a Table about places', () => {
+  test('lists only the rows the reader’s places reach, on the ordinary Table read', async ({ admin, createUser }) => {
     await installed(admin)
     const reader = await createUser({ roles: ['Answer Reader'] })
-    // A whole store, and one section of another.
-    const answer = await readAs(reader, 'answers', [{ label: 'North', filters: { store: ['N1'] } },
-      { label: 'South kids', filters: { store: ['S1'], section: ['kids'] } }])
-    expect(answer.status).toBe(200)
-    expect(ids(answer)).toEqual(['a1', 'a2', 'a3'])
-    // The Table itself is not theirs to read.
-    await expectRefused(reader.get(`/api/table/${encodeURIComponent(ANSWER)}`), 403)
+    await withPlaces(NORTH_AND_SOUTH_KIDS, async () => {
+      expect(ids(await list(reader))).toEqual(['a1', 'a2', 'a3'])
+      // the reader's own filters narrow further, never wider
+      expect(ids(await list(reader, ANSWER, [['store', '=', 'S1']]))).toEqual(['a3'])
+      // a count is the same rows
+      const counted = await reader.post<{ data: { label: string; value: number }[] }>('/api/dashboard/chart', { table: ANSWER, group_by: 'store', filters: [] })
+      expect(Object.fromEntries(counted.data.map((c) => [c.label, c.value]))).toEqual({ N1: 2, S1: 1 })
+    })
   })
 
-  test('a row two places reach is answered once', async ({ admin, createUser }) => {
+  test('opens a row within the places, and refuses one outside them', async ({ admin, createUser }) => {
     await installed(admin)
     const reader = await createUser({ roles: ['Answer Reader'] })
-    expect(ids(await readAs(reader, 'answers', [{ label: 'North', filters: { store: ['N1'] } },
-      { label: 'North kids', filters: { store: ['N1'], section: ['kids'] } }]))).toEqual(['a1', 'a2'])
+    await withPlaces(NORTH_AND_SOUTH_KIDS, async () => {
+      expect(await reader.get(`/api/table/${encodeURIComponent(ANSWER)}/a3`)).toMatchObject({ body: 'south kids' })
+      await expectRefused(reader.get(`/api/table/${encodeURIComponent(ANSWER)}/a4`), 403, 'outside the places the org chart gives you')
+    })
+  })
+
+  test('a Sub-table’s rows are only as readable as the row they hang on', async ({ admin, createUser }) => {
+    await installed(admin)
+    const reader = await createUser({ roles: ['Answer Reader'] })
+    await withPlaces(NORTH_AND_SOUTH_KIDS, async () => {
+      const codes = (await reader.get<{ data: { code: string }[] }>(`/api/table/${encodeURIComponent(REASON)}?${new URLSearchParams({ fields: JSON.stringify(['code']) })}`)).data
+      expect(codes.map((c) => c.code).sort()).toEqual(['a1-festival', 'a1-stockout'])
+    })
   })
 
   test('a place naming a filter the Table does not map adds no row (fail closed)', async ({ admin, createUser }) => {
     await installed(admin)
     const reader = await createUser({ roles: ['Answer Reader'] })
-    expect(ids(await readAs(reader, 'answers', [{ label: 'North by line', filters: { store: ['N1'], line: ['L1'] } },
-      { label: 'South mens', filters: { store: ['S1'], section: ['mens'] } }]))).toEqual(['a4'])
+    await withPlaces([{ label: 'North by line', filters: { store: ['N1'], line: ['L1'] } }, { label: 'South mens', filters: { store: ['S1'], section: ['mens'] } }],
+      async () => expect(ids(await list(reader))).toEqual(['a4']))
   })
 
-  test('a read narrows by a declared key, never by another column', async ({ admin, createUser }) => {
+  test('someone with no places reads only the rows they wrote, and may write their own', async ({ admin, createUser }) => {
     await installed(admin)
     const reader = await createUser({ roles: ['Answer Reader'] })
-    const places = [{ label: 'Both', filters: { store: ['N1', 'S1'] } }]
-    expect(ids(await readAs(reader, 'answers', places, { filters: { body: ['north kids', 'south mens'] } }))).toEqual(['a1', 'a4'])
-    // A key can never reach past the places.
-    expect(ids(await readAs(reader, 'answers', [{ label: 'North', filters: { store: ['N1'] } }], { filters: { body: 'south mens' } }))).toEqual([])
-    const refused = await readAs(reader, 'answers', places, { filters: { notes: 'made up' } })
-    expect(refused.status).toBe(417)
-    expect(refused.body.error?.message).toContain('cannot be filtered on notes')
+    await withPlaces([], async () => {
+      expect(await list(reader)).toEqual([])
+      await reader.post('/api/save_row', { table: ANSWER, row: { row_id: 'mine', store: 'S1', section: 'mens', body: 'my own' } })
+      expect(ids(await list(reader))).toEqual(['mine'])
+    })
   })
 
-  test('answers only the columns asked for, with row_id and updated_at', async ({ admin, createUser }) => {
+  test('nobody changes a row outside their places', async ({ admin, createUser }) => {
     await installed(admin)
     const reader = await createUser({ roles: ['Answer Reader'] })
-    const [row] = (await readAs(reader, 'answers', [{ label: 'North kids', filters: { store: ['N1'], section: ['kids'] } }], { fields: ['body'] })).body.result!
-    expect(Object.keys(row).sort()).toEqual(['body', 'row_id', 'updated_at'])
+    const a4 = await admin.get<{ updated_at: string }>(`/api/table/${encodeURIComponent(ANSWER)}/a4`)
+    await withPlaces(NORTH_AND_SOUTH_KIDS, async () => {
+      await expectRefused(reader.post('/api/save_row', { table: ANSWER, row: { row_id: 'a4', updated_at: a4.updated_at, body: 'changed' } }), 403)
+      const a3 = await reader.get<{ updated_at: string }>(`/api/table/${encodeURIComponent(ANSWER)}/a3`)
+      expect(await reader.post('/api/save_row', { table: ANSWER, row: { row_id: 'a3', updated_at: a3.updated_at, body: 'changed' } })).toMatchObject({ row_id: 'a3' })
+    })
   })
 
-  test('without fields, every column of the row itself; a page boundary loses no row', async ({ admin, createUser }) => {
+  test('a live update reaches only the people whose places hold the row; a deletion reaches none of them', async ({ admin, createUser }) => {
     await installed(admin)
-    for (let i = 0; i < 510; i++) await admin.post('/api/save_row', { table: ANSWER, row: { row_id: `b${String(i).padStart(3, '0')}`, store: 'N1', section: 'shoes', body: 'bulk' } })
     const reader = await createUser({ roles: ['Answer Reader'] })
-    const rows = (await readAs(reader, 'answers', [{ label: 'North', filters: { store: ['N1'] } }])).body.result!
-    expect(rows).toHaveLength(512)
-    expect(new Set(rows.map((r) => r.row_id)).size).toBe(512)
-    expect(Object.keys(rows.find((r) => r.row_id === 'a1')!).sort()).toEqual(['body', 'notes', 'row_id', 'section', 'store', 'updated_at'])
+    const event = (event: string, row_id: string) => ({ channel: `row:${ANSWER}:${row_id}`, event, payload: { table: ANSWER, row_id } })
+    await withPlaces(NORTH_AND_SOUTH_KIDS, async () => {
+      expect(await eventVisibleTo(reader.user!, event('updated', 'a3'))).toBe(true)
+      expect(await eventVisibleTo(reader.user!, event('updated', 'a4'))).toBe(false)
+      expect(await eventVisibleTo(reader.user!, event('deleted', 'a3'))).toBe(false)
+    })
   })
 
-  test('a Sub-table named among the fields comes with its rows, in their order', async ({ admin, createUser }) => {
+  test('a System Manager is not narrowed, as Data Scope does not narrow them', async ({ admin, createUser }) => {
     await installed(admin)
-    const reader = await createUser({ roles: ['Answer Reader'] })
-    const rows = (await readAs(reader, 'answers', [{ label: 'North', filters: { store: ['N1'] } }], { fields: ['body', 'reasons'] })).body.result!
-    expect(rows.map((r) => [r.row_id, (r.reasons as { code: string }[]).map((c) => c.code)])).toEqual([['a1', ['stockout', 'festival']], ['a2', []]])
-    // Unasked, it is not read.
-    const [plain] = (await readAs(reader, 'answers', [{ label: 'North kids', filters: { store: ['N1'], section: ['kids'] } }])).body.result!
-    expect(plain).not.toHaveProperty('reasons')
-  })
-
-  test('a read that is not person_scope has no places, so no rows', async ({ admin, createUser }) => {
-    await installed(admin)
-    const reader = await createUser({ roles: ['Answer Reader'] })
-    expect(await readAs(reader, 'as_table_policy', [{ label: 'North', filters: { store: ['N1'] } }])).toMatchObject({ status: 200, body: { result: [] } })
-  })
-
-  test('an outbound read reads no scoped Table, and an undeclared Table is refused', async ({ admin, createUser }) => {
-    await installed(admin)
-    const reader = await createUser({ roles: ['Answer Reader'] })
-    const places = [{ label: 'North', filters: { store: ['N1'] } }]
-    const outside = await readAs(reader, 'outside', places)
-    expect(outside.status).toBe(417)
-    expect(outside.body.error?.message).toContain('This read is outbound')
-    const undeclared = await readAs(reader, 'undeclared', places)
-    expect(undeclared.status).toBe(417)
-    expect(undeclared.body.error?.message).toContain(`has not declared the scoped Table ${APP}.entry`)
+    const manager = await createUser({ roles: ['System Manager'] })
+    await withPlaces([], async () => expect(ids(await list(manager))).toEqual(['a1', 'a2', 'a3', 'a4']))
   })
 
   test('the declaration names the app’s own Table and its plain columns', async () => {

@@ -389,6 +389,17 @@ async function assertOnlyScopeProvider(pkg: RuntimePackage) {
     `Only one enabled app may provide people's scope; ${others.map(r => String(r.name)).join(', ')} already does`)
 }
 
+/** #1454: how an active app's Table is narrowed by places (scope filter → column), or null. A read-only copy maps
+ *  its dataset's filters (an unscoped one is read whole); one of the app's own Tables its `scopedTables` entry. */
+export function tablePlaceScope(table: string): Readonly<Record<string, string>> | null {
+  const app = table.includes('.') ? packages.get(table.slice(0, table.indexOf('.'))) : undefined
+  if (!app) return null
+  const name = table.slice(table.indexOf('.') + 1)
+  const copy = app.manifest.datasets?.find((d) => d.name === name && d.store !== 'json')
+  if (copy) return copy.unscoped || !Object.keys(copy.filters).length ? null : copy.filters
+  return app.manifest.scopedTables?.find((t) => t.table === table)?.filters ?? null
+}
+
 // #559: the instance's one scope provider: the enabled, active app whose
 // installed manifest declares it, running its exact installed artifact. None,
 // or more than one, is no provider at all.
@@ -588,9 +599,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
         throw new Error('Validators must target owned Tables')
       doc_events[table] = { before_validate: (ctx) => usingTransaction(ctx.tx, async () => {
         // #1418: a validator reads the app's read-only copies too (the current load), never writes them.
-        // #1454: as the app, whole: the validator decides who may write, and the people saving may read only
-        // their places of a copy (or none of it).
-        const access = callerDocuments(manifest.name, [...names], ctx.user, appCopyTables(manifest.name), appCopyTables(manifest.name))
+        const access = callerDocuments(manifest.name, [...names], ctx.user, appCopyTables(manifest.name))
         // #1428: the same base Table reads as the app's reads and actions, declared columns only.
         const base = baseTablesReader(manifest.name, manifest.baseTables, linkedTables((await loadAppSetup(manifest.name, manifest)).settings))
         try {
@@ -632,7 +641,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, unmarkedTables: provider.unmarkedTables ?? [], optionalTables: provider.optionalTables ?? [], optionalColumns: provider.optionalColumns ?? {}, identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,
     // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
     actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations), setup, baseTables: manifest.baseTables } : undefined,
-    reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup, datasets: manifest.datasets, scopedTables: manifest.scopedTables, baseTables: manifest.baseTables } : undefined }
+    reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup, datasets: manifest.datasets, baseTables: manifest.baseTables } : undefined }
 }
 
 // The apps on `paths`, by name@version, as boot takes them: each loaded and
