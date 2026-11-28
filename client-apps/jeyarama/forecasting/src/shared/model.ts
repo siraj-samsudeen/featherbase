@@ -3,6 +3,7 @@
 // and numbers it writes. No React and no fetching here, so the screen definition stays portable and the story,
 // the local instance and a copied Run all go through the same code.
 import { fmtCount, fmtINR } from '@featherbase/shop-floor/format'
+import { bandsOf, type Band, type BandRows } from './bands'
 
 export type BasisCode = 'B1' | 'B2' | 'B3' | 'B4' | 'B5' | 'B6'
 export const BASIS_CODES: BasisCode[] = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6']
@@ -30,6 +31,8 @@ export interface Line {
   aop: number; aq: number; xgb: number; lgbm: number
   /** Last month as December: the last 28 days' rate per day × 31 (and its pieces). */
   r31: number; r31q: number
+  /** By Price Band: the month's forecast split by band, with stock; absent when the Run's copies carry no bands. */
+  bands?: Band[]
 }
 /** Two or more lines read together (TL-20), or the section total: summed figures plus the member lines. */
 export interface Group extends Omit<Line, 'rowId' | 'bases' | 'step'> { index: number; members: Line[]; step: number | null; bases: Base[] }
@@ -52,12 +55,12 @@ export interface LineMonthRow {
 export interface SalesRow { store_code: string; subcategory_name: string; window_name: string; sales_value_before_tax: Num; sales_qty: Num }
 export interface PlanRow { store_code: string; subcategory_name: string; plan_value_before_tax: Num; plan_qty: Num }
 export interface OtherModelRow { model: string; store_code: string; subcategory_name: string; forecast_value_before_tax: Num }
-export interface CopiedRows { lines: LineMonthRow[]; sales: SalesRow[]; plans: PlanRow[]; others: OtherModelRow[] }
+export interface CopiedRows { lines: LineMonthRow[]; sales: SalesRow[]; plans: PlanRow[]; others: OtherModelRow[]; bands?: BandRows }
 
 const n = (v: Num) => (v == null || v === '' ? 0 : Number(v))
 
 /** The section's lines for one store, built exactly as the prototype's data was (team_leader_tables.py build). */
-export function linesFrom({ lines, sales, plans, others }: CopiedRows, store: string): Line[] {
+export function linesFrom({ lines, sales, plans, others, bands }: CopiedRows, store: string): Line[] {
   const at = <T extends { store_code: string; subcategory_name: string }>(rows: T[], sub: string) => rows.filter(r => r.store_code === store && r.subcategory_name === sub)
   return lines.filter(l => l.store_code === store).map(l => {
     const sub = l.subcategory_name
@@ -85,6 +88,7 @@ export function linesFrom({ lines, sales, plans, others }: CopiedRows, store: st
       n91: v('last_91_days'), y91: v('same_91_days_last_year'),
       aop: n(plan?.plan_value_before_tax), aq: n(plan?.plan_qty), xgb: model('XGBoost'), lgbm: model('LightGBM'),
       r31: l28 * 31 / 28, r31q: l28q * 31 / 28,
+      ...(bands ? { bands: bandsOf(bands, store, sub, n(l.forecast_value_before_tax), n(l.forecast_qty)) } : {}),
     }
   })
 }

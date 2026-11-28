@@ -14,6 +14,7 @@ import { LinePanel } from '../shared/LinePanel'
 import { ChangeForm } from '../shared/ChangeForm'
 import { MyQuestions, Questions } from '../shared/Questions'
 import { HelpTab } from '../shared/Help'
+import { ShortOfStock } from '../shared/PriceBands'
 import '../shared/forecasting.css'
 
 const groupKey = (g: Group) => `group:${g.index}`
@@ -37,6 +38,7 @@ export function TeamLeaderReview({ header, lines, storeStep, state, actions, hre
   const [tab, setTab] = useState('review')
   const [query, setQuery] = useState('')
   const [open, setOpenState] = useState<string | null>(initialLine ?? null)
+  const [band, setBand] = useState<string | null>(null)
   const [help, setHelp] = useState<{ at: HelpTopic | null; from: string | null }>({ at: null, from: null })
   const [flash, setFlash] = useState<{ key: string; n: number } | null>(initialLine ? { key: initialLine, n: 0 } : null)
 
@@ -46,6 +48,7 @@ export function TeamLeaderReview({ header, lines, storeStep, state, actions, hre
   const isLine = (key: string | null) => Boolean(key && lines.some(l => l.name === key))
   const setOpen = (key: string | null) => {
     setOpenState(key)
+    setBand(null)
     onOpenLine?.(isLine(key) ? key : null)
     if (key && isLine(key)) void actions.seen(key)
   }
@@ -99,7 +102,7 @@ export function TeamLeaderReview({ header, lines, storeStep, state, actions, hre
     const l = row.item
     const own = 'members' in l ? null : l
     return (
-      <LinePanel item={l} header={header} storeStep={storeStep} aop={view.aop} width={width}
+      <LinePanel item={l} header={header} storeStep={storeStep} aop={view.aop} width={width} band={band} onBand={setBand}
         onHelp={topic => { setTab('help'); setHelp({ at: topic, from: row.key }) }}
         answer={own && <>
           <ChangeForm key={`${own.rowId}:${state.answers[own.name]?.status ?? ''}`} l={own} answer={state.answers[own.name]} month={header.month}
@@ -112,6 +115,7 @@ export function TeamLeaderReview({ header, lines, storeStep, state, actions, hre
   const review = (
     <div className="fr">
       <ReviewToolbar value={view} onChange={setView} />
+      <ShortOfStock lines={lines} header={header} onOpen={(name, b) => { jumpTo(name); setBand(b) }} />
       <PartsLegend />
       <MeasureTable header={header} view={view} rows={rows} total={section} open={open} onToggle={setOpen} panel={panel} flash={flash} />
     </div>

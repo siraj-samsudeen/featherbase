@@ -4,6 +4,7 @@
 // (server.ts). The answer to a question is the newest Comment on it.
 import { getRow, listWhere, saveRow } from '../api'
 import { day, linesFrom, monthOfRun, type LineMonthRow, type OtherModelRow, type PlanRow, type RunRow, type SalesRow, type Line } from '../shared/model'
+import { ITEM_FIELDS, MIX_FIELDS, STOCK_FIELDS, stockAsOf, type BandMixRow, type StockBandRow, type TopItemRow } from '../shared/bands'
 import type { Answer, Header, Proposal, Question, ReviewActions, ReviewState } from '../shared/review'
 
 export interface Viewer { name: string; role: string; place: string }
@@ -78,14 +79,19 @@ export async function loadSection(viewer: Viewer): Promise<Section | null> {
   if (!run) return null
   const mine = rows.filter(l => l.run_id === run.run_id), storeCode = mine[0].store_code, subs = mine.map(l => l.subcategory_name)
   const near = [['store_code', '=', storeCode], ['subcategory_name', 'in', subs]] as [string, string, unknown][]
-  const [sales, plans, others] = await Promise.all([
+  const ofRun = [...near, ['run_id', '=', run.run_id]] as [string, string, unknown][]
+  const [sales, plans, others, mix, stock, items] = await Promise.all([
     listWhere<SalesRow>('forecasting.sales_reference', ['store_code', 'subcategory_name', 'window_name', 'sales_value_before_tax', 'sales_qty'], near),
     listWhere<PlanRow>('forecasting.annual_plan_line', ['store_code', 'subcategory_name', 'plan_value_before_tax', 'plan_qty', 'calendar_year', 'calendar_month'],
       [...near, ['calendar_year', '=', Number(run.horizon_from.slice(0, 4))], ['calendar_month', '=', Number(run.horizon_from.slice(5, 7))]]),
     listWhere<OtherModelRow>('forecasting.other_model_line', ['model', 'store_code', 'subcategory_name', 'forecast_value_before_tax'], [...near, ['month_from', '=', run.horizon_from.slice(0, 10)]]),
+    // By Price Band: the split over this Run's 28 days, and today's stock
+    listWhere<BandMixRow>('forecasting.price_band_mix', MIX_FIELDS, ofRun),
+    listWhere<StockBandRow>('forecasting.stock_band', STOCK_FIELDS, near),
+    listWhere<TopItemRow>('forecasting.price_band_top_item', ITEM_FIELDS, ofRun),
   ])
-  const lines = linesFrom({ lines: mine, sales, plans, others }, storeCode)
-  const header: Header = { store: mine[0].store_name, section, person: viewer.name, role: viewer.role, cutOff: day(run.origin_date), month: monthOfRun(run.horizon_from) }
+  const lines = linesFrom({ lines: mine, sales, plans, others, bands: { mix, stock, items } }, storeCode)
+  const header: Header = { store: mine[0].store_name, section, person: viewer.name, role: viewer.role, cutOff: day(run.origin_date), month: monthOfRun(run.horizon_from), stockAsOf: stockAsOf(stock) }
   return { run, storeCode, header, lines, state: await loadState(run.run_id, storeCode, viewer.name) }
 }
 

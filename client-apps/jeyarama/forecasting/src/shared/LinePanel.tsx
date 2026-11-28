@@ -6,9 +6,12 @@ import type { ReactNode } from 'react'
 import { BuildUp, Checks, GroupNote, OtherModels, isGroup, type Item } from './ExplainPanel'
 import type { HelpTopic } from './model'
 import type { Header } from './review'
+import { PriceBands } from './PriceBands'
 
-export function LinePanel({ item, header, storeStep, aop, onHelp, answer, width }: {
+export function LinePanel({ item, header, storeStep, aop, onHelp, answer, width, band, onBand }: {
   item: Item; header: Header; storeStep: number; aop: boolean; width?: number
+  /** The price band open under a subcategory, when the page opens one from outside (its short-of-stock card). */
+  band?: string | null; onBand?: (band: string | null) => void
   onHelp: (t: HelpTopic) => void
   /** What the right column shows under the other models; a group shows how it is answered. */
   answer?: ReactNode
@@ -23,6 +26,7 @@ export function LinePanel({ item, header, storeStep, aop, onHelp, answer, width 
           {isGroup(item) ? <div className="fr-dim" style={{ fontSize: 13, marginTop: 16 }}>Answer each subcategory below; the group total follows.</div> : answer}
         </div>
       </div>
+      {!isGroup(item) && <PriceBands line={item} header={header} open={band} onOpen={onBand} />}
     </div>
   )
 }

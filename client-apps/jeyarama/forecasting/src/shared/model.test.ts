@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import fixture from '../../fixtures/team-leader-december.json'
 import { byGapToLastYear, combine, day, groupsOf, inr, linesFrom, monthOfRun, pc, type CopiedRows, type Line } from './model'
 
-const lines = linesFrom({ lines: fixture.forecast_line_month, sales: fixture.sales_reference, plans: fixture.annual_plan_line, others: fixture.other_model_line } as unknown as CopiedRows, 'LKS')
+const lines = linesFrom({ lines: fixture.forecast_line_month, sales: fixture.sales_reference, plans: fixture.annual_plan_line, others: fixture.other_model_line,
+  bands: { mix: fixture.price_band_mix, stock: fixture.stock_band, items: fixture.price_band_top_item } } as unknown as CopiedRows, 'LKS')
 const line = (name: string, category: string, growth: number): Line => ({ ...lines[0], name, category, growth })
 
 describe('the Team Leader model (#1419)', () => {

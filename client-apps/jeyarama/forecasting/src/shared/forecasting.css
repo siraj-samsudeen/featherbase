@@ -143,3 +143,16 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 /* full subcategory names: they wrap, never cut */
 .fr-table > tbody > tr > td:first-child { white-space: normal; }
 .fr-name { flex-wrap: wrap; }
+
+/* By Price Band (#1419, 28-Nov): under an opened subcategory, across both columns */
+.fr-bands { margin-top: 18px; }
+.fr-bands h4 .fr-sub { font-weight: 400; font-size: 12.5px; }
+.fr-band-row { cursor: pointer; }
+.fr-band-name { all: unset; font-weight: 600; cursor: pointer; }
+.fr-band-name:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; border-radius: 4px; }
+.fr-band-open > td { background: transparent !important; padding: 4px 0 10px 22px; }
+.fr-band-items .fr-mini tbody td { font-size: 13px; }
+.fr-pareto { font-size: 12.5px; margin-top: 6px; }
+.fr-bands .fr-foot { font-size: 12px; margin-top: 6px; }
+.fr-short { color: var(--color-negative); font-weight: 600; }
+.fr-short-list { margin: 6px 0 0; padding: 0; list-style: none; line-height: 1.9; }
