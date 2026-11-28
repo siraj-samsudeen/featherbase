@@ -7,7 +7,7 @@
 import { Fragment, useState, type ReactNode } from 'react'
 import { Button, ChipButton, ChoiceChip, RecordLink, Segmented, Select, StatusPill, cx } from '@featherbase/shop-floor'
 import { causeOf, causesFor, directionOf, tagOf, TAG_JOIN, type Direction } from '../causes'
-import { inr } from './model'
+import { count, inr } from './model'
 import { OFF_POINTS, dayIsOff, daysOf, edgeOf, explanationFor, lineIsOff, type DayExplanation, type DayFigures, type SubDays } from './days'
 
 export interface DayMonth { name: string; days: number; year: number; index: number }
@@ -231,7 +231,7 @@ export function DayReview({ section, rootKind = 'section', subs, month, explanat
           <Button disabled={day >= month.days} onClick={() => { setDay(day + 1); setEditing(null) }}>{day < month.days ? d2(day + 1) : ''} ›</Button>
         </div>
       </div>
-      {rowsOfDay.length > 1 && <label className="fr-day-only"><input type="checkbox" checked={only} onChange={e => setOnly(e.target.checked)} /> Only {rowWords} more than {OFF_POINTS}% off ({lines.filter(l => lineIsOff(l.f)).length} of {lines.length})</label>}
+      {rowsOfDay.length > 1 && <label className="fr-day-only"><input type="checkbox" checked={only} onChange={e => setOnly(e.target.checked)} /> Only {rowWords} more than {OFF_POINTS}% off ({count(lines.filter(l => lineIsOff(l.f)).length)} of {count(lines.length)})</label>}
       <table className="fr-days" data-testid="one-day-table">
         <Head first={next ? next.name : 'Subcategory'} />
         <tbody>{shown.map(({ id, label, sub, at, f: lf, leaf }) => {
@@ -284,7 +284,7 @@ export function DayReview({ section, rootKind = 'section', subs, month, explanat
         {levels.length > 0 && crumb([], section, !path.length && !scopeSubDays)}
         {path.map((_, i) => crumb(path.slice(0, i + 1), pathNames[i], i === path.length - 1 && !scopeSubDays))}
         {(scopeSubDays || !levels.length) && <b>{scopeSubDays && rowIdOf(idOf(scopeSubDays)) ? <RecordLink table="forecasting.forecast_line_month" rowId={rowIdOf(idOf(scopeSubDays))!} name={scopeSubDays.name} onNavigate={() => {}} /> : scopeName}</b>}
-        {' '}<span className="fr-dim">· {inScope.length} {inScope.length === 1 ? 'subcategory' : 'subcategories'}</span>
+        {' '}<span className="fr-dim">· {count(inScope.length)} {inScope.length === 1 ? 'subcategory' : 'subcategories'}</span>
         {note && <span className="fr-dim"> · {note}</span>}</nav>
       <div className="fr-day-controls">
         <Select aria-label="Whose days" value={enc(path, scope)} onChange={e => pick(e.target.value)}>{options}</Select>

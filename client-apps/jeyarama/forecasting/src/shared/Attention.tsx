@@ -193,9 +193,9 @@ function TabTable({ tab, findings, open, onOpen, month, lineHref, onLine, groupi
               <tr className="fr-att-grprow" data-group={gk}><td colSpan={cols.length} className="fr-att-grp">
                 <button type="button" className="fr-att-grpbtn" aria-expanded={(limits?.[gk] ?? 0) > 0} onClick={() => onLimit(gk, (limits?.[gk] ?? 0) > 0 ? 0 : TOP_PER_GROUP)}>
                   <span aria-hidden className="fr-att-caret">{(limits?.[gk] ?? 0) > 0 ? '▾' : '▸'}</span></button>
-                {' '}{g} <span className="fr-dim">{fs.length} · </span><b className={fs[0].colour === 'red' ? 'fr-short' : fs[0].colour === 'purple' ? 'fr-over' : undefined}>{inr(total(fs))}</b>
+                {' '}{g} <span className="fr-dim">{count(fs.length)} · </span><b className={fs[0].colour === 'red' ? 'fr-short' : fs[0].colour === 'purple' ? 'fr-over' : undefined}>{inr(total(fs))}</b>
                 <span className="fr-dim"> {note ? `${note} · ` : '· '}worst: {fs[0].title} ({inr(fs[0].rupees)})</span></td></tr>)
-              : <tr><td colSpan={cols.length} className="fr-att-grp">{g} <span className="fr-dim">{fs.length} · {inr(total(fs))} {note}</span></td></tr>)}
+              : <tr><td colSpan={cols.length} className="fr-att-grp">{g} <span className="fr-dim">{count(fs.length)} · {inr(total(fs))} {note}</span></td></tr>)}
             {sortBy(fs, sort).slice(0, onLimit ? limits?.[gk] ?? 0 : undefined).map((f, k) => (
               <tr key={`${f.kind}:${f.title}:${k}`} className={cx('group fr-att-row', `fr-att-${f.colour}`)} aria-selected={open === f} tabIndex={0}
                 onClick={() => onOpen(f)} onKeyDown={e => { if (e.key === 'Enter') onOpen(f) }}>
@@ -209,7 +209,7 @@ function TabTable({ tab, findings, open, onOpen, month, lineHref, onLine, groupi
                   : show(c, f)}</td>)}
               </tr>))}
             {onLimit && (limits?.[gk] ?? 0) > 0 && (limits?.[gk] ?? 0) < fs.length && (
-              <tr><td colSpan={cols.length} className="fr-att-more"><button type="button" className="fr-link" onClick={() => onLimit(gk, fs.length)}>Show all {fs.length}</button></td></tr>)}
+              <tr><td colSpan={cols.length} className="fr-att-more"><button type="button" className="fr-link" onClick={() => onLimit(gk, fs.length)}>Show all {count(fs.length)}</button></td></tr>)}
           </Fragment>))}</tbody>
       </table>
     </div>
@@ -262,7 +262,7 @@ export function NeedsAttention({ findings, header, othersAsOf, tab: chosen, onTa
           const tf = tabFindings(findings, t.key)
           return (
             <button key={t.key} type="button" role="tab" id={`fr-att-tab-${t.key}`} aria-selected={tab === t.key} className={cx(!tf.length && 'fr-att-empty')} onClick={() => onTab(t.key)}>
-              {t.label}<span className="fr-tcount">{tf.length}{tf.length && t.key !== 'data' ? ` · ${inr(total(tf))}` : ''}</span>
+              {t.label}<span className="fr-tcount">{count(tf.length)}{tf.length && t.key !== 'data' ? ` · ${inr(total(tf))}` : ''}</span>
             </button>)
         })}
         <button type="button" role="tab" id="fr-att-tab-help" aria-selected={tab === 'help'} onClick={() => onTab('help')}>Help</button>
