@@ -1,7 +1,6 @@
 ## 1. Scenario tests
 
 - [x] 1.1 Bind every row-access scenario (`apps/server/test/scenarios/row-access.test.ts`)
-- [x] 1.2 Bind the scoped-app-reads scenarios, which had no test (`apps/server/test/scoped-tables.test.ts`)
 
 ## 2. Platform
 

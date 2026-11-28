@@ -8,8 +8,8 @@ A table whose row rule is the person's places, said by its app or by a System Ma
 #### Scenario: A section's answers, and no other
 
 ```gherkin
-Given a review Table holds an answer at store "N1" for section "kids" and one for section "mens"
-And the reader's only place is store "N1" with section "kids"
+Given a review Table holds an answer at store "9001" for subcategory "000000001" and one for subcategory "000000004"
+And the reader's only place is store "9001" with subcategory "000000001"
 When the reader lists the review Table
 Then it answers the first answer only
 And opening the second answer is refused
@@ -34,7 +34,7 @@ Then the list holds that answer only
 #### Scenario: A row outside one's places is not changed
 
 ```gherkin
-Given the reader's only place is store "N1"
-When the reader changes an answer at store "S1"
+Given the reader's only place is store "9001"
+When the reader changes an answer at store "9002"
 Then the change is refused
 ```

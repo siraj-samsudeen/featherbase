@@ -12,7 +12,7 @@ import { test } from '../pg-test'
 import { scenarioFor } from '../scenario'
 import { expectRefused } from '../fixtures'
 import {
-  APP, LINES, Warehouse, forecastLines, install, jobCalls, load, loadState, readLines, removeFolders, requestAndRun, rows, upgrade, writeApp,
+  APP, LINES, Warehouse, forecastLines, install, jobCalls, load, loadState, readLines, removeFolders, requestAndRun, rows, upgrade, withRosterPlaces, writeApp,
   type Line,
 } from '../read-only-copy-app'
 import type { LoadOutcome } from '../../src/read-only-copy'
@@ -219,7 +219,9 @@ describe('read-only-copies', () => {
       await seed('Role', { row_id: 'Forecast Viewer' })
       await seed('Permission', { ref_table: LINES, role: 'Forecast Viewer', operation: 'read' })
       reader = await createUser({ roles: ['Forecast Viewer'] })
-      expect(await reader.get(`/api/table/${encodeURIComponent(LINES)}/${encodeURIComponent('LKS·GJ01·2026-12-01')}`)).toMatchObject({ run_id: 'Dec-1' })
+      // #1454: a copy is about stores, so the reader reads it within their places
+      await withRosterPlaces([{ label: 'Lakeside', filters: { store: ['LKS'] } }], async () =>
+        expect(await reader.get(`/api/table/${encodeURIComponent(LINES)}/${encodeURIComponent('LKS·GJ01·2026-12-01')}`)).toMatchObject({ run_id: 'Dec-1' }))
     })
     await step('the user asks to load the copy', () =>
       expectRefused(reader.post('/api/copy_load', { table: LINES, force: true }), 403, `Not permitted to load ${LINES}`))

@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, vi } from 'vitest'
 import { tableSlug } from 'shared'
 import { sql } from 'server/src/db'
 import { runOneJob } from 'server/src/jobs'
-import { LINES, Warehouse, forecastLines, install, load, removeFolders, writeApp } from 'server/test/read-only-copy-app'
+import { LINES, Warehouse, forecastLines, install, load, removeFolders, withRosterPlaces, writeApp } from 'server/test/read-only-copy-app'
 import { test, expect, renderApp } from './pg-test'
 
 const warehouse = new Warehouse('b4_copy_bar')
@@ -84,9 +84,13 @@ test('a reader who may not load the copy sees no bar, and the list asks nothing 
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: LINES, role: 'Forecast Viewer', operation: 'read' } })
   const reader = await createUser({ email: 'forecast.viewer@example.com', roles: ['Forecast Viewer'] })
   const failures = recordFailures()
-  await renderApp(LIST, reader)
-  await waitFor(() => expect(screen.getByTestId('list-rows')).toHaveTextContent('LKS'), WAIT)
-  await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining(':copy_load_state'), expect.anything()), WAIT)
+  // #1454: a copy is about stores, so the reader sees their places' rows: Lakeside here
+  await withRosterPlaces([{ label: 'Lakeside', filters: { store: ['LKS'] } }], async () => {
+    await renderApp(LIST, reader)
+    await waitFor(() => expect(screen.getByTestId('list-rows')).toHaveTextContent('LKS'), WAIT)
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining(':copy_load_state'), expect.anything()), WAIT)
+    expect(screen.getByTestId('list-rows')).not.toHaveTextContent('RVR')
+  })
   expect(screen.queryByTestId('read-only-copy-bar')).not.toBeInTheDocument()
   expect(failures).toEqual([])
 }, 30_000)
