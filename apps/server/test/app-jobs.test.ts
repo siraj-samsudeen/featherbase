@@ -8,7 +8,7 @@ import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { expectApiError } from './fixtures'
+import { expectApiError, makeTable } from './fixtures'
 import { sql } from '../src/db'
 import { drainJobs, jobRegistrant, registerJob, syncScheduledJobs } from '../src/jobs'
 import { discoverPackages, packageFailures } from '../src/runtime-packages'
@@ -129,6 +129,14 @@ const HANDLERS: Record<string, string> = {
     ctx.setResult(JSON.stringify({ all: all.map((r) => [r.body, r.created_by]), one: one.body, some: some.map((r) => r.body), none, errors, writes: typeof ctx.documents.create }))
   }`,
   read_other: `async read_other(ctx) { await ctx.documents.list('Person') }`,
+  read_base: `async read_base(ctx) {
+    const stores = await ctx.baseTables.list('Shop Store', { fields: ['row_id', 'code', 'manager'], filters: [['code', '=', 'LKS']] })
+    ctx.setResult(JSON.stringify({ stores: stores.map((s) => [s.code, s.manager]), helpers: Object.keys(ctx.baseTables).sort() }))
+  }`,
+  peek_base: `async peek_base(ctx) {
+    // A refusal fails the run even when the app catches it.
+    try { await ctx.baseTables.list('Shop Store', { fields: ['secret'] }) } catch { ctx.setResult('caught it') }
+  }`,
   notify_them: `async notify_them(ctx) {
     const told = []
     told.push(await ctx.people.notify('lead@example.test', { subject: 'GJ01 moved 12%', body: 'Your line went back to waiting.', email: true, path: '/review', ref_table: '${APP}.note', reference_name: 'n1' }))
@@ -593,6 +601,25 @@ describe('a job that reads every row of its app\'s Tables', () => {
     expect(run).toMatchObject({ outcome: 'error', error: expect.stringContaining('has not declared the Table it asked to read') })
     expect(await sql`select method from access_log where "user" = ${`${APP}.read_other`} and operation = 'app_access_denied'`)
       .toEqual([{ method: `${APP}.read_other:reads_all_rows` }])
+  })
+
+  // #1428: the instance Tables the app reads, as its reads and actions do.
+  test('reads the declared columns of the instance Tables the app reads, and nothing else', async ({ admin }) => {
+    await makeTable(admin, { name: 'Shop Store', columns: ['code', 'manager', 'secret'] })
+    await admin.post('/api/save_row', { table: 'Shop Store', row: { code: 'LKS', manager: 'Omar', secret: 'not for apps' } })
+    const job: Job = { name: 'read_base', cadence: 'daily', description: 'Finds the store manager.' }
+    const peek: Job = { name: 'peek_base', cadence: 'daily', description: 'Asks for a column it does not declare.' }
+    expect(await discoverPackages([await writeApp({ jobs: [job, peek], settings: [{ name: 'linked_tables', required: false }],
+      extra: { baseTables: { read: { 'Shop Store': ['code', 'manager'] } } } })])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: `${APP}.linked_tables`, value: JSON.stringify(['Shop Store']) } })
+    await runDue()
+    const runs = Object.fromEntries((await sql`select method, outcome, result, error from job_execution where method like ${`${APP}.%`}`)
+      .map((r) => [String(r.method).split('.')[1], r]))
+    expect(runs.read_base).toMatchObject({ outcome: 'success', error: null })
+    // Reads only: no helper writes a base Table.
+    expect(JSON.parse(String(runs.read_base.result))).toEqual({ stores: [['LKS', 'Omar']], helpers: ['available', 'changedBy', 'list'] })
+    expect(runs.peek_base).toMatchObject({ outcome: 'error', error: expect.stringContaining('The app has not declared column secret of Table Shop Store') })
   })
 
   test('an upgrade cannot give a kept job every row of a Table', async ({ admin }) => {

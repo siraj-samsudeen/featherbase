@@ -38,3 +38,16 @@ A job SHALL be able to read every row of the app's own Tables that the app names
 
 - **WHEN** an app names another app's Table, or a platform Table, for its job to read
 - **THEN** the app is refused when it is loaded, naming the Table
+
+### Requirement: An app's checks and jobs read the instance Tables it reads
+An app's save checks and its jobs SHALL read the instance's own Tables the app declares, only the columns it declares and only once the instance links them, as its pages' reads do, and SHALL NOT change them.
+
+#### Scenario: A save check finds the store
+
+- **WHEN** an app that reads the instance's stores checks a note naming store "LKS"
+- **THEN** it finds the store, and a note naming a store that does not exist is refused
+
+#### Scenario: A job asks for a column it did not declare
+
+- **WHEN** a job asks for a column of the stores that its app does not declare
+- **THEN** the run is refused, naming the column

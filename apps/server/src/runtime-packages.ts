@@ -13,8 +13,8 @@ import { tableAccessPolicy } from './mandatory-access'
 import { AppError, errorMessage } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { WHY_DEFAULT_LABEL, WHY_LABEL, APP_ACCENTS, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
-import { callerDocuments, callerRoles, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
-import { approvalTypesDeclaration, baseTablesDeclaration } from './change-proposals'
+import { callerDocuments, callerRoles, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations, linkedTables } from './runtime-actions'
+import { approvalTypesDeclaration, baseTablesDeclaration, baseTablesReader } from './change-proposals'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
@@ -38,6 +38,8 @@ interface PackageHookContext {
   readonly roles: readonly string[]
   isNew: boolean
   documents: Pick<import('shared').RuntimeActionContext['documents'], 'get' | 'list' | 'members'>
+  /** #1428: the instance Tables the app reads (`baseTables.read`), only the declared columns, read-only. */
+  readonly baseTables: import('shared').BaseTablesHelper
   reject(message: string, fields?: Record<string, string>): never
 }
 type Validator = (context: PackageHookContext) => void | Promise<void>
@@ -583,14 +585,17 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
       doc_events[table] = { before_validate: (ctx) => usingTransaction(ctx.tx, async () => {
         // #1418: a validator reads the app's read-only copies too (the current load), never writes them.
         const access = callerDocuments(manifest.name, [...names], ctx.user, appCopyTables(manifest.name))
+        // #1428: the same base Table reads as the app's reads and actions, declared columns only.
+        const base = baseTablesReader(manifest.name, manifest.baseTables, linkedTables((await loadAppSetup(manifest.name, manifest)).settings))
         try {
           await (validator as Validator)({
+            baseTables: base.helper,
             row: ctx.row, old: ctx.old, user: ctx.user, roles: await callerRoles(ctx.user), isNew: ctx.isNew,
             now: new Date().toISOString(), timeZone: (await getSystemSettings()).time_zone,
             documents: Object.freeze({ get: access.documents.get, list: access.documents.list, members: access.documents.members }),
             reject(message, fields) { throw new AppError('ValidationError', message, fields) },
           })
-        } finally { await access.close() }
+        } finally { await access.close(); await base.close() }
       }) }
     }
     // Destructive operations do not run save validation. Opt in separately
@@ -613,7 +618,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   const setup = () => loadAppSetup(manifest.name, manifest)
   const app: AppManifest = { name: manifest.name, tables: manifest.tables,
     roles: manifest.roles, permissions: manifest.permissions, doc_events, runtime_package: true,
-    scheduler_events: bindAppJobs({ app: manifest.name, jobs: manifest.jobs ?? [], handlers: jobHandlers, setup, datasets: manifest.datasets ?? [] }),
+    scheduler_events: bindAppJobs({ app: manifest.name, jobs: manifest.jobs ?? [], handlers: jobHandlers, setup, datasets: manifest.datasets ?? [], baseTables: manifest.baseTables }),
     runtime_identity: { version: pkg.version, digest, ledger: migrationLedger(manifest.migrations) },
     runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
   return { name: manifest.name, title: manifest.title,
