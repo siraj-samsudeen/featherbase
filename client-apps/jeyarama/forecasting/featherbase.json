@@ -1123,7 +1123,7 @@
             "name": "forecasting.other_model_line",
             "label": "Other Model Line",
             "module": "Forecasting",
-            "description": "Another model's forecast for a line's month (XGBoost, LightGBM), read beside Feather Forecast. A stand-in until those models land as Runs. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+            "description": "Another model's forecast for a line's month, before tax, read beside Feather Forecast: XGBoost and LightGBM, the warehouse's baseline Runs (data-warehouse #4965) from the same sales as the official Run, as month totals. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
             "columns": [
               {
                 "column_name": "model",
@@ -3188,7 +3188,7 @@
       "name": "forecasting.other_model_line",
       "label": "Other Model Line",
       "module": "Forecasting",
-      "description": "Another model's forecast for a line's month (XGBoost, LightGBM), read beside Feather Forecast. A stand-in until those models land as Runs. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+      "description": "Another model's forecast for a line's month, before tax, read beside Feather Forecast: XGBoost and LightGBM, the warehouse's baseline Runs (data-warehouse #4965) from the same sales as the official Run, as month totals. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
       "columns": [
         {
           "column_name": "model",
