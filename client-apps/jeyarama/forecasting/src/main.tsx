@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client'
 import { APP_THEME_ATTRIBUTE, THEME_CHANGE_EVENT, paintTheme } from '@featherbase/shop-floor/theme'
 import { listAll } from './api'
 import { datasetFrom, setCopiesOnly, setDataset, type ReachRow, type RunLineRow } from './dataset'
+import { hostedStart } from './startup'
 import './style.css'
 
 // The page takes the theme the person chose in the shared top bar; before it paints, the device's.
@@ -18,6 +19,11 @@ const NoRun = () => (
     <h1 style={{ fontSize: 20 }}>No Run is loaded yet</h1>
     <p>The forecast team loads each month's engine Run and who reviews it; the month opens here once it is loaded.</p>
   </div>)
+const NoAccess = () => (
+  <div style={{ padding: 32, font: '15px system-ui', maxWidth: 560 }}>
+    <h1 style={{ fontSize: 20 }}>You don't have access to forecasting data yet</h1>
+    <p>Forecasting opens for you once you are given the Forecasting Member role. Ask the forecast team.</p>
+  </div>)
 
 // The Run under review and who reviews it are read first; the app's modules build from them as they load.
 const root = createRoot(document.getElementById('root')!)
@@ -31,8 +37,9 @@ async function start() {
     // The made-up data is for a local instance only: a hosted one with no Run loaded says so instead.
     if (!dataset && !LOCAL) {
       // a hosted instance on the read-only copies (#1418): open the pages built on them once an official Run is loaded
-      const runs = await listAll<{ run_id: string }>('forecasting.forecast_run', ['run_id']).catch(() => [])
-      if (!runs.length) { root.render(<NoRun />); return }
+      const how = await hostedStart(() => listAll<{ run_id: string }>('forecasting.forecast_run', ['run_id']))
+      if (how === 'no-access') { root.render(<NoAccess />); return }
+      if (how === 'no-run') { root.render(<NoRun />); return }
       setCopiesOnly(true)
     }
     setDataset(dataset)
