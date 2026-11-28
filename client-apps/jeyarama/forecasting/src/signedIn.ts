@@ -68,3 +68,39 @@ export async function signedIn(base: BaseTables | undefined, user: string, roles
   chiefs.sort((a, b) => CHIEF_EXECUTIVE_JOBS.indexOf(a.job) - CHIEF_EXECUTIVE_JOBS.indexOf(b.job) || a.id.localeCompare(b.id))
   return { admin, orgChart: true, employees, chiefs }
 }
+
+/** One job the signed-in person holds today, as a reviewer of the Run's lines: the role a page names, and where
+ *  ("LKS · Girls" for a Team Leader, the site for a Store Manager, the region(s) for a category head, every store for
+ *  the Chief Executive). */
+export interface LiveJob { role: 'Team Leader' | 'Store Manager' | 'Department Manager' | 'Category Head' | 'Chief Executive'; area: string }
+/** The signed-in person on the live org chart (#1430): their name(s) and Employee rows, from their Person, and every
+ *  job they hold today. Null where the instance has no org chart (the made-up one). */
+export interface LivePerson { names: string[]; employees: string[]; jobs: LiveJob[] }
+
+/** A Merchandise Assignment applies on `today`, its Ends On being the first day it no longer applies. */
+const beforeEnd = (r: Row, today: string) => (!day(r.starts_on) || day(r.starts_on)! <= today) && (!day(r.ends_on) || day(r.ends_on)! > today)
+
+export async function livePerson(base: BaseTables | undefined, user: string, today: string): Promise<LivePerson | null> {
+  if (!base) return null
+  for (const [table, columns] of [['Employee', ['person', 'status']], ['Job Assignment', undefined]] as const)
+    if (!(await (base.available?.(table, columns as string[] | undefined) ?? Promise.resolve(true)))) return null
+  const mine = await all(base, 'Employee', ['row_id', 'name'], [['person', '=', user], ['status', '=', 'Current']])
+  const employees = mine.map(e => String(e.row_id)), names = [...new Set(mine.map(e => String(e.name ?? '')).filter(Boolean))]
+  if (!employees.length) return { names, employees, jobs: [] }
+  const held = (await all(base, 'Job Assignment', ['employee', 'job', 'site', 'section', 'starts_on', 'ends_on'], [['employee', 'in', employees]])).filter(j => throughEnd(j, today))
+  const sectionIds = [...new Set(held.filter(j => j.job === 'Team Leader' && j.section).map(j => String(j.section)))]
+  const sectionName = new Map((sectionIds.length ? await all(base, 'Section', ['row_id', 'name', 'status'], [['row_id', 'in', sectionIds]]) : [])
+    .filter(s => String(s.status ?? 'Active') !== 'Closed').map(s => [String(s.row_id), String(s.name)]))
+  const jobs: LiveJob[] = []
+  for (const j of held) {
+    if (j.job === 'Team Leader' && j.section && sectionName.has(String(j.section))) jobs.push({ role: 'Team Leader', area: `${String(j.site)} · ${sectionName.get(String(j.section))}` })
+    else if (j.job === 'Store Manager' || j.job === 'Department Manager') jobs.push({ role: j.job, area: String(j.site) })
+    else if (CHIEF_EXECUTIVE_JOBS.includes(String(j.job))) jobs.push({ role: 'Chief Executive', area: 'every store' })
+  }
+  if (await (base.available?.('Merchandise Assignment') ?? Promise.resolve(true))) {
+    const heads = (await all(base, 'Merchandise Assignment', ['employee', 'responsibility', 'operating_region', 'starts_on', 'ends_on'],
+      [['employee', 'in', employees], ['responsibility', '=', 'Category head']])).filter(m => beforeEnd(m, today))
+    if (heads.length) jobs.push({ role: 'Category Head', area: [...new Set(heads.map(m => String(m.operating_region ?? '')).filter(Boolean))].join(' and ') || 'their merchandise' })
+  }
+  return { names, employees, jobs }
+}

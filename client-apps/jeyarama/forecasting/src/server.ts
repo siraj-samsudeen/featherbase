@@ -9,14 +9,15 @@
 //     moves after it is entered.
 // Who people are and what they cover comes from one of two org charts (Org, below): the made-up one
 // (madeUp.ts, areas.ts) on an instance with no Run loaded, or forecasting.reach and forecasting.run_line
-// where a Run is loaded, read through the platform's documents. The signed-in person is matched by name
-// through the members of forecasting.forecaster (holders of the Forecasting Member role).
+// where a Run is loaded, read through the platform's documents; there the signed-in person is matched by name through
+// the members of forecasting.forecaster. The review of a Run's lines (reviewer(), below) instead knows the signed-in
+// person by their Person on the live org chart: their Employee rows and today's jobs (signedIn.ts, #1430).
 import { areaText, covers, personNamed } from './areas'
 import { person as madeUpPerson } from './madeUp'
 import { causesProblem, linesOf } from './causes'
 import { orgChart } from './orgChart'
 import { noticesFor } from './notices'
-import { signedIn } from './signedIn'
+import { livePerson, signedIn } from './signedIn'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -36,7 +37,9 @@ export interface Context {
 }
 type Level = 'Store' | 'Division' | 'Subdivision' | 'Category' | 'Subcategory' | 'Section'
 /** Someone on the org chart: their name and job, their manager's name, and what they cover. */
-interface Who { name: string; role: string; reportsTo: string | null; area: string }
+interface Who { name: string; role: string; reportsTo: string | null; area: string
+  /** Their Employee rows, when found on the live org chart by their Person (#1430): the checks below match these, not the name. */
+  employees?: string[] }
 interface Org {
   named(name: string): Promise<Who | null>
   /** Whether everything in a store's scope ('All' for every store) is the person's. */
@@ -227,7 +230,9 @@ async function reviews(ctx: Context, p: Who, line: Row): Promise<boolean> {
   // a category head reviews the subcategories their Merchandise Assignment gives them at this store, today (#1442)
   if (p.role === 'Category Head') {
     if (!live || !ctx.row.subcategory_name || !line.subcategory_code) return false
-    return (await orgChart(base!, store, todayIST())).subcategories[String(line.subcategory_code)]?.categoryHead === p.name
+    const sub = (await orgChart(base!, store, todayIST())).subcategories[String(line.subcategory_code)]
+    // by Employee row where the person was found by their Person (#1430); two heads can share a name
+    return p.employees ? !!sub?.categoryHeadId && p.employees.includes(sub.categoryHeadId) : sub?.categoryHead === p.name
   }
   if (p.role !== 'Team Leader' || p.area.split(' · ')[0] !== store) return false
   // without the org chart's Tables only the made-up instance may hold a Team Leader to their store; a real one refuses
@@ -236,7 +241,7 @@ async function reviews(ctx: Context, p: Who, line: Row): Promise<boolean> {
   // a subcategory's line is in its section today; a line merged from several codes is in none a Team Leader holds
   if (ctx.row.subcategory_name && !line.subcategory_code) return false
   const at = ctx.row.subcategory_name ? org.sections.find(s => s.id === org.subcategories[String(line.subcategory_code)]?.section) : org.sections.find(s => s.name === ctx.row.section_name)
-  if (!at || !at.teamLeaders.includes(p.name)) return false
+  if (!at || !(p.employees ? at.teamLeaderIds.some(id => p.employees!.includes(id)) : at.teamLeaders.includes(p.name))) return false
   // a day explanation is filed under the section the org chart gives, whatever the page sent
   if ('section_name' in ctx.row) ctx.row.section_name = at.name
   return true
@@ -246,15 +251,35 @@ const PAGE_ROLES = ['Team Leader', 'Store Manager', 'Category Head', 'Chief Exec
 /** Who answers a line or explains a day: a Team Leader for their section, a Store Manager for their store. The
  *  category head and the Chief Executive also change a line and ask about it (#1442), and nothing more. */
 const LINE_ROLES = ['Team Leader', 'Store Manager', 'Department Manager']
-async function reviewer(ctx: Context, named: unknown, line: Row, claimedRole?: unknown, roles: string[] = LINE_ROLES): Promise<Who> {
+async function reviewer(ctx: Context, named: unknown, line: Row, claimedRole?: unknown | unknown[], roles: string[] = LINE_ROLES): Promise<Who> {
   // An administrator acts for a person by name (the app's "view a section as its Team Leader", a manager's page
   // "viewing as"), whether or not that person is on the forecasting org chart: as a Team Leader unless the row names
   // one of the managers' roles.
   if (isAdmin(ctx)) return { name: String(named || 'Team Leader'), role: PAGE_ROLES.includes(String(claimedRole)) && roles.includes(String(claimedRole)) ? String(claimedRole) : 'Team Leader', reportsTo: null, area: `${String(line.store_short_code)} · ${String(ctx.row.section_name ?? '')}` }
-  const p = await actor(ctx, await orgOf(ctx), named)
-  if (!roles.includes(p.role)) ctx.reject(`A ${p.role} does not do this on a line`)
-  if (!(await reviews(ctx, p, line))) ctx.reject(`${p.name} reviews ${p.area}; ${String(line.store_short_code)} · ${String(line.subcategory_name)} is outside it`)
-  return p
+  const live = await livePerson(ctx.baseTables, ctx.user, todayIST())
+  if (!live) {
+    // only the made-up instance finds people by name; a real one whose org chart can't be read lets no one act
+    const org = await orgOf(ctx)
+    if (org !== madeUp) ctx.reject('The org chart cannot be read just now, so the forecast cannot be changed; try again shortly')
+    const p = await actor(ctx, org, named)
+    if (!roles.includes(p.role)) ctx.reject(`A ${p.role} does not do this on a line`)
+    if (!(await reviews(ctx, p, line))) ctx.reject(`${p.name} reviews ${p.area}; ${String(line.store_short_code)} · ${String(line.subcategory_name)} is outside it`)
+    return p
+  }
+  // the signed-in person is who their Person is on the live org chart (#1430): their Employee rows and today's jobs,
+  // never a name looked up; the row's name must be their own
+  if (!live.employees.length) ctx.reject('Your sign-in is not linked to an employee on the org chart')
+  if (!live.names.includes(String(named ?? ''))) ctx.reject(`You are signed in as ${live.names.join(' / ') || 'someone with no name on the org chart'}; you cannot act as ${String(named || 'nobody')}`)
+  if (!live.jobs.length) ctx.reject(`${String(named)} has no forecasting job on the org chart today`)
+  // each job they hold today that may do this, the ones the row's role names first: the first whose area holds the line acts
+  const allowed = live.jobs.filter(j => roles.includes(j.role))
+  if (!allowed.length) ctx.reject(`A ${live.jobs[0].role} does not do this on a line`)
+  const want = [claimedRole].flat().map(String), named_ = String(named)
+  for (const j of [...allowed.filter(j => want.includes(j.role)), ...allowed.filter(j => !want.includes(j.role))]) {
+    const p: Who = { name: named_, role: j.role, reportsTo: null, area: j.area, employees: live.employees }
+    if (await reviews(ctx, p, line)) return p
+  }
+  return ctx.reject(`${named_} reviews ${[...new Set(allowed.map(j => j.area))].join(', ')}; ${String(line.store_short_code)} · ${String(line.subcategory_name)} is outside it`)
 }
 /** The columns a save moved, other than `keep` and the platform's own stamps. */
 const norm = (v: unknown) => (v instanceof Date ? v.toISOString() : v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v))
@@ -334,10 +359,15 @@ async function moveChange(ctx: Context) {
   if (undoing && !old?.decided_by) ctx.reject('This change was never decided, so there is nothing to take back')
   if (isAdmin(ctx)) { stamp(); return } // an administrator acts for the person the row names ("viewing as")
 
-  const org = await orgOf(ctx)
   const named = deciding ? row.decided_by : undoing ? old?.decided_by : old?.proposed_by
-  const p = await actor(ctx, org, named)
   const as: Mover = deciding ? 'decider' : undoing ? 'who decided' : 'proposer'
+  // the line is the change's own, read from the Run; whoever moves the change must review it today (#1430), so a
+  // namesake elsewhere cannot take back or undo someone else's change
+  const [line] = await ctx.documents.list!('forecasting.forecast_line_month', { fields: ['store_short_code', 'subcategory_name', 'subcategory_code'],
+    filters: [['run_id', '=', old?.run_id], ['store_code', '=', old?.store_code], ['subcategory_name', '=', old?.subcategory_name]], limit_page_length: 1 })
+  if (!line) ctx.reject('This change\'s line is not in its Run')
+  // any page role, or a Department Manager, may be asked; who may make each move is checked below
+  const p = await reviewer(ctx, named, line, as === 'proposer' ? old?.proposed_by_role : DECIDERS, [...PAGE_ROLES, 'Department Manager'])
   if (!movers.includes(as)) ctx.reject(`A change goes from ${from} to ${to} only by ${movers.join(' or ')}`)
   if (as === 'proposer') {
     if (p.name !== old?.proposed_by) ctx.reject('Only the person who proposed a change takes it back')
@@ -348,10 +378,6 @@ async function moveChange(ctx: Context) {
   } else {
     if (!DECIDERS.includes(p.role)) ctx.reject(`The Store Manager decides a sent change; ${p.name} is a ${p.role}`)
     if (old?.proposed_by === p.name) ctx.reject('A change is decided by someone other than the person who sent it')
-    // the line is the change's own, read from the Run: the decider must be that store's Store Manager
-    const [line] = await ctx.documents.list!('forecasting.forecast_line_month', { fields: ['store_short_code', 'subcategory_name', 'subcategory_code'],
-      filters: [['run_id', '=', old?.run_id], ['store_code', '=', old?.store_code], ['subcategory_name', '=', old?.subcategory_name]], limit_page_length: 1 })
-    if (!line || !(await reviews(ctx, p, line))) ctx.reject(`${p.name} decides changes at ${p.area}; this change is outside it`)
   }
   stamp()
 }
@@ -412,7 +438,7 @@ async function prepareQuestion(ctx: Context) {
     if (moved.length) ctx.reject(`An answer changes the status and who answered, not ${moved.join(', ')}`)
     return
   }
-  await actor(ctx, await orgOf(ctx), old?.asked_by)
+  await reviewer(ctx, old?.asked_by, await lineOf(ctx), undefined, PAGE_ROLES)
   const moved = unchanged(ctx, ['answer_seen_at'])
   if (moved.length) ctx.reject('The asker only marks the answer seen')
 }
