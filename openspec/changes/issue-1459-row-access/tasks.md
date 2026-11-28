@@ -20,6 +20,6 @@
 
 ## 4. Proof
 
-- [x] 4.1 `row-rules.test.ts` on every read path; the wide platform suites with every test Table given a rule
-- [x] 4.2 A local Dash instance with made-up data: `GET /api/row_rules` before and after
-- [x] 4.3 One independent access-control review; real findings fixed
+- [ ] 4.1 `row-rules.test.ts` on every read path; the wide platform suites with every test Table given a rule
+- [ ] 4.2 A local Dash instance with made-up data: `GET /api/row_rules` before and after
+- [ ] 4.3 One independent access-control review; real findings fixed
