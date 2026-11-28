@@ -102,6 +102,8 @@ async function parcelsOnRacks(admin: Client, senderLimit: number) {
   await admin.post('/api/table/Data%20Source/parcels:reflect', {
     schema: SCHEMA, tables: ['rack', 'parcel'], names: { rack: 'Rack', parcel: 'Parcel' },
   })
+  // #1459: a reflected Table has no row rule, so only System Managers read it until one is said
+  for (const table of ['Rack', 'Parcel']) await admin.put(`/api/table_def/${table}/row_rule`, { row_rule: { kind: 'all' } })
 }
 
 async function parcelOnRack(label: string, rack: string) {
