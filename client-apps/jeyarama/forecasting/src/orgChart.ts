@@ -29,12 +29,11 @@ export async function orgChart(base: BaseTables, store: string, today: string): 
   const region = site ? String(site.operating_region ?? '') || null : null
   const stores = Object.fromEntries((region ? await base.list('Site', { fields: ['row_id', 'name'], filters: [['operating_region', '=', region]], limit_page_length: ALL }) : [])
     .map(x => [String(x.row_id), String(x.name ?? x.row_id)]))
-  const [sections, floors, placed, jobs] = await Promise.all([
-    base.list('Section', { fields: ['row_id', 'name', 'floor', 'status'], filters: [['site', '=', store]], limit_page_length: ALL }),
-    base.list('Store Floor', { fields: ['row_id', 'name', 'floor_order'], filters: [['site', '=', store]], limit_page_length: ALL }),
-    base.list('Section Subcategory', { fields: ['subcategory', 'section', 'starts_on', 'ends_on'], filters: [['store', '=', store]], limit_page_length: ALL }),
-    base.list('Job Assignment', { fields: ['employee', 'job', 'section', 'starts_on', 'ends_on'], filters: [['site', '=', store], ['job', 'in', ['Team Leader', 'Store Manager']]], limit_page_length: ALL }),
-  ])
+  // one read at a time: the platform refuses a handler's base Table reads awaited together
+  const sections = await base.list('Section', { fields: ['row_id', 'name', 'floor', 'status'], filters: [['site', '=', store]], limit_page_length: ALL })
+  const floors = await base.list('Store Floor', { fields: ['row_id', 'name', 'floor_order'], filters: [['site', '=', store]], limit_page_length: ALL })
+  const placed = await base.list('Section Subcategory', { fields: ['subcategory', 'section', 'starts_on', 'ends_on'], filters: [['store', '=', store]], limit_page_length: ALL })
+  const jobs = await base.list('Job Assignment', { fields: ['employee', 'job', 'section', 'starts_on', 'ends_on'], filters: [['site', '=', store], ['job', 'in', ['Team Leader', 'Store Manager']]], limit_page_length: ALL })
   const todays = jobs.filter(j => throughEnd(j, today))
   const merch = region ? (await base.list('Merchandise Assignment', { fields: ['employee', 'responsibility', 'category', 'subcategory', 'starts_on', 'ends_on'],
     filters: [['operating_region', '=', region], ['responsibility', 'in', ['Buyer', 'Category head']]], limit_page_length: ALL })).filter(m => beforeEnd(m, today)) : []

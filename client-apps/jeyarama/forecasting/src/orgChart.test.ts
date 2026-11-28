@@ -34,9 +34,15 @@ const TABLES: Record<string, Row[]> = {
     { employee: 'E6', responsibility: 'Buyer', category: 'Girls Bottom', subcategory: 'S2', operating_region: 'North', starts_on: '2026-11-10', ends_on: '2026-11-28' },
   ],
 }
+// like the platform's helper, it refuses a read while another is still running (reads are awaited one at a time)
+let running = 0
 const base = {
-  list: async (table: string, args: { filters?: [string, string, unknown][] }) =>
-    (TABLES[table] ?? []).filter(r => (args.filters ?? []).every(([c, op, v]) => (op === 'in' ? (v as unknown[]).includes(r[c]) : r[c] === v))),
+  list: async (table: string, args: { filters?: [string, string, unknown][] }) => {
+    if (running++) throw new Error('Base Table and proposal helpers must be awaited one at a time inside the handler')
+    await new Promise(r => setTimeout(r, 0))
+    running--
+    return (TABLES[table] ?? []).filter(r => (args.filters ?? []).every(([c, op, v]) => (op === 'in' ? (v as unknown[]).includes(r[c]) : r[c] === v)))
+  },
 }
 
 describe('the live org chart (#1419)', () => {
