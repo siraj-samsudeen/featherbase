@@ -140,9 +140,10 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 .fr-tabs > [role='tab'][aria-selected='true'] { color: var(--color-action); border-bottom-color: var(--color-action); font-weight: 600; }
 .fr-tabpanel { padding-top: 1.75rem; }
 
-/* full subcategory names: they wrap, never cut */
+/* full subcategory names: they wrap, never cut; a group's chip stays on the name's line and the words wrap beside it */
 .fr-table > tbody > tr > td:first-child { white-space: normal; }
-.fr-name { flex-wrap: wrap; }
+.fr-name { flex-wrap: nowrap; }
+.fr-name > b, .fr-name > a { min-width: 0; }
 
 /* By Price Band (#1419, 28-Nov): under an opened subcategory, across both columns */
 .fr-bands { margin-top: 18px; }
