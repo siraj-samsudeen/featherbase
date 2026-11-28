@@ -7,7 +7,7 @@
 // each one a narrow platform operation, and an undeclared one is refused and
 // recorded in the Access Log.
 import { z } from 'zod'
-import { APP_JOB_GRANTS, type AppJobGrant, type AppJobPerson, type NewLoad, type RuntimeJobContext, type RuntimeJobHandler, type PersonScope } from 'shared'
+import { APP_JOB_GRANTS, type ActionRow, type AppJobGrant, type AppJobPerson, type NewLoad, type RuntimeJobContext, type RuntimeJobHandler, type PersonScope } from 'shared'
 import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
@@ -46,6 +46,9 @@ const jobSchema = z.object({
   identifiers: z.array(z.string().regex(IDENTIFIER_SYSTEM_KEY)).refine(distinct).optional(),
   // The app's own datasets the job reads.
   datasets: z.array(identifier).refine(distinct).optional(),
+  // #1428 (Siraj, 28-Nov-2026): the app's own Tables (or read-only copies)
+  // the job reads every row of, past their row privacy, read-only.
+  readsAllRows: z.array(z.string().min(1)).refine(distinct, 'A job names each Table it reads once').optional(),
   documents: z.object({ owner_table: z.string(), tables: z.array(z.string()).min(1).refine(distinct) }).strict().optional(),
   // The app's optional secrets the job uses (#666).
   needs: z.array(secretName).refine(distinct).optional(),
@@ -80,7 +83,14 @@ export function validateAppJobs(app: string, manifest: {
   if (!jobs.length) return
   if (!manifest.server) throw new Error('Declared jobs require a server module')
   const datasets = new Set((manifest.datasets ?? []).map((d) => d.name))
+  // A job reads every row only of its own app's stored Tables and read-only copies.
+  const ownRows = new Set([
+    ...(manifest.tables ?? []).filter((t) => t.name.startsWith(`${app}.`) && !t.system && !t.data_source && (!t.kind || t.kind === 'table')).map((t) => t.name),
+    ...(manifest.datasets ?? []).filter((d) => (d as { store?: string }).store !== 'json').map((d) => `${app}.${d.name}`),
+  ])
   for (const job of jobs) {
+    for (const table of job.readsAllRows ?? [])
+      if (!ownRows.has(table)) throw new Error(`The job ${job.name} may read every row only of its own app's Tables, not ${table}`)
     if (job.identifiers?.length && !jobGrants(job).has('read_people'))
       throw new Error(`The job ${job.name} names identifier systems, which only a job granted read_people reads`)
     for (const dataset of job.datasets ?? [])
@@ -192,6 +202,12 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
     let documentScopeOpen = true
     let pendingOwners: Promise<void> | undefined
     let documentFailure: unknown
+    // #1428: every row of a Table the job declares, read-only; anything else refused and recorded.
+    const allRowsOf = new Set(job.readsAllRows ?? [])
+    const ownTable = async (table: unknown): Promise<string> => {
+      if (typeof table !== 'string' || !allRowsOf.has(table)) await refuseAccess('the Table it asked to read', 'reads_all_rows')
+      return table as string
+    }
     const forEachOwner: RuntimeJobContext['documents']['forEachOwner'] = callback => {
       if (!job.documents) {
         const refused = refuseAccess('document access', 'documents')
@@ -237,7 +253,14 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
     const timeZone = (await getSystemSettings()).time_zone
     const context: RuntimeJobContext = Object.freeze({
       now: new Date().toISOString(), timeZone,
-      documents: Object.freeze({ forEachOwner }),
+      documents: Object.freeze({
+        forEachOwner,
+        list: async (table: string, args?: unknown) => everyRow(await ownTable(table), args),
+        get: async (table: string, rowId: string) => {
+          if (typeof rowId !== 'string' || !rowId) throw new AppError('ValidationError', 'get needs a row id')
+          return (await everyRow(await ownTable(table), { filters: [['row_id', '=', rowId]], limit: 1 }))[0] ?? null
+        },
+      }),
       job: Object.freeze({ name: actor, run: ctx.job.row_id, trigger: ctx.job.trigger }),
       settings: ready.settings,
       secrets: ready.secrets,
@@ -307,6 +330,30 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
     // A handler that caught the refusal and carried on still fails, for good.
     if (refusedGrant) throw new FinalJobFailure(refusedGrant)
   }
+}
+
+const JOB_ROWS_DEFAULT = 10_000
+const JOB_ROWS_MOST = 50_000
+
+/** #1428: a job's read of every row of one of its app's own Tables, as the
+ *  storage holds it, so no row privacy applies; filters on its own columns. */
+async function everyRow(table: string, args: unknown): Promise<ActionRow[]> {
+  const { filters = [], limit = JOB_ROWS_DEFAULT } = (args ?? {}) as { filters?: unknown; limit?: unknown }
+  if (!Array.isArray(filters)) throw new AppError('ValidationError', 'A job list takes filters as [column, operator, value] lists')
+  if (!Number.isInteger(limit) || (limit as number) < 1 || (limit as number) > JOB_ROWS_MOST)
+    throw new AppError('ValidationError', `A job list reads 1 to ${JOB_ROWS_MOST} rows at a time`)
+  const meta = await getMeta(table)
+  const columns = new Set(['row_id', 'created_by', 'created_at', 'updated_at', 'updated_by', ...meta.columns.map((c) => c.column_name)])
+  const where = filters.map((filter: unknown) => {
+    const [column, operator, value] = Array.isArray(filter) ? filter : []
+    if (typeof column !== 'string' || !columns.has(column)) throw new AppError('ValidationError', `${table} has no column ${String(column)} to filter on`)
+    if (operator === '=') return sql`${sql(column)} = ${value as string}`
+    if (operator === 'in' && Array.isArray(value) && value.length) return sql`${sql(column)} in ${sql(value as string[])}`
+    throw new AppError('ValidationError', "A job list's filter is [column, '=', value] or [column, 'in', [values]]")
+  })
+  const rows = await sql`select * from ${sql(await tableRelation(table))}
+    where ${where.reduce((all, one) => sql`${all} and ${one}`, sql`true`)} order by row_id limit ${limit as number}`
+  return JSON.parse(JSON.stringify(rows)) as ActionRow[]
 }
 
 /** #1418: the new load a queued run names, checked against the registry: a
@@ -461,7 +508,7 @@ async function emailSystemManagers(actor: string, message: Readonly<{ subject: s
 // ------------------------------------------------------------- upgrades
 
 export type JobPlanStep =
-  | { add: { name: string; title?: string; cadence: string; description: string; grants: AppJobGrant[]; documents?: JobDeclaration['documents'] } }
+  | { add: { name: string; title?: string; cadence: string; description: string; grants: AppJobGrant[]; documents?: JobDeclaration['documents']; readsAllRows?: string[] } }
   | { change: { name: string; title?: string; cadence?: string; description?: string; grants?: AppJobGrant[]; documents?: JobDeclaration['documents'] | null } }
   | { remove: { name: string } }
 type JobPlanChange = Extract<JobPlanStep, { change: unknown }>['change']
@@ -475,7 +522,7 @@ export function planJobChanges(app: string, prior: JobDeclaration[], target: Job
   for (const job of target) {
     const before = prior.find((p) => p.name === job.name)
     if (!before) {
-      steps.push({ add: { name: job.name, ...(job.title ? { title: job.title } : {}), cadence: job.cadence, description: job.description, grants: [...jobGrants(job)], ...(job.documents ? { documents: job.documents } : {}) } })
+      steps.push({ add: { name: job.name, ...(job.title ? { title: job.title } : {}), cadence: job.cadence, description: job.description, grants: [...jobGrants(job)], ...(job.documents ? { documents: job.documents } : {}), ...(job.readsAllRows ? { readsAllRows: job.readsAllRows } : {}) } })
       continue
     }
     // Grants, identifier systems, datasets and optional secrets are all
@@ -488,6 +535,7 @@ export function planJobChanges(app: string, prior: JobDeclaration[], target: Job
       ...gained(job.datasets, before.datasets).map((d) => `the dataset ${d}`),
       ...gained(job.needs, before.needs).map((n) => `the secret ${n}`),
       ...gained(job.documents?.tables, before.documents?.tables).map(name => `the Table ${name}`),
+      ...gained(job.readsAllRows, before.readsAllRows).map(name => `every row of ${name}`),
       ...(job.documents && job.documents.owner_table !== before.documents?.owner_table ? ['a different document owner Table'] : []),
     ]
     if (wider.length)

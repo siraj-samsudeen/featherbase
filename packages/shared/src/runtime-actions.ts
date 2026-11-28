@@ -275,6 +275,13 @@ export interface RuntimeJobContext {
   readonly documents: {
     /** Server-selected enabled creators of the declared owner Table only. */
     forEachOwner(callback: (scope: { readonly user: string; readonly documents: RuntimeActionContext['documents'] }) => Promise<void>): Promise<void>
+    /** #1428: every row of one of the app's own Tables the job names in
+     *  `readsAllRows`, past the Table's row privacy (a job has no places),
+     *  read-only. Filters are `[column, '=' | 'in', value]`; at most `limit`
+     *  rows (10,000 unless given, 50,000 at most), in row id order. */
+    list(table: string, args?: { filters?: [string, '=' | 'in', unknown][]; limit?: number }): Promise<ActionRow[]>
+    /** #1428: one such row by its id, or null. */
+    get(table: string, rowId: string): Promise<ActionRow | null>
   }
   /** The job's registered name (`<app>.<job>`), which is also its actor. */
   readonly job: { readonly name: string; readonly run: string; readonly trigger: string }

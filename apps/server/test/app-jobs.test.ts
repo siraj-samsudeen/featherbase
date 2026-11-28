@@ -25,6 +25,7 @@ const OVERREACH = `${APP}.overreach`
 const SYSTEM = 'fbjobs-code'
 
 interface Job {
+  readsAllRows?: string[]
   name: string
   title?: string
   cadence: string
@@ -116,6 +117,18 @@ const HANDLERS: Record<string, string> = {
     ]))
   }`,
   mail_null: `async mail_null(ctx) { await ctx.email.systemManagers(null) }`,
+  read_all: `async read_all(ctx) {
+    const all = await ctx.documents.list('${APP}.note')
+    const one = await ctx.documents.get('${APP}.note', all[0].row_id)
+    const some = await ctx.documents.list('${APP}.note', { filters: [['body', 'in', ['first']], ['shared', '=', false]], limit: 5 })
+    const none = await ctx.documents.get('${APP}.note', 'nope')
+    const errors = []
+    for (const args of [{ filters: 'x' }, { limit: 0 }, { filters: [['nope', '=', 1]] }, { filters: [['body', 'like', 'x']] }])
+      try { await ctx.documents.list('${APP}.note', args) } catch (e) { errors.push(e.message) }
+    try { await ctx.documents.get('${APP}.note', '') } catch (e) { errors.push(e.message) }
+    ctx.setResult(JSON.stringify({ all: all.map((r) => [r.body, r.created_by]), one: one.body, some: some.map((r) => r.body), none, errors, writes: typeof ctx.documents.create }))
+  }`,
+  read_other: `async read_other(ctx) { await ctx.documents.list('Person') }`,
   notify_them: `async notify_them(ctx) {
     const told = []
     told.push(await ctx.people.notify('lead@example.test', { subject: 'GJ01 moved 12%', body: 'Your line went back to waiting.', email: true, path: '/review', ref_table: '${APP}.note', reference_name: 'n1' }))
@@ -532,6 +545,66 @@ describe('what a job mails is what was checked', () => {
     await withToken(runDue)
     expect(await sql`select recipient, body from email_queue where subject = 'Swap'`).toEqual([{ recipient: 'swap@example.test', body: 'original text' }])
     expect(await leaksAnywhere()).toBe(false)
+  })
+})
+
+// #1428 (Siraj, 28-Nov-2026): an app's own job reads every row of the app's
+// own Tables it declares, past their row privacy, read-only.
+describe('a job that reads every row of its app\'s Tables', () => {
+  const PRIVATE = { tables: [{ name: `${APP}.note`, label: 'Note', id_pattern: 'prompt',
+    access_policy: { version: 1, roles: ['Jobs Writer'], shared_column: 'shared' },
+    columns: [{ column_name: 'body', column_type: 'Data' }, { column_name: 'shared', column_type: 'Check' }] }],
+    roles: ['Jobs Writer'], permissions: [{ table: `${APP}.note`, role: 'Jobs Writer', can_read: true, can_create: true }] }
+  const readAll: Job = { name: 'read_all', cadence: 'daily', description: 'Reads every note.', readsAllRows: [`${APP}.note`] }
+
+  test('reads each person\'s private rows, filtered or by id, and cannot write them', async ({ admin, createUser }) => {
+    expect(await discoverPackages([await writeApp({ jobs: [readAll], extra: PRIVATE })])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    const [asha, omar] = [await createUser({ roles: ['Jobs Writer'] }), await createUser({ roles: ['Jobs Writer'] })]
+    await sql`insert into ${sql(APP)}.note (row_id, body, shared, created_by, updated_by) values
+      ('n1', 'first', false, ${asha.user!}, ${asha.user!}), ('n2', 'second', false, ${omar.user!}, ${omar.user!})`
+    // Each writer sees only their own note: the Table's privacy holds for people.
+    expect((await asha.get<{ data: { row_id: string }[] }>(`/api/table/${APP}.note`)).data.map((r) => r.row_id)).toEqual(['n1'])
+    await runDue()
+    const [run] = await sql`select outcome, result from job_execution where method = ${`${APP}.read_all`} order by started_at desc limit 1`
+    expect(run.outcome).toBe('success')
+    expect(JSON.parse(String(run.result))).toEqual({
+      all: [['first', asha.user], ['second', omar.user]], one: 'first', some: ['first'], none: null, writes: 'undefined',
+      errors: ['A job list takes filters as [column, operator, value] lists', 'A job list reads 1 to 50000 rows at a time',
+        `${APP}.note has no column nope to filter on`, "A job list's filter is [column, '=', value] or [column, 'in', [values]]", 'get needs a row id'],
+    })
+  })
+
+  test('may name only its own app\'s stored Tables and read-only copies', async () => {
+    const problems = async (readsAllRows: string[], extra: Record<string, unknown> = PRIVATE) =>
+      (await discoverPackages([await writeApp({ jobs: [{ ...readAll, readsAllRows }], extra })])).map((f) => f.error)
+    expect(await problems(['otherapp.note'])).toEqual(["The job read_all may read every row only of its own app's Tables, not otherapp.note"])
+    expect(await problems(['Person'])).toEqual(["The job read_all may read every row only of its own app's Tables, not Person"])
+    expect(await problems([`${APP}.exits`], { ...PRIVATE, datasets: [{ name: 'exits', store: 'json', source: 's', query: 'select 1', columns: [{ name: 'code', type: 'text' }], keys: ['code'], unscoped: true }] }))
+      .toEqual([`The job read_all may read every row only of its own app's Tables, not ${APP}.exits`])
+  })
+
+  test('a Table it did not name is refused when it asks, and recorded', async ({ admin }) => {
+    const readOther: Job = { name: 'read_other', cadence: 'daily', description: 'Reads people.', readsAllRows: [`${APP}.note`] }
+    expect(await discoverPackages([await writeApp({ jobs: [readOther], extra: PRIVATE })])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    await runDue()
+    const [run] = await sql`select outcome, error from job_execution where method = ${`${APP}.read_other`} order by started_at desc limit 1`
+    expect(run).toMatchObject({ outcome: 'error', error: expect.stringContaining('has not declared the Table it asked to read') })
+    expect(await sql`select method from access_log where "user" = ${`${APP}.read_other`} and operation = 'app_access_denied'`)
+      .toEqual([{ method: `${APP}.read_other:reads_all_rows` }])
+  })
+
+  test('an upgrade cannot give a kept job every row of a Table', async ({ admin }) => {
+    const plain: Job = { name: 'read_all', cadence: 'daily', description: 'Reads every note.' }
+    const v1 = await writeApp({ jobs: [plain], extra: PRIVATE })
+    expect(await discoverPackages([v1])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    const v2 = await writeApp({ version: '1.1.0', jobs: [readAll], extra: PRIVATE,
+      migrations: [{ id: 'reads', fromVersion: '1.0.0', toVersion: '1.1.0', operations: [] }] })
+    expect(await discoverPackages([v1, v2])).toEqual([])
+    await expectApiError(admin.post('/api/preview_app_upgrade', { name: APP, version: '1.1.0' }),
+      { status: 417, message: expect.stringContaining(`would gain every row of ${APP}.note`) })
   })
 })
 
