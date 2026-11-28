@@ -301,6 +301,9 @@ export async function checkCopy(target: string, opts: LoadOptions = {}): Promise
     const [copy] = await sql`select * from featherbase.table_copy where target_table = ${target} and mode = 'read_only'`
     if (!copy) throw new AppError('NotFoundError', `${target} is not a read-only copy`)
     await abandonInterrupted(target)
+    let snapshot: string | undefined
+    let activated = false
+    try {
     const source = await getSource(dataset.source)
     const driver = getDriver(source)
     if (!driver.describe || !driver.stream || !datasetSourceReadOnly(source))
@@ -322,9 +325,6 @@ export async function checkCopy(target: string, opts: LoadOptions = {}): Promise
     if (runKey && previous && runKeyText === copy.last_run_key && !opts.force)
       return { status: 'unchanged', reason: `the run is unchanged (${runKeyText})` }
 
-    let snapshot: string | undefined
-    let activated = false
-    try {
       const { text, values } = boundQuery(dataset.query, runKey)
       await checkShape(dataset, await describeOrRefuse(() => driver.describe!(source, text, values)))
       snapshot = randomUUID()
@@ -349,6 +349,10 @@ export async function checkCopy(target: string, opts: LoadOptions = {}): Promise
       // A load that went live stays live, whatever fails after it.
       if (snapshot && !activated) await failLoad(target, snapshot, errorMessage(error))
       if (error instanceof Refusal) return refused(target, error.message, opts, snapshot)
+      // A failure before a load began (the source unreachable, the run check
+      // failing) is recorded too, so the copy says why it is old (review, 28-Nov).
+      if (!snapshot) await sql`insert into dataset_snapshot (row_id, dataset, state, built_at, triggered_by, error)
+        values (${randomUUID()}, ${target}, 'failed', clock_timestamp(), ${opts.trigger ?? null}, ${errorMessage(error)})`
       throw error
     }
   })

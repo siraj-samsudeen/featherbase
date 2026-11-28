@@ -7,7 +7,7 @@ import { rmSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test } from './pg-test'
-import { sql } from '../src/db'
+import { _getRootSql, sql } from '../src/db'
 import { runOneJob } from '../src/jobs'
 import { overrideVariable } from '../src/env'
 import { invalidateSources } from '../src/sources/registry'
@@ -306,8 +306,18 @@ describe('asking for a load', () => {
     expect(await admin.post('/api/copy_load', { table: LINES })).toEqual({ queued: true, message: 'The check for a new run has started' })
     expect(await admin.post('/api/copy_load', { table: LINES, force: true })).toEqual({ queued: false, message: 'A load is already waiting to run' })
     await sql`update background_job set job_status = 'running' where method = ${LOAD_JOB}`
-    expect(await admin.post('/api/copy_load', { table: LINES })).toEqual({ queued: false, message: 'A load is running now' })
-    expect(await loadState(admin, LINES)).toMatchObject({ pending: 'running', loaded_at: null, rows: null, run: null })
+    // A load that runs holds the copy's lock (here, on a connection of its own).
+    const held = await _getRootSql().reserve()
+    try {
+      await held`begin`
+      await held`select pg_advisory_xact_lock(hashtext('read-only-copy:' || ${LINES}))`
+      expect(await admin.post('/api/copy_load', { table: LINES })).toEqual({ queued: false, message: 'A load is running now' })
+      expect(await loadState(admin, LINES)).toMatchObject({ pending: 'running', loaded_at: null, rows: null, run: null })
+    } finally { await held`rollback`; held.release() }
+    // Without it, the load is over (the server stopped during it): it ends as failed and a new one starts.
+    expect(await admin.post('/api/copy_load', { table: LINES })).toEqual({ queued: true, message: 'The check for a new run has started' })
+    expect(await sql`select job_status, error from background_job where method = ${LOAD_JOB} order by created_at`).toEqual([
+      { job_status: 'failed', error: 'interrupted: the server stopped during the load' }, { job_status: 'queued', error: null }])
     expect(await loadState(admin, `${APP}.note`)).toBeNull()
   })
 
