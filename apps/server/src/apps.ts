@@ -549,6 +549,12 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
     if (meta.kind !== 'sub_table' && (!ownsClientRoot || Object.hasOwn(runtimeManifest?.records ?? {}, meta.name)))
       await ensureHomePageForTable(meta.name, meta.module)
   }
+  // #1418: its read-only copies come with its Tables, before its grants, so a
+  // grant may name one; each is empty until someone loads it.
+  if (manifest.runtime_package) {
+    const { selectedDatasets } = await import('./runtime-packages')
+    await (await import('./read-only-copy')).syncAppCopies(manifest.name, selectedDatasets(manifest.name))
+  }
   const access = await provisionAccess(manifest)
   // Wire its doc_events, scheduler jobs, and method overrides BEFORE the
   // fixtures materialize, so fixture saves run under the app's own hooks the
@@ -628,9 +634,6 @@ export async function installApp(name: string): Promise<InstallResult> {
       const glossaryModule = await import('./glossary')
       const { glossary } = manifest.runtime_manifest as { glossary?: Parameters<typeof glossaryModule.syncAppGlossary>[1] }
       await glossaryModule.syncAppGlossary(name, glossary, 'Administrator')
-      // #1418: its read-only copies, empty until someone loads them.
-      const { selectedDatasets } = await import('./runtime-packages')
-      await (await import('./read-only-copy')).syncAppCopies(name, selectedDatasets(name))
       return result
     })
   })

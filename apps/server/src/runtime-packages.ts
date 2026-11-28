@@ -938,6 +938,8 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
             await logActivity(actor, `app_grant_withdrawn ${name}@${version}: ${p.role} on ${p.table} (${gone.length} contributions)`.slice(0, 140))
         }
         const losses = await applyMigrations(prepared.pending, name, actor, { ownsClient: typeof prepared.target.manifest.client === 'string', featherbase: Object.keys(prepared.target.manifest.records ?? {}) })
+        // #1418: its read-only copies follow its declaration, before its grants, so a grant may name one.
+        await syncAppCopies(name, prepared.target.manifest.datasets)
         // Counts only, never values: what each destructive step removed.
         for (const loss of losses)
           await logActivity(actor, `app_data_removed ${name}@${version}: ${describeLoss(loss)}`.slice(0, 140))
@@ -956,8 +958,6 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
           upgrade_plan = ${planId} where name = ${name}`
         await syncAppGlossary(name, prepared.target.manifest.glossary, actor)
         await applyJobPlan(name, prepared.jobs, prepared.prior.manifest.jobs ?? [], actor)
-        // #1418: its read-only copies follow its declaration.
-        await syncAppCopies(name, prepared.target.manifest.datasets)
       }))
     } catch (error) {
       invalidateMeta()

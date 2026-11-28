@@ -4,6 +4,8 @@
 // schedule and check-now branches, the new-load context and DuckDB.
 import { afterAll, afterEach, beforeAll, describe, expect } from 'vitest'
 import { rmSync } from 'node:fs'
+import { readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { runOneJob } from '../src/jobs'
@@ -88,7 +90,36 @@ describe('the declaration', () => {
   })
 })
 
+/** The app at `dir`, also granting Copy Reader read on its forecast lines. */
+async function grantingRead(dir: string): Promise<string> {
+  const manifest = JSON.parse(await readFile(join(dir, 'featherbase.json'), 'utf8'))
+  manifest.permissions.push({ table: LINES, role: 'Copy Reader', can_read: true })
+  await writeFile(join(dir, 'featherbase.json'), JSON.stringify(manifest))
+  return dir
+}
+
 describe('a copy follows its app', () => {
+  test('the app may grant its own roles read on a copy, at install', async ({ admin, createUser }) => {
+    await install(admin, await grantingRead(await writeApp([lines()])))
+    await warehouse.publish('Dec-1', [LKS])
+    await load(LINES)
+    const reader = await createUser({ roles: ['Copy Reader'] })
+    expect(await reader.get(`/api/table/${encodeURIComponent(LINES)}/${encodeURIComponent('LKS·GJ01·2026-12-01')}`)).toMatchObject({ run_id: 'Dec-1' })
+  })
+
+  test('the app may grant its own roles read on a copy an upgrade adds', async ({ admin, createUser }) => {
+    const first = await writeApp([dailySales(warehouse.schema)])
+    await install(admin, first)
+    await upgrade(admin, first, await grantingRead(await writeApp([dailySales(warehouse.schema), lines()], '1.1.0')), '1.1.0')
+    expect(await sql`select role from permission where ref_table = ${LINES}`).toEqual([{ role: 'Copy Reader' }])
+    await warehouse.publish('Dec-1', [LKS])
+    await load(LINES)
+    const reader = await createUser({ roles: ['Copy Reader'] })
+    const res = await reader.fetch(`/api/table/${encodeURIComponent(LINES)}/${encodeURIComponent('LKS·GJ01·2026-12-01')}`,
+      { headers: { 'X-Featherbase-App-Version': `${APP}@1.1.0` } })
+    expect(await res.json()).toMatchObject({ run_id: 'Dec-1' })
+  })
+
   test('a changed type rebuilds it empty until someone loads it; a dropped column goes', async ({ admin }) => {
     const first = await installed(admin)
     expect(await load(LINES)).toMatchObject({ status: 'loaded' })
