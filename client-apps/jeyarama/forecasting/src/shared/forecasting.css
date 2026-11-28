@@ -189,3 +189,9 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 .fr-att-group { margin: 16px 0 6px; font-size: 14px; font-weight: 500; } .fr-att-group .fr-dim { font-weight: 400; }
 .fr-att-note { font-size: 12px; margin-top: 12px; }
 .fr-att-help { font-size: 14px; line-height: 1.6; max-width: 960px; padding-left: 18px; list-style: disc; } .fr-att-help li { margin: 6px 0; }
+
+/* the one explanation table (Siraj, 28-Nov): group rows, their bases indented beneath */
+.fr-one .fr-brow > td:first-child { padding-left: 28px; }
+.fr-one .fr-grow > td { font-weight: 500; }
+.fr-wtip { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
+.fr-build-note { font-size: 12px; margin: 8px 0 0; }
