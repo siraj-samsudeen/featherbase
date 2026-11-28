@@ -57,9 +57,9 @@ async function readable(from: string, target: string, user: string): Promise<{ t
   try {
     const scoped = await walking.run([...seen, from], () => scopedWhere(target, user, []))
     return { table: scoped.table, key: scoped.meta.row_key, where: scoped.where as Frag }
-  } catch (error) {
-    if (error instanceof AppError) return null
-    throw error
+  } catch {
+    // no grant on the target, a connected or Settings target, or a read that failed: closed either way
+    return null
   }
 }
 
@@ -117,9 +117,8 @@ export async function rowWithinRule(meta: TableMeta, user: string, row: Record<s
 /** Whether a Table's rule can keep a row from someone who may read the Table (so a live update is checked row by
  *  row before it is sent). */
 export async function ruleNarrows(table: string): Promise<boolean> {
-  const meta = await getMeta(table).catch(() => null)
-  if (!meta) return true
-  return (await rowRuleOf(meta))?.kind !== 'all'
+  // only asked once the person may read the Table, so it exists
+  return (await rowRuleOf(await getMeta(table)))?.kind !== 'all'
 }
 
 /** Whether `user` reads a connected Table's rows: its rows live on the source, so the rule is every row or none. */
@@ -185,6 +184,7 @@ export async function rowRuleReport(): Promise<RowRuleLine[]> {
     from table_def d where d.kind in ('table', 'settings') order by d.owner_app nulls first, d.name`
   const lines: RowRuleLine[] = []
   for (const row of tables) {
+    // a Table of an app that is not available now cannot be loaded; it is listed with no rule, as it is read
     const meta = await getMeta(String(row.name)).catch(() => null)
     const rule = meta ? await rowRuleOf(meta) : null
     const readers = row.readers as string[]

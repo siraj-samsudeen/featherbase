@@ -16,6 +16,7 @@ import { getList } from '../src/query'
 import { getDoc, saveDoc } from '../src/document'
 import { runViewingAs } from '../src/view-as-context'
 import { sql } from '../src/db'
+import { invalidateMeta } from '../src/meta'
 
 const PROJECT = tableRef('Rr Project')
 const TASK = tableRef('Rr Task')
@@ -265,6 +266,52 @@ describe('#1459 a Settings Table\'s one row follows its rule too', () => {
   })
 })
 
+describe('#1459 the edges of a rule', () => {
+  test('a stored rule this version cannot read closes the Table', async ({ admin, createUser }) => {
+    const { reader } = await world(admin, createUser, { kind: 'all' })
+    await sql`update featherbase.table_def set row_rule = '{"kind":"some-later-kind"}'::jsonb where name = ${PROJECT.name}`
+    invalidateMeta(PROJECT.name)
+    expect(await ids(reader)).toEqual([])
+    expect(await ids(admin)).toEqual(['p1', 'p2', 'p3'])
+  })
+
+  test('a view is read by its base Table\'s rule and takes none of its own; a Sub-table has none to take away', async ({ admin, createUser }) => {
+    const { reader } = await world(admin, createUser, { kind: 'own' })
+    await admin.post('/api/table_def', { name: 'Rr Open Projects', kind: 'view', view_of: PROJECT.name, view_filters: [['stage', '=', 'open']] })
+    const view = tableRef('Rr Open Projects')
+    expect(await ids(reader, view)).toEqual(['p1'])
+    expect(await eventVisibleTo(reader.user!, event(view.name, 'p2'))).toBe(false)
+    await expectRefused(admin.put(`${view.defUrl}/row_rule`, { row_rule: { kind: 'all' } }), 417)
+    await expectRefused(admin.put(`${view.defUrl}/row_rule`, { row_rule: null }), 417)
+    await expectRefused(admin.put(`${STEP.defUrl}/row_rule`, { row_rule: null }), 417)
+    await expectRefused(admin.put(`${PROJECT.defUrl}/row_rule`, {}), 417)
+  })
+
+  test('a Table cannot be read through itself', async ({ admin }) => {
+    await makeTable(admin, { name: 'Rr Folder', columns: ['title', { column_name: 'parent_folder', column_type: 'Reference', reference_table: 'Rr Folder' }] })
+    await expectRefused(admin.put(`${tableRef('Rr Folder').defUrl}/row_rule`, { row_rule: { kind: 'through', column: 'parent_folder' } }), 417, 'through its own Table')
+  })
+
+  test('renaming a column renames it in a "through" and a "places" rule', async ({ admin, createUser }) => {
+    await world(admin, createUser, { kind: 'places', columns: { store: 'stage' } }, { kind: 'through', column: 'project' })
+    await admin.post(`${TASK.defUrl}/rename_column`, { from: 'project', to: 'belongs_to' })
+    await admin.post(`${PROJECT.defUrl}/rename_column`, { from: 'stage', to: 'store_code' })
+    const rules = await sql`select name, row_rule from featherbase.table_def where name in ${sql([PROJECT.name, TASK.name])} order by name`
+    expect(rules.map((row) => row.row_rule)).toEqual([{ kind: 'places', columns: { store: 'store_code' } }, { kind: 'through', column: 'belongs_to' }])
+  })
+
+  test('Comments on a Settings Table follow its rule', async ({ admin, createUser }) => {
+    await makeTable(admin, { name: 'Rr Notes Settings', kind: 'settings', columns: ['greeting'] })
+    const reader = await createUserWithRole(admin, createUser, { role: ROLE, table: 'Rr Notes Settings', can_read: true })
+    await admin.post('/api/save_row', { table: 'Comment', row: { ref_table: 'Rr Notes Settings', ref_name: 'Rr Notes Settings', content: 'about the settings' } })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Comment', role: ROLE, operation: 'read', scope_mode: 'all', column_rule: 'every' } })
+    const comments = async () => (await reader.get<{ data: unknown[] }>(`/api/table/Comment?${new URLSearchParams({ filters: JSON.stringify([['ref_table', '=', 'Rr Notes Settings']]) })}`)).data
+    expect(await comments()).toHaveLength(1)
+    await admin.put('/api/table_def/Rr%20Notes%20Settings/row_rule', { row_rule: { kind: 'administrators' } })
+    expect(await comments()).toEqual([])
+  })
+})
+
 describe('#1459 a refusal and the record of a rule', () => {
   test('a refusal never names the row it keeps back', async ({ admin, createUser }) => {
     const { reader } = await world(admin, createUser, { kind: 'own' })
@@ -350,6 +397,13 @@ describe('#1459 an app declares its Tables\' rules', () => {
     expect(await problems({ [NOTE.name]: { kind: 'own', columns: ['body'] } })).toContain('not a Reference to Person')
     expect(await problems({ [NOTE.name]: { kind: 'through', column: 'body' } })).toContain('not a Reference to one Table')
     expect(await problems({ [NOTE.name]: { kind: 'somehow' } })).not.toBe('[]')
+    // nor may a packaged app's Table carry a rule itself: one place says it
+    const dir = await mkdtemp(resolve('test/.row-rule-proof-'))
+    folders.push(dir)
+    const both = manifest({ [NOTE.name]: { kind: 'all' } })
+    await writeFile(join(dir, 'package.json'), JSON.stringify({ name: `featherbase-${APP}`, version: '1.0.0', type: 'module' }))
+    await writeFile(join(dir, 'featherbase.json'), JSON.stringify({ ...both, tables: both.tables.map((table) => ({ ...table, row_rule: { kind: 'all' } })) }))
+    expect(JSON.stringify(await discoverPackages([dir]))).toContain('in rowRules, not on the Table')
   })
 })
 
