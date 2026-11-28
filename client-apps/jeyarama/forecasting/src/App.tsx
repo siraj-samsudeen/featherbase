@@ -7,7 +7,7 @@ import { createElement, useCallback, useEffect, useState, type ReactNode } from 
 import { Button, Card, EmptyState, Field, PersonLabel, Select, Skeleton } from '@featherbase/shop-floor'
 import { listAll, saveRow } from './api'
 import { PEOPLE, person, type Person } from './madeUp'
-import { DATASET } from './dataset'
+import { COPIES_ONLY, DATASET } from './dataset'
 import { MONTH_OPTIONS, monthOf, type Month } from './months'
 import { ChartsPage } from './ChartsPage'
 import { MyNumbersPage, unseenFor } from './MyNumbersPage'
@@ -76,6 +76,9 @@ type View = typeof VIEWS[number]['key']
 
 /** The pages of the review, which follow the newest official Run, not the month picked for the older pages. */
 const RUN_VIEWS: string[] = ['sections', 'section', 'attention', 'days', 'unassigned']
+/** The pages built on the read-only copies: all a hosted instance without the made-up data offers. */
+const COPY_VIEWS: string[] = [...RUN_VIEWS, 'store-review', 'category-review', 'rb-review']
+const SHOWN = COPIES_ONLY ? VIEWS.filter(v => COPY_VIEWS.includes(v.key)) : VIEWS
 
 export const address = (view: View, extra: Record<string, string> = {}) => {
   const q = new URLSearchParams(window.location.search)
@@ -128,11 +131,11 @@ const sectionInAddress = () => {
 }
 
 function Sidebar({ current, waiting, news }: { current: View; waiting: number; news: number }) {
-  const groups = ['Forecasts', 'Learning']
+  const groups = ['Forecasts', 'Learning'].filter(g => SHOWN.some(v => v.group === g))
   return createElement('featherbase-sidebar', { 'aria-label': 'Forecasting navigation' },
     ...groups.flatMap(group => [
       <span key={group} className="fc-sidebar-group">{group}</span>,
-      ...VIEWS.filter(v => v.group === group).map(v => (
+      ...SHOWN.filter(v => v.group === group).map(v => (
         <a key={v.key} href={v.key === 'attention' || v.key === 'days' ? address(v.key, sectionInAddress()) : address(v.key)} {...(current === v.key ? { 'aria-current': 'page' as const } : {})}>
           <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d={v.icon} /></svg>
           <span data-testid={`nav-${v.key}`}>{v.label}{v.key === 'numbers' && waiting ? ` (${waiting})` : ''}{v.key === 'mine' && news ? ` (${news} new)` : ''}</span>
@@ -267,7 +270,7 @@ export function ForecastingApp() {
   const asSection = !me && params.get('section') && params.get('store')
     ? { name: params.get('tl') || UNNAMED_TL, role: 'Team Leader', place: `${params.get('store')} · ${params.get('section')}` } : null
   // A Team Leader opens on their own section's review (#1419); everyone else on the Workspace.
-  const view = (VIEWS.some(v => v.key === params.get('view')) ? params.get('view') : viewer.role === 'Team Leader' && me ? 'section' : 'sections') as View
+  const view = (SHOWN.some(v => v.key === params.get('view')) ? params.get('view') : viewer.role === 'Team Leader' && me ? 'section' : 'sections') as View
   const [month, chooseMonth] = useMonth()
 
   const reload = useCallback(async () => {
