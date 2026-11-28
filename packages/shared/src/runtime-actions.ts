@@ -228,6 +228,28 @@ export type RuntimeReadHandler = ((context: RuntimeReadContext) => unknown | Pro
   prepare?: (context: RuntimeReadContext) => unknown | Promise<unknown>
 }
 
+/** #1418: one group of a read-only copy whose total moved between two loads. */
+export interface LoadMove {
+  /** The group's values, by the columns asked for, as text. */
+  readonly group: Readonly<Record<string, string | null>>
+  /** Its totals, as exact decimal text; null when the group is new or gone. */
+  readonly before: string | null
+  readonly after: string | null
+}
+
+/** #1418: a read-only copy's new load, as its app's job is told of it. */
+export interface NewLoad {
+  /** The dataset's name. */
+  readonly dataset: string
+  /** The load it replaced (kept until the next load), or null for the first. */
+  readonly previous: string | null
+  readonly current: string
+  /** The groups whose total of `measure` moved by more than `threshold`
+   *  percent (10 unless given), new and gone groups included; none when
+   *  there is no previous load. */
+  moves(options: { by: string[]; measure: string; threshold?: number }): Promise<LoadMove[]>
+}
+
 /** #700: the grants an app job may declare. A job holds only those it names. */
 export const APP_JOB_GRANTS = ['read_people', 'disable_people', 'email_system_managers'] as const
 export type AppJobGrant = (typeof APP_JOB_GRANTS)[number]
@@ -261,6 +283,9 @@ export interface RuntimeJobContext {
   readonly secrets: Readonly<Record<string, string>>
   /** The datasets the job declares, every row (a job has no places). */
   readonly datasets: RuntimeReadContext['datasets']
+  /** #1418: set when this run follows a new load of a read-only copy whose
+   *  dataset names this job as `onNewLoad`; null on any other run. */
+  readonly newLoad: NewLoad | null
   readonly people: {
     /** `read_people`: every enabled person. */
     list(): Promise<AppJobPerson[]>

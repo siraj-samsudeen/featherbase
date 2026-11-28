@@ -628,6 +628,9 @@ export async function installApp(name: string): Promise<InstallResult> {
       const glossaryModule = await import('./glossary')
       const { glossary } = manifest.runtime_manifest as { glossary?: Parameters<typeof glossaryModule.syncAppGlossary>[1] }
       await glossaryModule.syncAppGlossary(name, glossary, 'Administrator')
+      // #1418: its read-only copies, each checked (and so loaded) at once.
+      const { selectedDatasets } = await import('./runtime-packages')
+      await (await import('./copy-refresh')).provisionAppCopies(name, selectedDatasets(name))
       return result
     })
   })
@@ -754,6 +757,9 @@ async function uninstallAppImpl(name: string): Promise<{ name: string; removed: 
   // its queued runs. Code apps keep their by-name removal.
   if (manifest && !manifest.runtime_package) await dropSchedulerJobs(manifest)
   await dropAppJobs(name)
+
+  // #1418: its read-only copies, loads and checks with them.
+  await (await import('./read-only-copy')).removeAppCopies(name)
 
   // Fixture rows go first — reverse declaration order, and before the app's
   // tables drop, since a fixture may live on (or reference) an app table.

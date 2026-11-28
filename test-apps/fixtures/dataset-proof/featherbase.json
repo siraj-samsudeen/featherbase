@@ -19,6 +19,7 @@
     {
       "name": "sales",
       "source": "datasetproof-warehouse",
+      "store": "json",
       "query": "select plant_code, section_code, business_day, amount, units, note from b4_dataset.sales",
       "columns": [
         { "name": "plant_code", "type": "text" },
@@ -34,6 +35,7 @@
     {
       "name": "accounts",
       "source": "datasetproof-warehouse",
+      "store": "json",
       "query": "select account_id, booked_at, amount from b4_dataset.accounts",
       "columns": [
         { "name": "account_id", "type": "integer" },
@@ -46,6 +48,7 @@
     {
       "name": "unplugged",
       "source": "datasetproof-missing",
+      "store": "json",
       "query": "select plant_code from b4_dataset.sales",
       "columns": [{ "name": "plant_code", "type": "text" }],
       "keys": ["plant_code"],
