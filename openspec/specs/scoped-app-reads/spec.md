@@ -1,7 +1,7 @@
 # scoped-app-reads Specification
 
 ## Purpose
-TBD - created by archiving change issue-1454-scoped-app-tables. Update Purpose after archive.
+An app's rows reach each person only within the places the org chart gives them (their stores, sections and subcategories), with no per-person grants, the same way for its read-only copies and its own Tables.
 
 ## Requirements
 
