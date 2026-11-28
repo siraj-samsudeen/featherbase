@@ -112,7 +112,7 @@ export function RbReview({ chain, hrefFor, openLine, onOpenLine }: ChainPageProp
   // ---- the shared pieces of every layout ----
   const tools = <ReviewToolbar value={view} onChange={setView} toggles={['measure', 'groups', 'shape']} wrap
     lead={<ToolbarChoice label="Inside a store" hover="Open a store by merchandise, or by Team Leader section" value={by} onChange={insideStore}
-      options={[{ value: 'category', label: 'Division › Category' }, { value: 'section', label: 'Section' }]} />} />
+      options={[{ value: 'category', label: 'Division › Subdivision › Category' }, { value: 'section', label: 'Section' }]} />} />
   const answer = (l: Line) => {
     const p = review.proposalOf(l), own = review.state.answers[l.rowId]
     return <>

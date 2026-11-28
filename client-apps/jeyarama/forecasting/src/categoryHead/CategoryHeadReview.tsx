@@ -33,12 +33,12 @@ const SCREENS = ['categories', 'approvals', 'map', 'furthest', 'help']
 
 type Pivot = 'cat-store' | 'store-cat' | 'sub-store'
 const PIVOTS: Record<Pivot, Level[]> = {
-  'cat-store': [LEVEL.category, LEVEL.store],
-  'store-cat': [LEVEL.store, LEVEL.category],
-  'sub-store': [LEVEL.category, LEVEL.subcategory],
+  'cat-store': [LEVEL.subdivision, LEVEL.category, LEVEL.store],
+  'store-cat': [LEVEL.store, LEVEL.subdivision, LEVEL.category],
+  'sub-store': [LEVEL.subdivision, LEVEL.category, LEVEL.subcategory],
 }
 const PIVOT_OPTIONS: { value: Pivot; label: string }[] = [
-  { value: 'cat-store', label: 'Category › Store' }, { value: 'store-cat', label: 'Store › Category' }, { value: 'sub-store', label: 'Subcategory › Store' },
+  { value: 'cat-store', label: 'Subdivision › Category › Store' }, { value: 'store-cat', label: 'Store › Subdivision › Category' }, { value: 'sub-store', label: 'Subcategory › Store' },
 ]
 const LEGEND_HINT = 'Click a row to open it; click a subcategory for how Feather Forecast built it.'
 
@@ -128,14 +128,14 @@ export function CategoryHeadReview({ chain, hrefFor, openLine, onOpenLine }: Cha
   )
   const toolbar = (
     <ReviewToolbar value={view} onChange={setView} toggles={['measure', 'groups', 'shape']} wrap
-      lead={<ToolbarChoice label="View" hover="Open a category to see its stores, a store to see its categories, or a subcategory to see it at every store"
+      lead={<ToolbarChoice label="View" hover="Open a subdivision and category to see its stores, a store to see its subdivisions and categories, or a subcategory to see it at every store"
         value={pivot} onChange={setPivot} options={PIVOT_OPTIONS} />} />
   )
   const table = <>
     {toolbar}
     <PartsLegend hint={LEGEND_HINT} />
     {pivot === 'sub-store'
-      ? tree(lines, PIVOTS[pivot], { first: 'Category › Subcategory › Store', total: 'All stores', byStore: true })
+      ? tree(lines, PIVOTS[pivot], { first: 'Subdivision › Category › Subcategory › Store', total: 'All stores', byStore: true })
       : tree(lines, PIVOTS[pivot], { first: headingOf(PIVOTS[pivot]), total: 'All stores' })}
   </>
   const queueOf = waiting.filter(p => lines.some(l => l.rowId === p.line))

@@ -5,13 +5,13 @@ import { hash, type SectionInfo } from '../shared/madeUpChain'
 import { combine, inr, pc, type Group, type Line } from '../shared/model'
 import { LEVEL, pathTo, type Level } from '../shared/levels'
 
-/** Inside a store: as it is bought (Division › Category) or by Team Leader section. */
+/** Inside a store: as it is bought (Division › Subdivision › Category) or by Team Leader section. */
 export type InsideStore = 'category' | 'section'
 
-/** Region › Store › (Division › Category | Section); the subcategories are the leaves. A section shows its Team Leader. */
+/** Store › (Division › Subdivision › Category | Section); the subcategories are the leaves. A section shows its Team Leader. */
 export function rbLevels(by: InsideStore, sections: SectionInfo[]): Level[] {
   // no Region level: the page's Region toggle picks the region (owner, 27-Nov-2026), so the tree starts at the store
-  if (by === 'category') return [LEVEL.store, LEVEL.division, LEVEL.category]
+  if (by === 'category') return [LEVEL.store, LEVEL.division, LEVEL.subdivision, LEVEL.category]
   const leader = new Map(sections.map(s => [`${s.store}|${s.section}`, s.teamLeader]))
   return [LEVEL.store, { ...LEVEL.section, subLabel: n => leader.get(`${n.lines[0]?.store}|${n.label}`) }]
 }

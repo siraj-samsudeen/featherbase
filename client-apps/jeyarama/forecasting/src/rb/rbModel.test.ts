@@ -9,8 +9,8 @@ const lines = foldSmall(raw, SMALL_UNDER)
 const byCategory = rbLevels('category', sections), bySection = rbLevels('section', sections)
 
 describe('levels', () => {
-  it('goes Region › Store › Division › Category, or Region › Store › Section with the Team Leader under it', () => {
-    expect(byCategory.map(l => l.name)).toEqual(['Store', 'Division', 'Category'])
+  it('goes Store › Division › Subdivision › Category, or Store › Section with the Team Leader under it', () => {
+    expect(byCategory.map(l => l.name)).toEqual(['Store', 'Division', 'Subdivision', 'Category'])
     expect(bySection.map(l => l.name)).toEqual(['Store', 'Section'])
     const l = lines.find(x => x.store === 'LKS')!
     const node = { lines: [l], label: l.section } as Parameters<NonNullable<typeof bySection[1]['subLabel']>>[0]
@@ -28,7 +28,7 @@ describe('the breadcrumb', () => {
   it('says what a click does next', () => {
     expect(crumbHint([], byCategory)).toBe('click a row to go down to store')
     expect(crumbHint(['LKS'], byCategory)).toBe('click a row to go down to division')
-    expect(crumbHint(['LKS', 'Fashion', 'Women'], byCategory)).toBe('click a subcategory for how Feather Forecast built it')
+    expect(crumbHint(['LKS', 'Fashion', 'Women', 'Saree'], byCategory)).toBe('click a subcategory for how Feather Forecast built it')
   })
   it('keeps the lines under it', () => {
     const at = linesAt(lines, byCategory, ['LKS'])
@@ -46,7 +46,7 @@ describe('opening the tree to a scope', () => {
     expect(f.open.has('LKS')).toBe(true)
     if (lks.length > 40) expect(f.open.size).toBe(1)
     const one = lks.filter(l => l.category === lks[0].category)
-    expect(focusScope(one, byCategory, true).open.has(`LKS › ${one[0].division} › ${one[0].category}`)).toBe(true)
+    expect(focusScope(one, byCategory, true).open.has(`LKS › ${one[0].division} › ${one[0].subdivision} › ${one[0].category}`)).toBe(true)
   })
   it('opens nothing without a scope', () => {
     const f = focusScope(lines, byCategory, false)

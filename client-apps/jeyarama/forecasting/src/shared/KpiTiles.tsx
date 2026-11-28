@@ -1,4 +1,4 @@
-// The managers' totals strip: Feather Forecast, Last month, Last year and AOP, each with its value, quantity and
+// The managers' totals strip, in Siraj's order (28-Nov): Feather Forecast, Last year, Last month and AOP, each with its value, quantity and
 // ASP, then the Gap to AOP tinted by its band, then whatever tile the page adds (the Store Manager's review
 // progress, the category head's "behind AOP" counts). Approved changes show as "With approved changes ₹X" and move
 // the gap. The tiles are Shop Floor cards (quiet fill); the tints are its tone tokens.
@@ -37,8 +37,8 @@ export function KpiTiles({ total, header, approvedDelta = 0, extra }: {
     <div className="fr-kpis" data-testid="kpi-tiles">
       <Tile name="Feather Forecast" value={inr(t.fc)} className="fr-kpi-lead" lines={[`${count(t.fq)} qty · ASP ${asp(t.fc, t.fq)}`,
         approvedDelta ? <b>With approved changes {inr(after)}</b> : null]} />
-      <Tile name="Last month" value={inr(t.r31)} lines={[`${count(t.r31q)} qty · ASP ${asp(t.r31, t.r31q)}`, `Forecast ${pc(t.fc, t.r31)}`]} />
       <Tile name="Last year" value={inr(t.ly)} lines={[`${count(t.lyq)} qty · ASP ${asp(t.ly, t.lyq)}`, `Forecast ${pc(t.fc, t.ly)}`]} />
+      <Tile name="Last month" value={inr(t.r31)} lines={[`${count(t.r31q)} qty · ASP ${asp(t.r31, t.r31q)}`, `Forecast ${pc(t.fc, t.r31)}`]} />
       <Tile name="AOP" value={inr(t.aop)} lines={[`${count(t.aq)} qty · ASP ${asp(t.aop, t.aq)}`, `Forecast is ${t.aop ? Math.round(after / t.aop * 100) : '—'}% of AOP`]} />
       <Tile name="Gap to AOP" value={t.aop ? inr(after - t.aop) : '—'} className={TINT[tone]} valueClass={INK[tone]} testId="kpi-gap"
         lines={[after >= t.aop ? 'On or above the plan' : `To catch up in ${header.month.name}`]} />
