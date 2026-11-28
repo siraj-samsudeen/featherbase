@@ -90,15 +90,15 @@ SEEDS.forEach(([name, category, l28, asp, ly28, ly, aspLy, growth, step, w, reba
       // the same item's health: the last 7 days a quarter of the 28 (more for the cheap band of every fourth line,
       // where demand is moving), half in 14 days; it sells at two to four other stores, best at Hilltop
       const q7 = r(q * (b === 0 && i % 4 === 0 ? 0.45 : 0.25)), other = 2 + (i + k) % 3
-      health.push({ row_id: `${RUN}:${STORE}:${code}`, run_id: RUN, ...at, item_code: code, item_name: `${name} ${['Classic', 'Everyday', 'Print', 'Plain', 'Festive'][k]} Style`,
+      health.push({ row_id: `${STORE}:${code}`, ...at, item_code: code, item_name: `${name} ${['Classic', 'Everyday', 'Print', 'Plain', 'Festive'][k]} Style`,
         stock_qty: itemStock, warehouse_qty: (i + b + k) % 4 === 0 ? 12 : 0, last_sold_date: '2026-11-25', days_since_movement: 2, is_dead: false,
         sales_qty_7_days: q7, sales_value_7_days: r(v * q7 / Math.max(q, 1)), sales_qty_14_days: r(q * 0.5), sales_qty: q, sales_value_before_tax: v, selling_price: Math.round(v / Math.max(q, 1)),
         other_stores_selling: other, other_stores_qty: q * other, other_stores_qty_14_days: r(q * other * 0.5),
-        best_store_code: 'HLT', best_store_short_code: 'HLT', best_store_name: 'Hilltop', best_store_qty: k === 0 ? q * 3 : q, stock_as_of: '2026-11-27' })
+        best_store_code: 'HLT', best_store_short_code: 'HLT', best_store_name: 'Hilltop', best_store_qty: k === 0 ? q * 3 : q, stock_as_of: '2026-11-27', sales_as_of_date: '2026-11-27' })
       // the same item at two invented stores of the region: Hilltop holds plenty and sells little (it can spare),
       // Riverside sells well and holds little (it will run out)
       for (const [short, name2, stockThere, soldThere] of [['HLT', 'Hilltop', (k + 2) * 12, Math.round(q / 4)], ['RVS', 'Riverside', k % 2, q + 6]] as const)
-        elsewhere.push({ row_id: `${RUN}:${STORE}:${code}:${short}`, run_id: RUN, store_code: STORE, subcategory_name: name, item_code: code, other_store_code: short,
+        elsewhere.push({ row_id: `${STORE}:${code}:${short}`, store_code: STORE, subcategory_name: name, item_code: code, other_store_code: short,
           other_store_short_code: short, other_store_name: name2, other_stock_qty: stockThere, other_sales_qty: soldThere, stock_as_of: '2026-11-28' })
       items.push({ row_id: `${RUN}:${STORE}:${name}:${price_band}:${k + 1}`, run_id: RUN, ...at, item_rank: k + 1,
       item_code: `MU${String(i).padStart(2, '0')}${b}${k}`, item_name: `${name} ${['Classic', 'Everyday', 'Print', 'Plain', 'Festive'][k]} Style`,
@@ -108,10 +108,10 @@ SEEDS.forEach(([name, category, l28, asp, ly28, ly, aspLy, growth, step, w, reba
   // items that sold nothing in the 28 days: dead in Never sold (every third line), slow for 40 days (every fourth),
   // in stock here and selling at other stores (every third, from the second), and one with no price band (the sixth)
   const idle = (code: string, price_band: string, price_band_order: number, stock_qty: number, days: number, extra: Record<string, unknown> = {}) =>
-    health.push({ row_id: `${RUN}:${STORE}:${code}`, run_id: RUN, ...line, price_band, price_band_order, item_code: code, item_name: `${name} ${code.slice(-2)} Old Style`,
+    health.push({ row_id: `${STORE}:${code}`, ...line, price_band, price_band_order, item_code: code, item_name: `${name} ${code.slice(-2)} Old Style`,
       stock_qty, warehouse_qty: 0, last_sold_date: '2026-08-10', days_since_movement: days, is_dead: days >= 90, sales_qty_7_days: 0, sales_value_7_days: 0,
       sales_qty_14_days: 0, sales_qty: 0, sales_value_before_tax: 0, selling_price: r(asp * 0.9), other_stores_selling: 0, other_stores_qty: 0, other_stores_qty_14_days: 0,
-      best_store_code: null, best_store_short_code: null, best_store_name: null, best_store_qty: null, stock_as_of: '2026-11-27', ...extra })
+      best_store_code: null, best_store_short_code: null, best_store_name: null, best_store_qty: null, stock_as_of: '2026-11-27', sales_as_of_date: '2026-11-27', ...extra })
   if (i % 3 === 0) idle(`MU${String(i).padStart(2, '0')}D1`, 'Never sold (90 d)', 98, 40 + i * 5, 120)
   if (i % 4 === 1) idle(`MU${String(i).padStart(2, '0')}S1`, bandNames[1], 2, 18 + i, 40)
   if (i % 3 === 1) idle(`MU${String(i).padStart(2, '0')}H1`, bandNames[2], 3, 9, 20, { other_stores_selling: 3, other_stores_qty: 30, other_stores_qty_14_days: 14 })

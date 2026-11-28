@@ -1505,16 +1505,8 @@
             "name": "forecasting.item_health",
             "label": "Item Health",
             "module": "Forecasting",
-            "description": "One row per item of a subcategory at a store that holds stock now or sold in the 28 days before the Run: its stock here and in the warehouse, how it sold here over 7, 14 and 28 days, and how the same item sold at the region's other stores. Needs Your Attention reads it. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+            "description": "One row per item of a subcategory at a store that holds stock now or sold in the last 28 days: its stock here and in the warehouse, how it sold here over the 7, 14 and 28 days to the store's last complete day, and how the same item sold at the region's other stores. Needs Your Attention reads it. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
             "columns": [
-              {
-                "column_name": "run_id",
-                "label": "Run",
-                "column_type": "Data",
-                "reqd": true,
-                "description": "The official Run whose sales window (the 28 days to its Sales Up To) this split is read over.",
-                "read_only": true
-              },
               {
                 "column_name": "store_code",
                 "label": "Store Code",
@@ -1623,7 +1615,7 @@
                 "column_name": "sales_qty_7_days",
                 "label": "Pieces, Last 7 Days",
                 "column_type": "Float",
-                "description": "Pieces sold in the last 7 days before the Run.",
+                "description": "Pieces sold in the last 7 days.",
                 "read_only": true
               },
               {
@@ -1716,6 +1708,13 @@
                 "column_type": "Date",
                 "description": "The day the stock was counted.",
                 "read_only": true
+              },
+              {
+                "column_name": "sales_as_of_date",
+                "label": "Sales Up To",
+                "column_type": "Date",
+                "description": "The last complete day of sales the 7, 14 and 28 days end on (the store's, refreshed each morning).",
+                "read_only": true
               }
             ],
             "title_column": "item_name"
@@ -1800,16 +1799,8 @@
             "name": "forecasting.item_other_stores",
             "label": "Item at Other Stores",
             "module": "Forecasting",
-            "description": "The same items at the region's other stores: stock on hand today (every store, refreshed daily) and pieces sold over the Run's 28 days. One row per item and other store that holds it or sold it. Needs Your Attention reads it for transfers. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+            "description": "The same items at the region's other stores: stock on hand today (every store, refreshed daily) and pieces sold over the last 28 days to the store's last complete day. One row per item and other store that holds it or sold it. Needs Your Attention reads it for transfers. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
             "columns": [
-              {
-                "column_name": "run_id",
-                "label": "Run",
-                "column_type": "Data",
-                "reqd": true,
-                "description": "The official Run whose sales window (the 28 days to its Sales Up To) this split is read over.",
-                "read_only": true
-              },
               {
                 "column_name": "store_code",
                 "label": "Store Code",
@@ -1871,7 +1862,7 @@
                 "column_name": "other_sales_qty",
                 "label": "Sold There, 28 Days",
                 "column_type": "Float",
-                "description": "Pieces sold there over the Run's 28 days.",
+                "description": "Pieces sold there in the last 28 days.",
                 "read_only": true
               },
               {
@@ -4202,16 +4193,8 @@
       "name": "forecasting.item_health",
       "label": "Item Health",
       "module": "Forecasting",
-      "description": "One row per item of a subcategory at a store that holds stock now or sold in the 28 days before the Run: its stock here and in the warehouse, how it sold here over 7, 14 and 28 days, and how the same item sold at the region's other stores. Needs Your Attention reads it. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+      "description": "One row per item of a subcategory at a store that holds stock now or sold in the last 28 days: its stock here and in the warehouse, how it sold here over the 7, 14 and 28 days to the store's last complete day, and how the same item sold at the region's other stores. Needs Your Attention reads it. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
       "columns": [
-        {
-          "column_name": "run_id",
-          "label": "Run",
-          "column_type": "Data",
-          "reqd": true,
-          "description": "The official Run whose sales window (the 28 days to its Sales Up To) this split is read over.",
-          "read_only": true
-        },
         {
           "column_name": "store_code",
           "label": "Store Code",
@@ -4320,7 +4303,7 @@
           "column_name": "sales_qty_7_days",
           "label": "Pieces, Last 7 Days",
           "column_type": "Float",
-          "description": "Pieces sold in the last 7 days before the Run.",
+          "description": "Pieces sold in the last 7 days.",
           "read_only": true
         },
         {
@@ -4413,6 +4396,13 @@
           "column_type": "Date",
           "description": "The day the stock was counted.",
           "read_only": true
+        },
+        {
+          "column_name": "sales_as_of_date",
+          "label": "Sales Up To",
+          "column_type": "Date",
+          "description": "The last complete day of sales the 7, 14 and 28 days end on (the store's, refreshed each morning).",
+          "read_only": true
         }
       ],
       "title_column": "item_name"
@@ -4491,16 +4481,8 @@
       "name": "forecasting.item_other_stores",
       "label": "Item at Other Stores",
       "module": "Forecasting",
-      "description": "The same items at the region's other stores: stock on hand today (every store, refreshed daily) and pieces sold over the Run's 28 days. One row per item and other store that holds it or sold it. Needs Your Attention reads it for transfers. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+      "description": "The same items at the region's other stores: stock on hand today (every store, refreshed daily) and pieces sold over the last 28 days to the store's last complete day. One row per item and other store that holds it or sold it. Needs Your Attention reads it for transfers. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
       "columns": [
-        {
-          "column_name": "run_id",
-          "label": "Run",
-          "column_type": "Data",
-          "reqd": true,
-          "description": "The official Run whose sales window (the 28 days to its Sales Up To) this split is read over.",
-          "read_only": true
-        },
         {
           "column_name": "store_code",
           "label": "Store Code",
@@ -4562,7 +4544,7 @@
           "column_name": "other_sales_qty",
           "label": "Sold There, 28 Days",
           "column_type": "Float",
-          "description": "Pieces sold there over the Run's 28 days.",
+          "description": "Pieces sold there in the last 28 days.",
           "read_only": true
         },
         {
