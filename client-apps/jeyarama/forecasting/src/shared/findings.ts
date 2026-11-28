@@ -64,7 +64,11 @@ export interface Finding {
   items: PaneItem[]; itemsShow: 'sales' | 'stock' | 'elsewhere'; options: PaneOption[]
   /** Who to ask: the buyer, or the category head for dead and slow stock. */
   who: { name: string; role: string; id?: string }[]
+  /** Where it is, on a page over many sections or stores (reach/live.ts): the store, its floor and section, and the
+   *  subcategory's row in the Run, for its link. */
+  place?: FindingPlace
 }
+export interface FindingPlace { store: string; storeName: string; floor: string; floorOrder: number; section: string; rowId: string }
 export interface PaneItem { item: string; code: string; qty: number | null; value: number | null; stock: number; stores?: number }
 export interface PaneOption { item: string; store: string; storeCode?: string; theirStock: number; theirSold: number; pcs: number }
 
@@ -74,7 +78,9 @@ const NOT_A_BAND = [NO_BAND, 'No price band published']
 /** The month the findings measure to: its name, its days, and the days left from the stock count. */
 export interface AttentionMonth { name: string; days: number; left: number }
 
-export function needsAttention(lines: Line[], items: ItemHealthRow[], people: People, month: AttentionMonth, store: string): Finding[] {
+/** `wanted`, when given, collects the item codes a transfer was looked for: a whole store's page reads only those
+ *  items' rows at the region's other stores, then works the findings out again with them (reach/live.ts). */
+export function needsAttention(lines: Line[], items: ItemHealthRow[], people: People, month: AttentionMonth, store: string, wanted?: Set<string>): Finding[] {
   const S = ATTENTION_SETTINGS, M = month.name, end = `${month.days}-${M.slice(0, 3)}`, left = month.left
   const r0 = (x: number) => Math.round(x), pcs = (x: number) => count(r0(x))
   const out: Finding[] = []
@@ -83,10 +89,10 @@ export function needsAttention(lines: Line[], items: ItemHealthRow[], people: Pe
   for (const r of items.filter(x => x.store_code !== store)) oth.set(r.item_code, [...(oth.get(r.item_code) ?? []),
     { item_code: r.item_code, short: r.store_short_code, name: people.stores[r.store_short_code] ?? r.store_short_code, stock: n(r.stock_qty), sold: n(r.sales_qty_28d) }])
   /** Stores holding more of the item than they need to the month's end at their own pace, most spare first. */
-  const spareAt = (i: ItemHealthRow) => (oth.get(i.item_code) ?? []).map(r => [r.stock - r.sold / 28 * left, r] as const)
+  const spareAt = (i: ItemHealthRow) => (wanted?.add(i.item_code), oth.get(i.item_code) ?? []).map(r => [r.stock - r.sold / 28 * left, r] as const)
     .filter(([s]) => s >= S.minTransferPcs).sort((a, b) => b[0] - a[0])
   /** Stores that sell the item and will run out of it before the month's end at their own pace, most short first. */
-  const shortAt = (i: ItemHealthRow) => (oth.get(i.item_code) ?? []).filter(r => r.sold >= S.minSellingTherePcs)
+  const shortAt = (i: ItemHealthRow) => (wanted?.add(i.item_code), oth.get(i.item_code) ?? []).filter(r => r.sold >= S.minSellingTherePcs)
     .map(r => [r.sold / 28 * left - r.stock, r] as const).filter(([x]) => x >= S.minTransferPcs).sort((a, b) => b[0] - a[0])
   const storeName = (r: OtherStoreRow) => `${r.short} ${r.name}`
   const name = (i: ItemHealthRow) => i.item_name ?? i.item_code

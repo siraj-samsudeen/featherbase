@@ -26,6 +26,9 @@ import { UnassignedPage } from './unassigned/UnassignedPage'
 import { AttentionPage } from './attention/AttentionPage'
 import { DayReviewPage } from './dayReview/DayReviewPage'
 import { StorePage } from './teamLeader/StorePage'
+import { ReachDayReviewPage } from './reach/ReachDayReviewPage'
+import { ReachAttentionPage } from './reach/ReachAttentionPage'
+import type { Reach } from './reach/live'
 
 export interface NumberRow {
   row_id: string; month: string; run: string; store: string; section: string; scope_level: 'Store' | 'Division' | 'Category' | 'Subcategory'; scope_name: string; weeks: string | null
@@ -75,16 +78,16 @@ const VIEWS = [
 type View = typeof VIEWS[number]['key']
 
 /** The pages of the review, which follow the newest official Run, not the month picked for the older pages. */
-const RUN_VIEWS: string[] = ['sections', 'section', 'attention', 'days', 'unassigned']
+const RUN_VIEWS: string[] = ['sections', 'section', 'attention', 'days', 'unassigned', 'store-review', 'category-review', 'rb-review']
 /** The pages built on the read-only copies: all a hosted instance without the made-up data offers. */
-const COPY_VIEWS: string[] = [...RUN_VIEWS, 'store-review', 'category-review', 'rb-review']
+const COPY_VIEWS: string[] = [...RUN_VIEWS]
 const SHOWN = COPIES_ONLY ? VIEWS.filter(v => COPY_VIEWS.includes(v.key)) : VIEWS
 
 export const address = (view: View, extra: Record<string, string> = {}) => {
   const q = new URLSearchParams(window.location.search)
   q.set('view', view)
   if (RUN_VIEWS.includes(view)) q.delete('month')
-  for (const k of ['store', 'level', 'name', 'weeks', 'pane', 'q', 'idea', 'question', 'show', 'division', 'subdivision', 'category', 'sub', 'section', 'tab', 'dview', 'day', 'rows', 'line', 'practice', 'tl', ...CHART_KEYS]) q.delete(k)
+  for (const k of ['store', 'level', 'name', 'weeks', 'pane', 'q', 'idea', 'question', 'show', 'division', 'subdivision', 'category', 'sub', 'section', 'tab', 'dview', 'day', 'rows', 'line', 'practice', 'tl', 'reach', 'region', 'at', ...CHART_KEYS]) q.delete(k)
   for (const [k, v] of Object.entries(extra)) q.set(k, v)
   return `?${q}`
 }
@@ -130,13 +133,22 @@ const sectionInAddress = () => {
   return out.store && out.section ? out : {}
 }
 
+/** A Store Manager's or RB's Day Review and Needs Your Attention (#4935): ?reach=store&store=ATK, ?reach=region&region=Kerala. */
+const reachInAddress = (): Reach | null => {
+  const q = new URLSearchParams(window.location.search)
+  if (q.get('reach') === 'store' && q.get('store')) return { kind: 'store', store: q.get('store')! }
+  if (q.get('reach') === 'region' && q.get('region')) return { kind: 'region', region: q.get('region')! }
+  return null
+}
+const reachParams = (r: Reach | null): Record<string, string> => (!r ? {} : r.kind === 'store' ? { reach: 'store', store: r.store } : { reach: 'region', region: r.region })
+
 function Sidebar({ current, waiting, news }: { current: View; waiting: number; news: number }) {
   const groups = ['Forecasts', 'Learning'].filter(g => SHOWN.some(v => v.group === g))
   return createElement('featherbase-sidebar', { 'aria-label': 'Forecasting navigation' },
     ...groups.flatMap(group => [
       <span key={group} className="fc-sidebar-group">{group}</span>,
       ...SHOWN.filter(v => v.group === group).map(v => (
-        <a key={v.key} href={v.key === 'attention' || v.key === 'days' ? address(v.key, sectionInAddress()) : address(v.key)} {...(current === v.key ? { 'aria-current': 'page' as const } : {})}>
+        <a key={v.key} href={v.key === 'attention' || v.key === 'days' ? address(v.key, reachInAddress() ? reachParams(reachInAddress()) : sectionInAddress()) : address(v.key)} {...(current === v.key ? { 'aria-current': 'page' as const } : {})}>
           <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d={v.icon} /></svg>
           <span data-testid={`nav-${v.key}`}>{v.label}{v.key === 'numbers' && waiting ? ` (${waiting})` : ''}{v.key === 'mine' && news ? ` (${news} new)` : ''}</span>
         </a>)),
@@ -216,19 +228,24 @@ function useInAppNavigation() {
  *  kept in the address (?line=<rowId>) and its record opens here. The Run is read once and kept while the app is open. */
 const CHAIN_PAGES = { 'store-review': StoreManagerReview, 'category-review': CategoryHeadReview, 'rb-review': RbReview } as const
 type ChainView = keyof typeof CHAIN_PAGES
-let chainLoad: Promise<Chain> | null = null
-const loadChain = () => (chainLoad ??= loadRealChain().then(real => real ?? madeUpChain(), e => { chainLoad = null; throw e }))
+// one load per month: the newest Run's ('') or the month a link names (?month=YYYY-MM, the Day Review's "Review the month")
+const chainLoads = new Map<string, Promise<Chain>>()
+const loadChain = (month = '') => {
+  if (!chainLoads.has(month)) chainLoads.set(month, loadRealChain(month || null).then(real => real ?? madeUpChain(), e => { chainLoads.delete(month); throw e }))
+  return chainLoads.get(month)!
+}
 function ChainPage({ view }: { view: ChainView }) {
   const Page = CHAIN_PAGES[view]
   const [chain, setChain] = useState<Chain | null>(null)
   const [failed, setFailed] = useState(false)
-  useEffect(() => { loadChain().then(setChain, () => setFailed(true)) }, [])
+  const month = new URLSearchParams(window.location.search).get('month') ?? ''
+  useEffect(() => { loadChain(month).then(setChain, () => setFailed(true)) }, [month])
   const line = new URLSearchParams(window.location.search).get('line')
-  if (failed) return <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => { setFailed(false); loadChain().then(setChain, () => setFailed(true)) }}>Try again</Button>} /></Card>
+  if (failed) return <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => { setFailed(false); loadChain(month).then(setChain, () => setFailed(true)) }}>Try again</Button>} /></Card>
   if (!chain) return <Skeleton label="Opening the review" lines={8} />
   const props: ChainPageProps = {
     chain,
-    hrefFor: l => address(view, { line: l.rowId }),
+    hrefFor: l => address(view, { line: l.rowId, ...(month ? { month } : {}) }),
     openLine: line,
     onOpenLine: rowId => {
       const q = new URLSearchParams(window.location.search)
@@ -237,7 +254,7 @@ function ChainPage({ view }: { view: ChainView }) {
     },
   }
   return (
-    <RecordPagesProvider pageFor={(table, rowId) => (table === 'forecasting.forecast_line_month' ? address(view, { line: rowId }) : undefined)}>
+    <RecordPagesProvider pageFor={(table, rowId) => (table === 'forecasting.forecast_line_month' ? address(view, { line: rowId, ...(month ? { month } : {}) }) : undefined)}>
       <Page {...props} />
     </RecordPagesProvider>
   )
@@ -271,6 +288,9 @@ export function ForecastingApp() {
     ? { name: params.get('tl') || UNNAMED_TL, role: 'Team Leader', place: `${params.get('store')} · ${params.get('section')}` } : null
   // A Team Leader opens on their own section's review (#1419); everyone else on the Workspace.
   const view = (SHOWN.some(v => v.key === params.get('view')) ? params.get('view') : viewer.role === 'Team Leader' && me ? 'section' : 'sections') as View
+  // a Store Manager's or RB's own Day Review and Needs Your Attention: named in the address, or theirs when signed in
+  const reach: Reach | null = reachInAddress() ?? (me?.role === 'Store Manager' ? { kind: 'store', store: me.place.split(' · ')[0] } : me?.role === 'Chief Executive' ? { kind: 'region', region: 'Kerala' } : null)
+  const reachWho = reach ? { person: me?.name ?? (reach.kind === 'store' ? 'Store Manager' : 'RB'), role: me?.role ?? (reach.kind === 'store' ? 'Store Manager' : 'Chief Executive') } : null
   const [month, chooseMonth] = useMonth()
 
   const reload = useCallback(async () => {
@@ -312,7 +332,15 @@ export function ForecastingApp() {
           : !ctx ? <Skeleton label="Opening Forecasting" lines={6} />
             : CHAIN_PAGES[view as ChainView] ? <ChainPage view={view as ChainView} />
             : view === 'unassigned' ? <UnassignedPage store={params.get('store') || viewer.place.split(' · ')[0]} href={line => address('unassigned', { line, ...(params.get('store') ? { store: params.get('store')! } : {}) })} />
+            : (view === 'days' || view === 'attention') && reach && reachWho ? (view === 'days'
+              ? <ReachDayReviewPage key={JSON.stringify(reach)} reach={reach} {...reachWho} at={(params.get('at') ?? '').split('›').filter(Boolean)}
+                onAt={p => address('days', { ...reachParams(reach), ...(p.length ? { at: p.join('›') } : {}) })}
+                reviewHref={m => address(reach.kind === 'store' ? 'store-review' : 'rb-review', { ...(reach.kind === 'store' ? { store: reach.store } : {}), month: m })}
+                lineHref={(rowId, m) => address(reach.kind === 'store' ? 'store-review' : 'rb-review', { ...(reach.kind === 'store' ? { store: reach.store } : {}), line: rowId, month: m })} />
+              : <ReachAttentionPage key={JSON.stringify(reach)} reach={reach} {...reachWho}
+                lineHref={f => address(reach.kind === 'store' ? 'store-review' : 'rb-review', { ...(f.place ? { store: f.place.store } : {}), ...(f.place?.rowId ? { line: f.place.rowId } : {}) })} />)
             : view === 'sections' || ((view === 'section' || view === 'attention' || view === 'days') && !me && !asSection) ? <StorePage store={params.get('store')}
+              wholeStoreHref={view === 'attention' || view === 'days' ? store => address(view, { reach: 'store', store }) : undefined}
               sectionHref={(store, s) => address(view === 'attention' || view === 'days' ? view : 'section', { store, section: s.section, ...(s.teamLeaders[0] ? { tl: s.teamLeaders[0] } : {}) })}
               noSectionHref={store => address('unassigned', { store })} onStore={store => { history.pushState(null, '', address('sections', { store })); window.dispatchEvent(new PopStateEvent('popstate')) }} />
             : view === 'section' ? <SectionPage key={`${asSection ? asSection.place : viewer.id}|${params.get('month') ?? ''}`} viewer={asSection ?? viewer} month={params.get('month')}
