@@ -394,7 +394,7 @@ export const jobs = {
       for (const [code, short] of new Map(moves.map(m => [String(m.group.store_code), String(m.group.store_short_code)]))) {
         // by their Employee row's Person, never their name (#1438): two managers can share one
         const ids = (await orgChart(base, short, todayIST())).storeManagerIds
-        managers[code] = ids.length ? (await base.list('Employee', { fields: ['row_id', 'person'], filters: [['row_id', 'in', ids]], limit_page_length: 500 }))
+        managers[code] = ids.length ? (await base.list('Employee', { fields: ['row_id', 'person'], filters: [['row_id', 'in', ids], ['status', '=', 'Current']], limit_page_length: 500 }))
           .map(e => String(e.person ?? '')).filter(Boolean) : []
       }
     let told = 0

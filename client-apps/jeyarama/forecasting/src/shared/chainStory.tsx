@@ -21,7 +21,7 @@ const Page = PAGES[key] ?? RbReview
 const href = (rowId: string) => { const x = new URLSearchParams(location.search); x.set('line', rowId); return `?${x}` }
 const chain = madeUpChain()
 // no sign-in here: the story views each page as an administrator would (?as=<made-up id> picks someone)
-const owner = ownerOf(key in PAGES ? key : 'rb-review', chain, { admin: true, employees: [], chiefs: [] }, q.get('as'))
+const owner = ownerOf(key in PAGES ? key : 'rb-review', chain, { admin: true, orgChart: false, employees: [], chiefs: [] }, q.get('as'))
 const props: ChainPageProps = {
   chain, person: 'person' in owner ? owner.person : null, admin: true,
   hrefFor: l => href(l.rowId), openLine: q.get('line'),

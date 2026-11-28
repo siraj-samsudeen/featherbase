@@ -79,7 +79,7 @@ export async function loadRealChain(): Promise<Chain | null> {
   for (const [store, org] of orgs) {
     for (const s of org.sections) {
       sections.push({ store, section: s.name, floor: s.floor, floorOrder: s.floorOrder, teamLeader: s.teamLeaders.join(', ') })
-      for (const tl of s.teamLeaders) people.push({ id: org.people[tl] ?? tl, name: tl, role: 'Team Leader', place: `${store} · ${s.name}`, places: [{ store, codes: null }] })
+      s.teamLeaders.forEach((tl, i) => people.push({ id: s.teamLeaderIds[i], name: tl, role: 'Team Leader', place: `${store} · ${s.name}`, places: [{ store, codes: null }] }))
     }
     org.storeManagers.forEach((sm, i) => people.push({ id: org.storeManagerIds[i], name: sm, role: 'Store Manager', place: store, places: [{ store, codes: null }] }))
     for (const [code, sub] of Object.entries(org.subcategories)) {

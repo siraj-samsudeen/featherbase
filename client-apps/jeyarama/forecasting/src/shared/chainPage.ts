@@ -40,6 +40,8 @@ const MISSING: Record<ChainView, { title: string; body: string }> = {
   'rb-review': { title: 'No Chief Executive job on the org chart',
     body: 'RB Review opens for the Managing Director or a Director, from their Job Assignment in Dash. If that is you, ask for your job to be set up there.' },
 }
+const NO_ORG_CHART = { title: 'This instance has no org chart',
+  body: 'The review pages open from your job on the org chart, which this instance does not have. Only an administrator can view them here.' }
 const NOT_LINKED = { title: 'Your sign-in is not linked to an employee',
   body: 'The review pages open from your job on the org chart, found through your employee record. Ask for your employee record to be linked to your sign-in in Dash.' }
 
@@ -58,16 +60,22 @@ function merged(rows: ChainPerson[]): ChainPerson | null {
  *  Executive). */
 export function ownerOf(view: ChainView, chain: Chain, me: SignedIn, as: string | null): Owner {
   // RB Review's people are the Chief Executive jobs the server found (the made-up chain carries its own)
+  // (a real one only on a real Run: a real Chief Executive is never shown the made-up chain under their name)
   const holders = view === 'rb-review'
-    ? [...chain.people.filter(p => p.role === ROLE[view]), ...me.chiefs.map((c): ChainPerson => ({ id: c.id, name: c.name, role: ROLE[view], place: c.job,
+    ? [...chain.people.filter(p => p.role === ROLE[view]), ...(chain.real ? me.chiefs : []).map((c): ChainPerson => ({ id: c.id, name: c.name, role: ROLE[view], place: c.job,
       places: [...new Set(chain.lines.map(l => l.store))].map(store => ({ store, codes: null })) }))]
     : chain.people.filter(p => p.role === ROLE[view])
   if (me.admin) {
-    const named = merged(holders.filter(p => p.id === as))
-    if (named) return { person: named }
+    // a view as someone who holds no such job says so, rather than show someone else
+    if (as) return (p => (p ? { person: p } : { missing: { title: `No one with employee row ${as} holds this job`,
+      body: `Viewing as someone opens their page only when the org chart gives them this page's job. Check the employee row in the address (?as=).` } }))(merged(holders.filter(p => p.id === as)))
+    // an administrator who holds the job opens on their own, else the page's first
+    const own = merged(holders.filter(p => me.employees.includes(p.id)))
+    if (own) return { person: own }
     if (view === 'store-review') return { person: null }
     return holders.length ? { person: holders[0] } : { missing: MISSING[view] }
   }
+  if (!me.orgChart) return { missing: NO_ORG_CHART }
   const mine = merged(holders.filter(p => me.employees.includes(p.id)))
   if (mine) return { person: mine }
   return { missing: me.employees.length ? MISSING[view] : NOT_LINKED }

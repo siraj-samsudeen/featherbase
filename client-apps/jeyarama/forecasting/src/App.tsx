@@ -216,19 +216,24 @@ function useInAppNavigation() {
  *  kept in the address (?line=<rowId>) and its record opens here. The Run is read once and kept while the app is open. */
 const CHAIN_PAGES = { 'store-review': StoreManagerReview, 'category-review': CategoryHeadReview, 'rb-review': RbReview } as const
 type ChainView = keyof typeof CHAIN_PAGES
-let chainLoad: Promise<{ chain: Chain; me: SignedIn }> | null = null
+let chainLoad: Promise<{ chain: Chain; me: SignedIn | null }> | null = null
 /** The Run and who is signed in (#1438): the page opens for that person, matched on the org chart by Employee row. */
-const loadChain = () => (chainLoad ??= Promise.all([loadRealChain().then(real => real ?? madeUpChain()), readOp<SignedIn>('signed_in')])
+let meLoad: Promise<SignedIn | null> | null = null
+/** Who is signed in, or null when that couldn't be told: the page then opens for nobody (fails closed). */
+const loadMe = () => (meLoad ??= readOp<SignedIn>('signed_in').catch(() => { meLoad = null; return null }))
+const loadChain = () => (chainLoad ??= Promise.all([loadRealChain().then(real => real ?? madeUpChain()), loadMe()])
   .then(([chain, me]) => ({ chain, me }), e => { chainLoad = null; throw e }))
 function ChainPage({ view }: { view: ChainView }) {
   const Page = CHAIN_PAGES[view]
-  const [loaded, setLoaded] = useState<{ chain: Chain; me: SignedIn } | null>(null)
+  const [loaded, setLoaded] = useState<{ chain: Chain; me: SignedIn | null } | null>(null)
   const [failed, setFailed] = useState(false)
   useEffect(() => { loadChain().then(setLoaded, () => setFailed(true)) }, [])
   const q = new URLSearchParams(window.location.search), line = q.get('line')
   if (failed) return <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => { setFailed(false); loadChain().then(setLoaded, () => setFailed(true)) }}>Try again</Button>} /></Card>
   if (!loaded) return <Skeleton label="Opening the review" lines={8} />
   const { chain, me } = loaded
+  const retry = () => { setLoaded(null); chainLoad = null; loadChain().then(setLoaded, () => setFailed(true)) }
+  if (!me) return <Card><EmptyState title="We couldn't tell who you are" body="The review opens for your job on the org chart, and that couldn't be read just now. Try again in a moment." action={<Button onClick={retry}>Try again</Button>} /></Card>
   // the signed-in person's own page; ?as=<Employee row> only for an administrator, as "view as"
   const owner = ownerOf(view, chain, me, q.get('as'))
   if ('missing' in owner) return <Card><EmptyState title={owner.missing.title} body={owner.missing.body} /></Card>

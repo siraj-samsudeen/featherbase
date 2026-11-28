@@ -10,14 +10,16 @@ interface BaseTables {
 }
 
 /** The org chart's jobs that review the whole chain as its Chief Executive (RB Review). The Job choices hold no
- *  "Chief Executive"; the top of the chain is a Director or the Managing Director. */
-export const CHIEF_EXECUTIVE_JOBS = ['Managing Director', 'Director']
+ *  "Chief Executive": these are the all-store head-office jobs, the same three Dash gives every store (coverage.ts). */
+export const CHIEF_EXECUTIVE_JOBS = ['Managing Director', 'Director', 'Chief Operating Officer']
 
 /** Someone holding a Chief Executive job today: their Employee row, their name, and the job as the org chart says it. */
 export interface Chief { id: string; name: string; job: string }
 export interface SignedIn {
   /** A System Manager or the Administrator: may view any manager's page as someone else (?as=<Employee id>). */
   admin: boolean
+  /** Whether this instance has the org chart to find anyone on (the made-up one has not). */
+  orgChart: boolean
   /** The signed-in person's current Employee rows (one person can have one per region). */
   employees: string[]
   /** Today's Chief Executive jobs: the signed-in person's own, or for an administrator everyone's. */
@@ -46,11 +48,11 @@ export const isAdmin = (user: string, roles: string[]) => user === 'Administrato
 export async function signedIn(base: BaseTables | undefined, user: string, roles: string[], today: string): Promise<SignedIn> {
   const admin = isAdmin(user, roles)
   // an instance without the org chart (the made-up one) knows no one: an administrator still views any page
-  if (!base || !(await (base.available?.('Employee', ['person', 'status']) ?? Promise.resolve(true)).catch(() => false))) return { admin, employees: [], chiefs: [] }
+  if (!base || !(await (base.available?.('Employee', ['person', 'status']) ?? Promise.resolve(true)))) return { admin, orgChart: false, employees: [], chiefs: [] }
   // one read at a time: the platform refuses a handler's base Table reads awaited together
   const mine = await all(base, 'Employee', ['row_id', 'name'], [['person', '=', user], ['status', '=', 'Current']])
   const employees = mine.map(e => String(e.row_id))
-  if (!admin && !employees.length) return { admin, employees, chiefs: [] }
+  if (!admin && !employees.length) return { admin, orgChart: true, employees, chiefs: [] }
   const jobs = (await all(base, 'Job Assignment', ['employee', 'job', 'starts_on', 'ends_on'],
     [['job', 'in', CHIEF_EXECUTIVE_JOBS], ...(admin ? [] : [['employee', 'in', employees] as [string, string, unknown]])])).filter(j => throughEnd(j, today) && j.employee)
   const ids = [...new Set(jobs.map(j => String(j.employee)))]
@@ -64,5 +66,5 @@ export async function signedIn(base: BaseTables | undefined, user: string, roles
   }
   // the Managing Director first, then by Employee row, so the page opens on the same person every load
   chiefs.sort((a, b) => CHIEF_EXECUTIVE_JOBS.indexOf(a.job) - CHIEF_EXECUTIVE_JOBS.indexOf(b.job) || a.id.localeCompare(b.id))
-  return { admin, employees, chiefs }
+  return { admin, orgChart: true, employees, chiefs }
 }
