@@ -1,3 +1,4 @@
+import { withPlacesMemo } from './place-scope'
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { SHUTDOWN_DEADLINE_MS, drainServer, exitOnShutdownSignal } from './graceful-shutdown'
@@ -150,6 +151,8 @@ app.notFound((c) =>
 // #642 (E4): the frame policy is decided per response. A page frames its own
 // origin, plus the outside sites the app whose page it is declared; there is
 // no instance-wide outside origin.
+// #1454: a person's places are asked of the scope provider once per request, however many reads it makes.
+app.use('*', (_c, next) => withPlacesMemo(next))
 app.use('*', async (c, next) => {
   await next()
   c.res.headers.set('Content-Security-Policy', ["frame-src 'self'", ...(c.get('frameOrigins') ?? [])].join(' '))

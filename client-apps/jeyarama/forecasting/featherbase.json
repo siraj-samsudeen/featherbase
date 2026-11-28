@@ -1106,6 +1106,61 @@
           }
         }
       ]
+    },
+    {
+      "id": "managers_writes_and_signed_in",
+      "fromVersion": "0.13.0",
+      "toVersion": "0.13.1",
+      "operations": []
+    },
+    {
+      "id": "scoped_reads",
+      "fromVersion": "0.13.1",
+      "toVersion": "0.14.0",
+      "operations": [
+        {
+          "kind": "addColumn",
+          "table": "forecasting.forecast_change",
+          "column": {
+            "column_name": "subcategory_code",
+            "label": "Subcategory code",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.forecast_line_review",
+          "column": {
+            "column_name": "subcategory_code",
+            "label": "Subcategory code",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.forecast_question",
+          "column": {
+            "column_name": "subcategory_code",
+            "label": "Subcategory code",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.day_explanation",
+          "column": {
+            "column_name": "subcategory_code",
+            "label": "Subcategory code",
+            "column_type": "Data"
+          }
+        }
+      ]
+    },
+    {
+      "id": "roles_from_org_chart",
+      "fromVersion": "0.14.0",
+      "toVersion": "0.15.0",
+      "operations": []
     }
   ],
   "tables": [
@@ -1937,6 +1992,11 @@
           "label": "Role",
           "column_type": "Data",
           "description": "Their role when they explained it."
+        },
+        {
+          "column_name": "subcategory_code",
+          "label": "Subcategory code",
+          "column_type": "Data"
         }
       ],
       "title_column": "section_name"
@@ -2159,6 +2219,11 @@
           "column_name": "decision_note",
           "label": "Decision Note",
           "column_type": "Text"
+        },
+        {
+          "column_name": "subcategory_code",
+          "label": "Subcategory code",
+          "column_type": "Data"
         }
       ],
       "title_column": "subcategory_name"
@@ -2249,6 +2314,11 @@
           "column_type": "Currency",
           "read_only": true,
           "description": "Feather Forecast for the subcategory when the answer was given. A later Run that moves it by more than 10% asks for the answer again."
+        },
+        {
+          "column_name": "subcategory_code",
+          "label": "Subcategory code",
+          "column_type": "Data"
         }
       ],
       "title_column": "subcategory_name"
@@ -2352,6 +2422,11 @@
           "column_name": "answer_seen_at",
           "label": "Asker Saw The Answer At",
           "column_type": "Datetime"
+        },
+        {
+          "column_name": "subcategory_code",
+          "label": "Subcategory code",
+          "column_type": "Data"
         }
       ],
       "title_column": "question_text"
@@ -2360,166 +2435,170 @@
   "permissions": [
     {
       "table": "forecasting.number",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true,
       "can_write": true,
       "can_create": true
     },
     {
       "table": "forecasting.decision",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true,
       "can_create": true
     },
     {
       "table": "forecasting.review_question",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true,
       "can_write": true,
       "can_create": true
     },
     {
       "table": "forecasting.idea",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true,
       "can_write": true,
       "can_create": true
     },
     {
       "table": "forecasting.idea_history",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true,
       "can_write": true,
       "can_create": true
     },
     {
       "table": "forecasting.review_note",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true,
       "can_write": true,
       "can_create": true
     },
     {
       "table": "forecasting.forecaster",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.run_line",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.reach",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.explanation",
-      "role": "All",
-      "can_read": true,
-      "can_write": true,
-      "can_create": true
-    },
-    {
-      "table": "forecasting.day_explanation",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true,
       "can_write": true,
       "can_create": true
     },
     {
       "table": "forecasting.change_reason",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
+      "table": "forecasting.forecast_change_reason",
+      "role": "Forecasting Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
       "table": "forecasting.forecast_change",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true,
       "can_write": true,
       "can_create": true
     },
     {
       "table": "forecasting.forecast_line_review",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true,
       "can_write": true,
       "can_create": true
     },
     {
       "table": "forecasting.forecast_question",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true,
       "can_write": true,
       "can_create": true
     },
     {
-      "table": "forecasting.forecast_change_reason",
-      "role": "All",
+      "table": "forecasting.day_explanation",
+      "role": "Forecasting Member",
       "can_read": true,
       "can_write": true,
-      "can_create": true
-    },
-    {
-      "table": "Comment",
-      "role": "All",
-      "can_read": true,
       "can_create": true
     },
     {
       "table": "forecasting.forecast_run",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.forecast_line_month",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.forecast_line_day",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.sales_reference",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.annual_plan_line",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.other_model_day",
-      "role": "All",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.other_model_month",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.actuals_day",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.price_band_mix",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.stock_band",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.price_band_top_item",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.item_health",
-      "role": "All",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.item_stock",
+      "role": "Forecasting Member",
       "can_read": true
     }
   ],
@@ -2748,7 +2827,10 @@
       "keys": [
         "run_id",
         "store_code",
-        "subcategory_name"
+        "subcategory_name",
+        "store_short_code",
+        "subcategory_code",
+        "forecast_month"
       ],
       "rowKey": [
         "run_id",
@@ -2756,7 +2838,8 @@
         "subcategory_name"
       ],
       "filters": {
-        "store": "store_code"
+        "store": "store_code",
+        "subcategory": "subcategory_code"
       },
       "loadRoles": [
         "Forecast Creator"
@@ -2840,7 +2923,9 @@
         "run_id",
         "store_code",
         "subcategory_name",
-        "forecast_date"
+        "forecast_date",
+        "store_short_code",
+        "subcategory_code"
       ],
       "rowKey": [
         "run_id",
@@ -2849,7 +2934,8 @@
         "forecast_date"
       ],
       "filters": {
-        "store": "store_code"
+        "store": "store_code",
+        "subcategory": "subcategory_code"
       },
       "loadRoles": [
         "Forecast Creator"
@@ -2936,7 +3022,9 @@
         "run_id",
         "store_code",
         "subcategory_name",
-        "window_name"
+        "window_name",
+        "store_short_code",
+        "subcategory_code"
       ],
       "rowKey": [
         "run_id",
@@ -2945,7 +3033,8 @@
         "window_name"
       ],
       "filters": {
-        "store": "store_code"
+        "store": "store_code",
+        "subcategory": "subcategory_code"
       },
       "loadRoles": [
         "Forecast Creator"
@@ -3029,7 +3118,9 @@
         "store_code",
         "subcategory_name",
         "plan_month",
-        "revision_id"
+        "revision_id",
+        "store_short_code",
+        "subcategory_code"
       ],
       "rowKey": [
         "run_id",
@@ -3039,7 +3130,8 @@
         "revision_id"
       ],
       "filters": {
-        "store": "store_code"
+        "store": "store_code",
+        "subcategory": "subcategory_code"
       },
       "loadRoles": [
         "Forecast Creator"
@@ -3127,7 +3219,9 @@
         "model",
         "store_code",
         "subcategory_name",
-        "forecast_date"
+        "forecast_date",
+        "store_short_code",
+        "subcategory_code"
       ],
       "rowKey": [
         "official_run_id",
@@ -3137,7 +3231,108 @@
         "forecast_date"
       ],
       "filters": {
-        "store": "store_code"
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "forecast_value_before_tax"
+        }
+      ]
+    },
+    {
+      "name": "other_model_month",
+      "source": "warehouse",
+      "query": "select official_run_id, model_run_id, model, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, forecast_month, forecast_value_before_tax, forecast_qty from marts_forecasting.main.fb_other_models_month",
+      "columns": [
+        {
+          "name": "official_run_id",
+          "type": "text"
+        },
+        {
+          "name": "model_run_id",
+          "type": "text"
+        },
+        {
+          "name": "model",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "forecast_month",
+          "type": "date"
+        },
+        {
+          "name": "forecast_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "forecast_qty",
+          "type": "number"
+        }
+      ],
+      "keys": [
+        "official_run_id",
+        "model",
+        "store_code",
+        "subcategory_name",
+        "forecast_month",
+        "store_short_code",
+        "subcategory_code"
+      ],
+      "rowKey": [
+        "official_run_id",
+        "model",
+        "store_code",
+        "subcategory_name",
+        "forecast_month"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
       },
       "loadRoles": [
         "Forecast Creator"
@@ -3219,7 +3414,9 @@
         "run_id",
         "store_code",
         "subcategory_name",
-        "sales_date"
+        "sales_date",
+        "store_short_code",
+        "subcategory_code"
       ],
       "rowKey": [
         "run_id",
@@ -3228,7 +3425,8 @@
         "sales_date"
       ],
       "filters": {
-        "store": "store_code"
+        "store": "store_code",
+        "subcategory": "subcategory_code"
       },
       "loadRoles": [
         "Forecast Creator"
@@ -3338,7 +3536,9 @@
         "run_id",
         "store_code",
         "subcategory_name",
-        "price_band"
+        "price_band",
+        "store_short_code",
+        "subcategory_code"
       ],
       "rowKey": [
         "run_id",
@@ -3347,7 +3547,8 @@
         "price_band"
       ],
       "filters": {
-        "store": "store_code"
+        "store": "store_code",
+        "subcategory": "subcategory_code"
       },
       "loadRoles": [
         "Forecast Creator"
@@ -3453,7 +3654,9 @@
       "keys": [
         "store_code",
         "subcategory_code",
-        "price_band"
+        "price_band",
+        "store_short_code",
+        "subcategory_name"
       ],
       "rowKey": [
         "store_code",
@@ -3461,7 +3664,8 @@
         "price_band"
       ],
       "filters": {
-        "store": "store_code"
+        "store": "store_code",
+        "subcategory": "subcategory_code"
       },
       "loadRoles": [
         "Forecast Creator"
@@ -3560,7 +3764,10 @@
         "store_code",
         "subcategory_name",
         "price_band",
-        "item_rank"
+        "item_rank",
+        "store_short_code",
+        "subcategory_code",
+        "item_code"
       ],
       "rowKey": [
         "run_id",
@@ -3570,7 +3777,8 @@
         "item_rank"
       ],
       "filters": {
-        "store": "store_code"
+        "store": "store_code",
+        "subcategory": "subcategory_code"
       },
       "loadRoles": [
         "Forecast Creator"
@@ -3751,14 +3959,18 @@
       ],
       "keys": [
         "store_code",
-        "item_code"
+        "item_code",
+        "store_short_code",
+        "subcategory_code",
+        "subcategory_name"
       ],
       "rowKey": [
         "store_code",
         "item_code"
       ],
       "filters": {
-        "store": "store_code"
+        "store": "store_code",
+        "subcategory": "subcategory_code"
       },
       "loadRoles": [
         "Forecast Creator"
@@ -3775,6 +3987,113 @@
         {
           "kind": "source_total",
           "column": "sales_value_before_tax_28d"
+        }
+      ]
+    },
+    {
+      "name": "item_stock",
+      "source": "warehouse",
+      "query": "select store_code, store_short_code, subcategory_code, price_band, item_code, item_name, stock_qty, warehouse_stock_qty, days_since_stock_movement, is_dead_stock, sales_qty_7d, sales_qty_14d, sales_qty_28d, sales_value_before_tax_28d, selling_price_90d_incl_tax, other_stores_selling, other_stores_sales_qty_14d, stock_as_of, sales_as_of_date from marts_forecasting.main.fb_item_health",
+      "columns": [
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "price_band",
+          "type": "text"
+        },
+        {
+          "name": "item_code",
+          "type": "text"
+        },
+        {
+          "name": "item_name",
+          "type": "text"
+        },
+        {
+          "name": "stock_qty",
+          "type": "number"
+        },
+        {
+          "name": "warehouse_stock_qty",
+          "type": "number"
+        },
+        {
+          "name": "days_since_stock_movement",
+          "type": "integer"
+        },
+        {
+          "name": "is_dead_stock",
+          "type": "boolean"
+        },
+        {
+          "name": "sales_qty_7d",
+          "type": "number"
+        },
+        {
+          "name": "sales_qty_14d",
+          "type": "number"
+        },
+        {
+          "name": "sales_qty_28d",
+          "type": "number"
+        },
+        {
+          "name": "sales_value_before_tax_28d",
+          "type": "money"
+        },
+        {
+          "name": "selling_price_90d_incl_tax",
+          "type": "money"
+        },
+        {
+          "name": "other_stores_selling",
+          "type": "integer"
+        },
+        {
+          "name": "other_stores_sales_qty_14d",
+          "type": "number"
+        },
+        {
+          "name": "stock_as_of",
+          "type": "date"
+        },
+        {
+          "name": "sales_as_of_date",
+          "type": "date"
+        }
+      ],
+      "keys": [
+        "store_code",
+        "store_short_code",
+        "item_code",
+        "subcategory_code"
+      ],
+      "rowKey": [
+        "store_code",
+        "item_code"
+      ],
+      "unscoped": true,
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
         }
       ]
     }
@@ -3834,7 +4153,9 @@
         "ends_on"
       ],
       "Employee": [
-        "name"
+        "name",
+        "person",
+        "status"
       ],
       "Merchandise Assignment": [
         "employee",
@@ -3858,7 +4179,90 @@
         "authorization": {
           "kind": "generic"
         }
+      },
+      "signed_in": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "my_places": {
+        "policy": {
+          "kind": "person_scope",
+          "readRoles": [
+            "Forecasting Member"
+          ],
+          "actionRoles": []
+        },
+        "authorization": {
+          "kind": "generic"
+        }
       }
     }
-  }
+  },
+  "scopedTables": [
+    {
+      "table": "forecasting.forecast_change",
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "subcategory_code",
+        "proposed_by",
+        "change_status"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      }
+    },
+    {
+      "table": "forecasting.forecast_line_review",
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "subcategory_code",
+        "reviewer",
+        "forecast_month"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      }
+    },
+    {
+      "table": "forecasting.forecast_question",
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "subcategory_code",
+        "asked_by"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      }
+    },
+    {
+      "table": "forecasting.day_explanation",
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "subcategory_code",
+        "section_name"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      }
+    }
+  ],
+  "orgChartRoles": [
+    "Forecasting Member"
+  ]
 }

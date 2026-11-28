@@ -46,3 +46,7 @@ export function datasetFrom(lines: RunLineRow[], reach: ReachRow[]): Dataset | n
   }
 }
 export function setDataset(d: Dataset | null) { DATASET = d }
+/** A hosted instance whose Run comes only from the read-only copies (no forecasting.run_line): only the pages built
+ *  on the copies are offered, so no page falls back to the made-up data there. */
+export let COPIES_ONLY = false
+export function setCopiesOnly(v: boolean) { COPIES_ONLY = v }

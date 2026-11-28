@@ -3,7 +3,7 @@ export const PLATFORM_SCHEMA = 'featherbase'
 // Physical basenames owned by Featherbase at the cf88a7b convergence boundary.
 // Metadata-backed user Tables are resolved separately by tableRelation().
 const PLATFORM_RELATIONS = new Set([
-  'access_log', 'access_request', 'access_token', 'activity_log', 'agent_auth_code', 'agent_client', 'agent_connection', 'agent_refresh_token', 'app_dataset_row', 'app_role_binding', 'app_setting', 'assignment_rule',
+  'access_log', 'access_request', 'access_token', 'activity_log', 'agent_auth_code', 'agent_client', 'agent_connection', 'agent_refresh_token', 'app_dataset_row', 'app_role_binding', 'app_role_from_org_chart', 'app_role_from_org_chart_rebuild', 'app_setting', 'assignment_rule',
   'approval_type', 'assignment_rule_user', 'auto_email_report', 'background_job', 'change_proposal', 'change_proposal_approver', 'change_proposal_column', 'client_script',
   'column_def', 'comment', 'custom_field', 'dashboard', 'data_scope', 'data_source',
   'dataset_miss', 'dataset_place_drop', 'dataset_snapshot', 'email_account', 'email_queue', 'email_rule',
@@ -25,6 +25,7 @@ const PLATFORM_RELATIONS = new Set([
   'page',
   'identifier_system', 'person_identifier', 'person_identifier_fingerprint',
   'person_match', 'person_match_member', 'person_merge',
+  'org_chart_role_rule',
   'web_form', 'web_page', 'webhook', 'workflow', 'workflow_action',
   'workflow_document_state', 'workflow_transition',
 ])

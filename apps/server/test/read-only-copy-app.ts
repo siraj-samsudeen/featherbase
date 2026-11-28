@@ -193,6 +193,13 @@ async function roster(): Promise<{ faults: { result?: unknown } }> {
   return import(`${pathToFileURL(resolve(provider, 'server.mjs')).href}?artifact=${digest}`)
 }
 
+/** Every person's places while `run` runs (#1454): the provider answers `places`. */
+export async function withRosterPlaces<T>(places: unknown, run: () => Promise<T>): Promise<T> {
+  const provider = await roster()
+  provider.faults.result = places
+  try { return await run() } finally { delete provider.faults.result }
+}
+
 /** The app's read of the forecast lines, as `client`, covering `stores`. */
 export async function readLines(client: TestClient, stores: string[]): Promise<{ status: number; body: unknown }> {
   const places = await roster()

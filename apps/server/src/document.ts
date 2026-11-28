@@ -1,3 +1,4 @@
+import { rowInPlaces } from './place-scope'
 import { readOnce } from './permission-reads'
 import { randomBytes } from 'node:crypto'
 import { opaqueId } from './opaque-id'
@@ -423,6 +424,9 @@ export async function assertUserPermissions(
   await assertMandatoryAccess(user, meta, { created_by: user, ...row })
   if (await isPrivileged(user)) return
   checkUserPermissions(user, meta, row, await getScopeMap(user))
+  // #1454: a Table about places: the row is within the person's places, or theirs
+  if (!(await rowInPlaces(meta.name, user, row)))
+    throw new AppError('PermissionError', `${meta.name} ${String(row.row_id ?? '')} is outside the places the org chart gives you`.replace('  ', ' '))
 }
 
 // PERM-007: a child row is only as readable as the row it hangs on. A grant

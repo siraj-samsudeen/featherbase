@@ -4,9 +4,10 @@
 // With the pane open, the table keeps only its key columns. The header answer is the two totals, never added together,
 // and transfers are not counted again: they are one way to act on the same rupees. Colour carries meaning only:
 // red = sales you may lose, purple = stock not earning, grey = data to fix. Shared, so other review pages can show
-// their own findings the same way.
-import { Fragment, useEffect, useState, type KeyboardEvent } from 'react'
-import { Button, DrillPane, PaneSection, RecordLink, SplitWithPane, TABLE_CLASSES, cellClasses, cx, headCellClasses, resolvePanePlace } from '@featherbase/shop-floor'
+// their own findings the same way: a store's page groups them by floor › section, a region's by store (`grouping`),
+// or lists them as one with the section or store as a column.
+import { Fragment, useEffect, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { Button, DrillPane, PaneSection, RecordLink, Segmented, SplitWithPane, TABLE_CLASSES, cellClasses, cx, headCellClasses, resolvePanePlace } from '@featherbase/shop-floor'
 import { PersonLink, StoreLink } from './records'
 import { count, day, inr } from './model'
 import { ATTENTION_SETTINGS as T, type Finding } from './findings'
@@ -50,6 +51,7 @@ const COL: Record<string, Col> = {
   store: { head: 'Store', value: nv('store'), fmt: 't' }, theirStock: { head: 'Their stock', value: nv('theirStock'), fmt: 'n' }, theirSold: { head: 'Sold there, 28 d', value: nv('theirSold'), fmt: 'n' },
   hereStock: { head: 'Stock here', value: nv('hereStock'), fmt: 'n' }, hereSold: { head: 'Sold here, 28 d', value: nv('hereSold'), fmt: 'n' }, move: { head: 'Pieces to move', value: nv('move'), fmt: 'n' },
   items: { head: 'Items', value: nv('items'), fmt: 'n' }, elsewhere14: { head: 'Sold at other stores, 14 days', value: nv('elsewhere14'), fmt: 'n' }, stores: { head: 'Stores', value: nv('stores'), fmt: 'n' },
+  section: { head: 'Section', value: f => f.place?.section ?? null, fmt: 't' }, atStore: { head: 'Store', value: f => (f.place ? `${f.place.store} ${f.place.storeName}` : null), fmt: 't' },
   noSale: { head: 'No sale in', value: nv('noSale'), fmt: 't' }, shareHere: { head: 'Share of stock here', value: nv('shareStock'), fmt: 'p' }, soldValue: { head: 'Sold 28 days ₹', value: nv('soldValue'), fmt: 'x' },
 }
 const COLS: Record<TabKey, string[]> = {
@@ -64,6 +66,33 @@ const KEY_COLS: Record<TabKey, string[]> = {
   hidden: ['sub', 'items', 'amt'], dead: ['sub', 'noSale', 'stock', 'amt'], over: ['sub', 'band', 'lasts', 'extra', 'amt'], data: ['sub', 'items', 'soldValue'],
 }
 const numeric = (c: string) => COL[c].fmt !== 't'
+
+/** How a page over many sections or stores shows its findings: grouped (floor › section, or store), or one list. */
+export type Grouping = 'none' | 'section' | 'store'
+interface TableGroup { key: string; head: ReactNode; fs: Finding[]; note: string }
+const placeOf = (f: Finding, g: Grouping) => (g === 'section' ? `${f.place?.floorOrder ?? 99}|${f.place?.floor ?? ''}|${f.place?.section ?? ''}` : g === 'store' ? f.place?.store ?? '' : '')
+/** A tab's rows in groups, as the table shows them and ↑ ↓ follow them: by place (floors in building order, then the
+ *  bigger ₹ first; stores by ₹), and in Transfers, Bring In before Send Out in each. */
+function groupsOf(tab: Tab, findings: Finding[], g: Grouping): TableGroup[] {
+  const kinds: [string | null, (f: Finding) => boolean, string][] = tab.key === 'transfers'
+    ? [['Bring In', f => f.kind === 'xin', 'of sales you would otherwise lose'], ['Send Out', f => f.kind === 'xout', 'of your stock another store will sell']]
+    : [[null, () => true, '']]
+  const places = g === 'none' ? [''] : [...new Set(findings.map(f => placeOf(f, g)))].sort((a, b) => {
+    const fa = findings.find(f => placeOf(f, g) === a)!, fb = findings.find(f => placeOf(f, g) === b)!
+    const byRupees = total(findings.filter(f => placeOf(f, g) === b)) - total(findings.filter(f => placeOf(f, g) === a))
+    return g === 'section' ? (fa.place?.floorOrder ?? 99) - (fb.place?.floorOrder ?? 99) || byRupees : byRupees
+  })
+  return places.flatMap(pl => {
+    const here = g === 'none' ? findings : findings.filter(f => placeOf(f, g) === pl), f0 = here[0]
+    const where: ReactNode = g === 'section' && f0?.place ? <>{f0.place.floor && <span className="fr-dim">{f0.place.floor} › </span>}<RecordLink table="Section" rowId={`${f0.place.store}-${f0.place.section}`} name={f0.place.section}
+      href={`?${new URLSearchParams({ view: 'section', store: f0.place.store, section: f0.place.section })}`} /></>
+      : g === 'store' && f0?.place ? <StoreLink code={f0.place.store} name={`${f0.place.store} ${f0.place.storeName}`} /> : null
+    return kinds.flatMap(([k, test, note]) => {
+      const fs = here.filter(test).sort((a, b) => b.rupees - a.rupees)
+      return fs.length ? [{ key: `${pl}|${k ?? ''}`, head: where && k ? <>{where} · {k}</> : where ?? k, fs, note }] : []
+    })
+  })
+}
 function show(c: string, f: Finding): string {
   const v = COL[c].value(f)
   if (v == null || v === '') return '—'
@@ -93,9 +122,9 @@ const sortBy = (fs: Finding[], s: Sort) => [...fs].sort((a, b) => {
   return s.dir * ((x ?? -Infinity) - (y ?? -Infinity))
 })
 
-function Pane({ f, header, place, index, of, onClose, onMove, href, onOpen }: {
+function Pane({ f, header, place, index, of, onClose, onMove, href, onOpen, openLabel }: {
   f: Finding; header: Header; place: ReturnType<typeof resolvePanePlace>; index: number; of: number
-  onClose: () => void; onMove: (step: 1 | -1) => void; href: string; onOpen: () => void
+  onClose: () => void; onMove: (step: 1 | -1) => void; href: string; onOpen: () => void; openLabel: string
 }) {
   const tab = ATTENTION_TABS.find(t => t.kinds.includes(f.kind))!
   const nums = COLS[tab.key].filter(c => !['sub', 'band', 'item', 'amt'].includes(c))
@@ -105,6 +134,9 @@ function Pane({ f, header, place, index, of, onClose, onMove, href, onOpen }: {
     <div className="fr fr-att-pane" onKeyDown={keys} data-testid="attention-pane">
       <DrillPane kind={`${index + 1} of ${of} · ↑ ↓ to move, Esc to close`} title={f.title} onClose={onClose} place={place}>
         <div><p className={cx('fr-att-pane-amt', f.colour === 'red' ? 'fr-short' : f.colour === 'purple' ? 'fr-over' : 'fr-dim')}>{inr(f.rupees)}</p><p className="fr-dim fr-att-small">{what}</p></div>
+        {f.place && <p className="fr-att-small" data-testid="pane-place"><StoreLink code={f.place.store} name={`${f.place.store} ${f.place.storeName}`} />
+          {f.place.floor && <span className="fr-dim"> · {f.place.floor}</span>} · <RecordLink table="Section" rowId={`${f.place.store}-${f.place.section}`} name={f.place.section}
+            href={`?${new URLSearchParams({ view: 'section', store: f.place.store, section: f.place.section })}`} /></p>}
         <PaneSection title="Numbers"><dl className="fr-att-kv">{nums.map(c => <Fragment key={c}><dt>{headOf(c, header.month)}</dt><dd>{c === 'store' && f.n.storeCode ? <StoreLink code={String(f.n.storeCode)} name={show(c, f)} /> : show(c, f)}</dd></Fragment>)}</dl></PaneSection>
         <PaneSection title="What we see"><p className="fr-att-p">{f.evidence}</p></PaneSection>
         <PaneSection title="What to do"><p className="fr-att-p">{f.action}</p></PaneSection>
@@ -126,20 +158,26 @@ function Pane({ f, header, place, index, of, onClose, onMove, href, onOpen }: {
               <tbody>{f.options.map((o, k) => <tr key={k}><td>{o.item}</td><td><StoreLink code={o.storeCode} name={o.store} /></td><td>{count(o.theirStock)}</td><td>{count(o.theirSold)}</td><td>{count(o.pcs)}</td></tr>)}</tbody>
             </table>
           </PaneSection>)}
-        <div><Button variant="primary" onClick={onOpen} data-href={href}>Open in Team Leader Review</Button></div>
+        <div><Button variant="primary" onClick={onOpen} data-href={href}>{openLabel}</Button></div>
       </DrillPane>
     </div>
   )
 }
 
-function TabTable({ tab, findings, open, onOpen, month, lineHref, onLine }: { tab: Tab; findings: Finding[]; open: Finding | null; onOpen: (f: Finding) => void; month: Header['month']
+/** A region's page opens each store as one row; a store opens to its top few, then all (design session, 28-Nov). */
+export const TOP_PER_GROUP = 10
+
+function TabTable({ tab, findings, open, onOpen, month, lineHref, onLine, grouping, placed, limits, onLimit }: { tab: Tab; findings: Finding[]; open: Finding | null; onOpen: (f: Finding) => void; month: Header['month']
   /** A subcategory is a record: its link opens the review with it (and its band) open. */
-  lineHref: (f: Finding) => string; onLine: (f: Finding) => void }) {
+  lineHref: (f: Finding) => string; onLine: (f: Finding) => void
+  /** How rows are grouped; and which place a one-list table names in a column ('section' or 'atStore'), if any. */
+  grouping: Grouping; placed: 'section' | 'atStore' | null
+  /** Collapsed groups (a region's stores): how many rows each group shows (none: 0), and a change to it. */
+  limits?: Record<string, number>; onLimit?: (group: string, rows: number) => void }) {
   const [sort, setSort] = useState<Sort>({ col: COLS[tab.key].includes('amt') ? 'amt' : 'soldValue', dir: -1 })
-  const cols = open ? KEY_COLS[tab.key] : COLS[tab.key]
-  const groups: [string | null, Finding[], string][] = tab.key === 'transfers'
-    ? [['Bring In', findings.filter(f => f.kind === 'xin'), 'of sales you would otherwise lose'], ['Send Out', findings.filter(f => f.kind === 'xout'), 'of your stock another store will sell']]
-    : [[null, findings, '']]
+  const base = open ? KEY_COLS[tab.key] : COLS[tab.key]
+  const cols = grouping === 'none' && placed ? [base[0], placed, ...base.slice(1)] : base
+  const groups: [ReactNode, Finding[], string, string][] = groupsOf(tab, findings, grouping).map(g => [g.head, g.fs, g.note, g.key])
   const pick = (c: string) => setSort(s => ({ col: c, dir: s.col === c ? (-s.dir as 1 | -1) : numeric(c) ? -1 : 1 }))
   return (
     <div className="fr-att-wrap">
@@ -149,18 +187,29 @@ function TabTable({ tab, findings, open, onOpen, month, lineHref, onLine }: { ta
             aria-sort={sort.col === c ? (sort.dir < 0 ? 'descending' : 'ascending') : undefined}>
             <button type="button" className="fr-att-sort" onClick={() => pick(c)}>{headOf(c, month)}{sort.col === c && <span aria-hidden> {sort.dir < 0 ? '↓' : '↑'}</span>}</button>
           </th>))}</tr></thead>
-        <tbody>{groups.filter(([, fs]) => fs.length).map(([g, fs, note]) => (
-          <Fragment key={g ?? 'all'}>
-            {g && <tr><td colSpan={cols.length} className="fr-att-grp">{g} <span className="fr-dim">{fs.length} · {inr(total(fs))} {note}</span></td></tr>}
-            {sortBy(fs, sort).map((f, k) => (
+        <tbody>{groups.filter(([, fs]) => fs.length).map(([g, fs, note, gk]) => (
+          <Fragment key={gk}>
+            {g && (onLimit ? (
+              <tr className="fr-att-grprow" data-group={gk}><td colSpan={cols.length} className="fr-att-grp">
+                <button type="button" className="fr-att-grpbtn" aria-expanded={(limits?.[gk] ?? 0) > 0} onClick={() => onLimit(gk, (limits?.[gk] ?? 0) > 0 ? 0 : TOP_PER_GROUP)}>
+                  <span aria-hidden className="fr-att-caret">{(limits?.[gk] ?? 0) > 0 ? '▾' : '▸'}</span></button>
+                {' '}{g} <span className="fr-dim">{count(fs.length)} · </span><b className={fs[0].colour === 'red' ? 'fr-short' : fs[0].colour === 'purple' ? 'fr-over' : undefined}>{inr(total(fs))}</b>
+                <span className="fr-dim"> {note ? `${note} · ` : '· '}worst: {fs[0].title} ({inr(fs[0].rupees)})</span></td></tr>)
+              : <tr><td colSpan={cols.length} className="fr-att-grp">{g} <span className="fr-dim">{count(fs.length)} · {inr(total(fs))} {note}</span></td></tr>)}
+            {sortBy(fs, sort).slice(0, onLimit ? limits?.[gk] ?? 0 : undefined).map((f, k) => (
               <tr key={`${f.kind}:${f.title}:${k}`} className={cx('group fr-att-row', `fr-att-${f.colour}`)} aria-selected={open === f} tabIndex={0}
                 onClick={() => onOpen(f)} onKeyDown={e => { if (e.key === 'Enter') onOpen(f) }}>
                 {cols.map((c, j) => <td key={c} className={cellClasses({ first: j === 0, last: j === cols.length - 1,
                   className: cx(numeric(c) && 'text-right tabular-nums', j === 0 && 'fr-att-name', tone(c, f)) })}>{c === 'sub'
-                  ? <span onClick={e => e.stopPropagation()}><RecordLink table="forecasting.forecast_line_month" rowId={f.line} name={f.line} href={lineHref(f)} onNavigate={() => onLine(f)} /></span>
+                  ? <span onClick={e => e.stopPropagation()}><RecordLink table="forecasting.forecast_line_month" rowId={f.place?.rowId ?? f.line} name={f.line} href={lineHref(f)} onNavigate={() => onLine(f)} /></span>
+                  : c === 'atStore' && f.place ? <span onClick={e => e.stopPropagation()}><StoreLink code={f.place.store} name={show(c, f)} /></span>
+                  : c === 'section' && f.place ? <span onClick={e => e.stopPropagation()}><RecordLink table="Section" rowId={`${f.place.store}-${f.place.section}`} name={f.place.section}
+                    href={`?${new URLSearchParams({ view: 'section', store: f.place.store, section: f.place.section })}`} /></span>
                   : c === 'store' && f.n.storeCode ? <span onClick={e => e.stopPropagation()}><StoreLink code={String(f.n.storeCode)} name={show(c, f)} /></span>
                   : show(c, f)}</td>)}
               </tr>))}
+            {onLimit && (limits?.[gk] ?? 0) > 0 && (limits?.[gk] ?? 0) < fs.length && (
+              <tr><td colSpan={cols.length} className="fr-att-more"><button type="button" className="fr-link" onClick={() => onLimit(gk, fs.length)}>Show all {count(fs.length)}</button></td></tr>)}
           </Fragment>))}</tbody>
       </table>
     </div>
@@ -168,36 +217,52 @@ function TabTable({ tab, findings, open, onOpen, month, lineHref, onLine }: { ta
 }
 
 /** The answer line, the tab row and the open tab. `tab` and `onTab` keep the open tab in the page's address. */
-export function NeedsAttention({ findings, header, othersAsOf, tab: chosen, onTab, href, onOpen }: {
+export function NeedsAttention({ findings, header, othersAsOf, tab: chosen, onTab, href, onOpen, openLabel = 'Open in Team Leader Review', over, scopeName, progress }: {
   findings: Finding[]; header: Header; othersAsOf: string | null
   tab: string | null; onTab: (tab: string) => void
   /** Where a finding opens on its own: the review with its subcategory and band open. */
   href: (f: Finding) => string
   onOpen: (f: Finding) => void
+  /** The pane's button, after the review it opens. */
+  openLabel?: string
+  /** A page over many sections ('section': a store's) or stores ('store': a region's) groups its rows by them. */
+  over?: 'section' | 'store'
+  /** What the page covers, in words ("LKS", "Kerala"); the section by default. */
+  scopeName?: string
+  /** After the answer line: how much of a region has arrived. */
+  progress?: ReactNode
 }) {
+  const [grouping, setGrouping] = useState<Grouping>(over ?? 'none')
+  // a region's stores open closed: one row each, a store's top rows when opened, all on asking
+  const [limits, setLimits] = useState<Record<string, number>>({})
+  const collapsed = over === 'store' && grouping === 'store'
   const m = header.month, asOf = header.stockAsOf ? day(header.stockAsOf) : '—'
   // the first tab with findings opens first
   const tab = chosen === 'help' || ATTENTION_TABS.some(t => t.key === chosen) ? chosen! : (ATTENTION_TABS.find(t => tabFindings(findings, t.key).length) ?? ATTENTION_TABS[0]).key
   const openTab = ATTENTION_TABS.find(t => t.key === tab)
   const fs = openTab ? tabFindings(findings, openTab.key) : []
   const [open, setOpen] = useState<Finding | null>(null)
-  useEffect(() => setOpen(null), [tab])
+  useEffect(() => { setOpen(null); setLimits({}) }, [tab])
   const [width, setWidth] = useState(() => (typeof window === 'undefined' ? 1440 : window.innerWidth))
   useEffect(() => { const on = () => setWidth(window.innerWidth); window.addEventListener('resize', on); return () => window.removeEventListener('resize', on) }, [])
   const place = resolvePanePlace('auto', width)
-  // ↑ ↓ follow the table's own order: Bring In before Send Out, each by ₹
-  const order = openTab?.key === 'transfers' ? [...fs.filter(f => f.kind === 'xin'), ...fs.filter(f => f.kind === 'xout')] : fs
+  // ↑ ↓ follow the table's own order: by place, and Bring In before Send Out, each by ₹
+  const order = openTab ? groupsOf(openTab, fs, grouping).flatMap(g => (collapsed ? g.fs.slice(0, limits[g.key] ?? 0) : g.fs)) : fs
   const at = open ? order.indexOf(open) : -1
   const move = (step: 1 | -1) => { const next = order[at + step]; if (next) setOpen(next) }
   return (
     <div className="fr" data-testid="needs-attention">
-      <p className="fr-att-answer"><b className="fr-short">{inr(atRisk(findings))}</b> of {m.name}'s sales at risk · <b className="fr-over">{inr(notEarning(findings))}</b> of stock not earning</p>
+      <div className="fr-att-answerbar">
+        <p className="fr-att-answer"><b className="fr-short">{inr(atRisk(findings))}</b> of {m.name}'s sales at risk · <b className="fr-over">{inr(notEarning(findings))}</b> of stock not earning{progress && <span className="fr-dim fr-att-progress"> · {progress}</span>}</p>
+        {over && <Segmented label="Rows" value={grouping} onChange={v => setGrouping(v)}
+          options={[{ value: over, label: over === 'section' ? 'By section' : 'By store' }, { value: 'none', label: 'One list' }]} />}
+      </div>
       <div className="fr-tabs fr-att-tabs" role="tablist" aria-label="Kinds of action">
         {ATTENTION_TABS.map(t => {
           const tf = tabFindings(findings, t.key)
           return (
             <button key={t.key} type="button" role="tab" id={`fr-att-tab-${t.key}`} aria-selected={tab === t.key} className={cx(!tf.length && 'fr-att-empty')} onClick={() => onTab(t.key)}>
-              {t.label}<span className="fr-tcount">{tf.length}{tf.length && t.key !== 'data' ? ` · ${inr(total(tf))}` : ''}</span>
+              {t.label}<span className="fr-tcount">{count(tf.length)}{tf.length && t.key !== 'data' ? ` · ${inr(total(tf))}` : ''}</span>
             </button>)
         })}
         <button type="button" role="tab" id="fr-att-tab-help" aria-selected={tab === 'help'} onClick={() => onTab('help')}>Help</button>
@@ -205,10 +270,12 @@ export function NeedsAttention({ findings, header, othersAsOf, tab: chosen, onTa
       <div className="fr-tabpanel" role="tabpanel" aria-labelledby={`fr-att-tab-${tab}`}>
         {openTab ? (
           <SplitWithPane place={place} pane={open && at >= 0 ? <Pane key={at} f={open} header={header} place={place} index={at} of={order.length}
-            onClose={() => setOpen(null)} onMove={move} href={href(open)} onOpen={() => onOpen(open)} /> : null}>
+            onClose={() => setOpen(null)} onMove={move} href={href(open)} onOpen={() => onOpen(open)} openLabel={openLabel} /> : null}>
             <p className="fr-att-about">{openTab.about(m)}</p>
-            {!fs.length ? <p className="fr-att-none">Nothing here for {header.section} today.</p>
-              : <TabTable key={openTab.key} tab={openTab} findings={fs} open={open} onOpen={setOpen} month={m} lineHref={href} onLine={onOpen} />}
+            {!fs.length ? <p className="fr-att-none">Nothing here for {scopeName ?? header.section} today.</p>
+              : <TabTable key={openTab.key} tab={openTab} findings={fs} open={open} onOpen={setOpen} month={m} lineHref={href} onLine={onOpen}
+                grouping={grouping} placed={over === 'section' ? 'section' : over === 'store' ? 'atStore' : null}
+                {...(collapsed ? { limits, onLimit: (g: string, n: number) => setLimits(l => ({ ...l, [g]: n })) } : {})} />}
             <p className="fr-dim fr-att-note">₹ at selling price (never cost), to {endOf(m)} from the stock on {asOf} at {m.name}'s forecast pace.
               {openTab.key === 'transfers' && ` Other stores' stock as of ${othersAsOf ? day(othersAsOf) : '—'}; same region only; at least ${T.minTransferPcs} pcs, and a store must have sold at least ${T.minSellingTherePcs} in 28 days to be offered stock.`}
               {' '}Click a row for its details; sort by any heading.</p>

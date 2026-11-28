@@ -19,7 +19,7 @@ import { discoverPackages } from '../src/runtime-packages'
 import { expectRefused, makeTable } from './fixtures'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
 import {
-  APP, LINES, SALES, Warehouse, dailySales, forecastLines, install, jobCalls, load, loadState, readLines, removeFolders, requestAndRun, rows, upgrade, writeApp, type Line,
+  APP, LINES, SALES, Warehouse, dailySales, forecastLines, install, jobCalls, load, loadState, readLines, removeFolders, requestAndRun, rows, upgrade, withRosterPlaces, writeApp, type Line,
 } from './read-only-copy-app'
 
 const warehouse = new Warehouse('b4_copy_unit')
@@ -104,7 +104,9 @@ describe('a copy follows its app', () => {
     await warehouse.publish('Dec-1', [LKS])
     await load(LINES)
     const reader = await createUser({ roles: ['Copy Reader'] })
-    expect(await reader.get(`/api/table/${encodeURIComponent(LINES)}/${encodeURIComponent('LKS·GJ01·2026-12-01')}`)).toMatchObject({ run_id: 'Dec-1' })
+    // #1454: within the reader's places (a copy is about stores)
+    await withRosterPlaces([{ label: 'Lakeside', filters: { store: ['LKS'] } }], async () =>
+      expect(await reader.get(`/api/table/${encodeURIComponent(LINES)}/${encodeURIComponent('LKS·GJ01·2026-12-01')}`)).toMatchObject({ run_id: 'Dec-1' }))
   })
 
   test('the app may grant its own roles read on a copy an upgrade adds', async ({ admin, createUser }) => {
@@ -115,9 +117,11 @@ describe('a copy follows its app', () => {
     await warehouse.publish('Dec-1', [LKS])
     await load(LINES)
     const reader = await createUser({ roles: ['Copy Reader'] })
-    const res = await reader.fetch(`/api/table/${encodeURIComponent(LINES)}/${encodeURIComponent('LKS·GJ01·2026-12-01')}`,
-      { headers: { 'X-Featherbase-App-Version': `${APP}@1.1.0` } })
-    expect(await res.json()).toMatchObject({ run_id: 'Dec-1' })
+    await withRosterPlaces([{ label: 'Lakeside', filters: { store: ['LKS'] } }], async () => {
+      const res = await reader.fetch(`/api/table/${encodeURIComponent(LINES)}/${encodeURIComponent('LKS·GJ01·2026-12-01')}`,
+        { headers: { 'X-Featherbase-App-Version': `${APP}@1.1.0` } })
+      expect(await res.json()).toMatchObject({ run_id: 'Dec-1' })
+    })
   })
 
   test('a changed type rebuilds it empty until someone loads it; a dropped column goes', async ({ admin }) => {
@@ -377,6 +381,20 @@ describe('after a new load', () => {
 describe('reading a copy', () => {
   const asApp = (client: Parameters<typeof install>[0], path: string, body: unknown) => client.fetch(path, { method: 'POST', body: JSON.stringify(body),
     headers: { 'content-type': 'application/json', 'X-Featherbase-App-Version': `${APP}@1.0.0` } })
+
+  // #1454: a copy is about places (its dataset maps store), so its ordinary Table read keeps each reader to theirs.
+  test('a copy’s Table answers each reader only their places’ rows', async ({ admin, createUser }) => {
+    await install(admin, await writeApp([lines()], '1.0.0', { permissions: [{ table: `${APP}.note`, role: 'Copy Reader', can_read: true },
+      { table: LINES, role: 'Copy Reader', can_read: true }] }))
+    await warehouse.publish('Dec-1', [LKS, RVR])
+    await load(LINES)
+    const reader = await createUser({ roles: ['Copy Reader'] })
+    await withRosterPlaces([{ label: 'Lakeside', filters: { store: ['LKS'] } }], async () => {
+      const listed = await reader.get<{ data: { row_id: string }[] }>(`/api/table/${encodeURIComponent(LINES)}`)
+      expect(listed.data.map((r) => r.row_id)).toEqual(['LKS·GJ01·2026-12-01'])
+      await expectRefused(reader.get(`/api/table/${encodeURIComponent(LINES)}/${encodeURIComponent('RVR·GJ01·2026-12-01')}`), 403)
+    })
+  })
 
   // #1428: a validator reads the instance Tables the app reads, declared columns only.
   test('a validator reads the declared columns of the app’s base Tables, and nothing else', async ({ admin }) => {

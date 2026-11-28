@@ -6,6 +6,7 @@ import {
   type InputHTMLAttributes,
   type ReactElement,
   type ReactNode,
+  type Ref,
   type SelectHTMLAttributes,
 } from 'react'
 import { cx, recipe } from './cx'
@@ -110,7 +111,8 @@ export function Select({
   )
 }
 
-export function SearchInput({ className, ...rest }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>) {
+/** A search box. `ref` reaches the input (a page's `/` shortcut focuses it). */
+export function SearchInput({ className, ...rest }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { ref?: Ref<HTMLInputElement> }) {
   return (
     <div className="relative">
       <Search aria-hidden size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />

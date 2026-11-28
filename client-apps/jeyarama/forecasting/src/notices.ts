@@ -18,7 +18,8 @@ const away = (from: number, to: number) => from !== 0 && Math.abs(to - from) * 1
  *  was given against, exactly as the review decides (carry.ts); its writer is told on the load that first puts it
  *  there, so a later load that leaves it there tells no one again. The store's Store Managers hear of the same
  *  subcategories, in their own words. One notice per person; people are named on answers by their name, and
- *  `people` maps a name to the Person to notify (a name with no Person is left out). */
+ *  `people` maps a name to the Person to notify (a name with no Person is left out). `storeManagers` names each
+ *  store's Store Managers by Person (from their Employee row, #1438), so two managers who share a name are both told. */
 export function noticesFor(moves: Move[], answers: PastAnswer[], month: string,
   people: Record<string, string>, storeManagers: Record<string, string[]>): Notice[] {
   const mine = new Map<string, string[]>(), team = new Map<string, string[]>()
@@ -34,11 +35,11 @@ export function noticesFor(moves: Move[], answers: PastAnswer[], month: string,
     }
   }
   const subject = (lines: string[]) => (lines.length === 1 ? `Feather Forecast moved for ${lines[0].split(':')[0]}: answer again` : `Feather Forecast moved for ${lines.length} subcategories: answer again`)
-  const notice = (name: string, lines: string[], body: string): Notice[] => (people[name] ? [{ person: people[name], subject: subject(lines), body, path: '/forecasting/?view=section' }] : [])
+  const notice = (person: string | undefined, lines: string[], body: string): Notice[] => (person ? [{ person, subject: subject(lines), body, path: '/forecasting/?view=section' }] : [])
   return [
-    ...[...mine].flatMap(([name, lines]) => notice(name, lines,
+    ...[...mine].flatMap(([name, lines]) => notice(people[name], lines,
       `The new official Run moved Feather Forecast by more than ${MOVED_PCT}% where you had answered:\n${lines.map(l => `- ${l}`).join('\n')}\nYour earlier answer no longer counts for these; please look again.`)),
-    ...[...team].flatMap(([name, lines]) => notice(name, lines,
+    ...[...team].flatMap(([person, lines]) => notice(person, lines,
       `The new official Run moved Feather Forecast by more than ${MOVED_PCT}% where your store's team had answered:\n${lines.map(l => `- ${l}`).join('\n')}\nThose answers no longer count; the review asks for them again.`)
       .map(n => ({ ...n, subject: n.subject.replace(': answer again', ': your team answers again') }))),
   ]

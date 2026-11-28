@@ -7,11 +7,17 @@
 type Row = Record<string, unknown>
 interface BaseTables { list(table: string, args: { fields: string[]; filters?: [string, string, unknown][]; limit_start?: number; limit_page_length?: number; order_by?: string }): Promise<Row[]> }
 
-export interface OrgSection { id: string; name: string; floor: string; floorOrder: number; teamLeaders: string[] }
-export interface OrgSubcategory { section: string | null; buyer: string | null; categoryHead: string | null }
+export interface OrgSection { id: string; name: string; floor: string; floorOrder: number; teamLeaders: string[]
+  /** The Team Leaders' Employee rows, in the order of teamLeaders. */
+  teamLeaderIds: string[] }
+export interface OrgSubcategory { section: string | null; buyer: string | null; categoryHead: string | null
+  /** The category head's Employee row: people are told apart by it, never by name (two can share one). */
+  categoryHeadId: string | null }
 /** One store's org chart today: its sections (floor, floor order, Team Leaders), its Store Managers, and each
  *  subcategory's section, buyer and category head, by subcategory code. */
-export interface OrgChart { store: string; region: string | null; sections: OrgSection[]; storeManagers: string[]; subcategories: Record<string, OrgSubcategory>
+export interface OrgChart { store: string; region: string | null; sections: OrgSection[]; storeManagers: string[]
+  /** The Store Managers' Employee rows, in the order of storeManagers. */
+  storeManagerIds: string[]; subcategories: Record<string, OrgSubcategory>
   /** The region's stores, short code → name, for the stores a transfer names. */
   stores: Record<string, string>
   /** Each person the chart names → their Employee row, so a page can link them (#1227). */
@@ -62,7 +68,8 @@ export async function orgChart(base: BaseTables, store: string, today: string): 
   const orgSections: OrgSection[] = sections.filter(s => String(s.status ?? 'Active') !== 'Closed').map(s => {
     const f = floorOf.get(String(s.floor ?? ''))
     return { id: String(s.row_id), name: String(s.name), floor: f ? String(f.name) : 'No floor', floorOrder: f?.floor_order == null ? 99 : Number(f.floor_order),
-      teamLeaders: todays.filter(j => j.job === 'Team Leader' && String(j.section ?? '') === String(s.row_id)).map(j => nameOf(j.employee)!).filter(Boolean) }
+      ...(tls => ({ teamLeaders: tls.map(j => nameOf(j.employee)!), teamLeaderIds: tls.map(j => String(j.employee)) }))(
+        todays.filter(j => j.job === 'Team Leader' && j.employee && String(j.section ?? '') === String(s.row_id))) }
   })
 
   // each subcategory's section today: of its rows that apply, the one that started last
@@ -76,10 +83,13 @@ export async function orgChart(base: BaseTables, store: string, today: string): 
     const mine = merch.filter(m => m.responsibility === responsibility)
     const exact = latest(mine.filter(m => String(m.subcategory ?? '') === code))
     const byCategory = latest(mine.filter(m => !m.subcategory && String(m.category ?? '') === categoryOf.get(code)))
-    return nameOf((exact ?? byCategory)?.employee)
+    const id = (exact ?? byCategory)?.employee
+    return { name: nameOf(id), id: id ? String(id) : null }
   }
+  const managers = todays.filter(j => j.job === 'Store Manager' && j.employee)
   const subcategories: Record<string, OrgSubcategory> = {}
   for (const code of codes) subcategories[code] = { section: latest(bySub.get(code) ?? []) ? String(latest(bySub.get(code)!).section ?? '') || null : null,
-    buyer: who(code, 'Buyer'), categoryHead: who(code, 'Category head') }
-  return { store, region, stores, people: Object.fromEntries([...names].map(([id, name]) => [name, id])), sections: orgSections, storeManagers: todays.filter(j => j.job === 'Store Manager').map(j => nameOf(j.employee)!).filter(Boolean), subcategories }
+    buyer: who(code, 'Buyer').name, categoryHead: who(code, 'Category head').name, categoryHeadId: who(code, 'Category head').id }
+  return { store, region, stores, people: Object.fromEntries([...names].map(([id, name]) => [name, id])), sections: orgSections, storeManagers: managers.map(j => nameOf(j.employee)!),
+    storeManagerIds: managers.map(j => String(j.employee)), subcategories }
 }

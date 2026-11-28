@@ -197,6 +197,19 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
     for (const b of bound)
       roles.push({ role: String(b.app_role), app: String(b.app), through: String(b.bound_role), everyone: false, given_by: null, given_by_name: null, given_at: null })
   }
+  // #1453: app roles the org chart gives, the same rule getRoles applies, and why (their places)
+  const charted = await sql`
+    select o.app_role, o.app, o.why from app_role_from_org_chart o
+    join org_chart_role_rule r on r.app = o.app and r.app_role = o.app_role
+    join installed_app a on a.name = o.app and a.enabled and not a.activation_pending
+    where o.person = ${person} and o.app_role not in ${sql(PLATFORM_ROLES)}
+      and jsonb_typeof(a.manifest->'orgChartRoles') = 'array' and a.manifest->'orgChartRoles' ? o.app_role
+      and jsonb_typeof(a.roles) = 'array' and a.roles ? o.app_role
+      and o.app = any(${[...activeApps]}::text[])
+    order by o.app, o.app_role`
+  for (const c of charted)
+    if (!roles.some((r) => r.role === String(c.app_role) && r.app === String(c.app)))
+      roles.push({ role: String(c.app_role), app: String(c.app), through: `the org chart (${String(c.why)})`, everyone: false, given_by: null, given_by_name: null, given_at: null })
 
   const reach = await principalReach(person)
   const tableNames = [...new Set([...reach.read, ...reach.change].map((t) => t.table))]
