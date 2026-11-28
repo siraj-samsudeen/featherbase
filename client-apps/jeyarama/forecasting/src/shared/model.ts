@@ -26,6 +26,8 @@ export interface Line {
   path: string
   /** Its SAP subcategory code (material group), when known. */
   code?: string
+  /** The Run it is a line of and its store's plant code, as the copies and the change tables key a line (#1442). */
+  runId?: string; storeCode?: string
   /** For a subcategory in no section: where it most likely belongs, why, and the org chart's row ids already taken. */
   suggestedSection?: string; suggestedSectionNote?: string; sectionRowIds?: string[]
   fc: number; fq: number; growth: number; step: number
@@ -101,7 +103,7 @@ export function linesFrom({ lines, sales, plans, others, bands }: CopiedRows, st
     })
     const l28 = v('last_28_days'), l28q = q('last_28_days')
     return {
-      rowId: l.row_id, name: sub, category: l.category_name, path: [l.division_name, l.subdivision_name, l.category_name].filter(Boolean).join(' › '), code,
+      rowId: l.row_id, runId: l.run_id, storeCode: l.store_code, name: sub, category: l.category_name, path: [l.division_name, l.subdivision_name, l.category_name].filter(Boolean).join(' › '), code,
       // where it sits: the store by its site code and the Run's region; section and floor come from the org chart (chainData.ts)
       store: l.store_short_code, storeName: l.store_short_code, region: l.region ?? '', floor: '', floorOrder: 99, section: '',
       division: l.division_name ?? '', subdivision: l.subdivision_name ?? '', n: 1,

@@ -219,11 +219,19 @@ async function lineOf(ctx: Context): Promise<Row> {
 async function reviews(ctx: Context, p: Who, line: Row): Promise<boolean> {
   const store = String(line.store_short_code)
   if (p.role === 'Store Manager' || p.role === 'Department Manager') return p.area === store
-  if (p.role !== 'Team Leader' || p.area.split(' · ')[0] !== store) return false
+  // the Chief Executive reviews every line (#1442)
+  if (p.role === 'Chief Executive') return true
   const base = ctx.baseTables
+  const live = base && (await (base.available?.('Job Assignment') ?? Promise.resolve(true)))
+  // a category head reviews the subcategories their Merchandise Assignment gives them at this store, today (#1442)
+  if (p.role === 'Category Head') {
+    if (!live || !ctx.row.subcategory_name || !line.subcategory_code) return false
+    return (await orgChart(base!, store, todayIST())).subcategories[String(line.subcategory_code)]?.categoryHead === p.name
+  }
+  if (p.role !== 'Team Leader' || p.area.split(' · ')[0] !== store) return false
   // without the org chart's Tables only the made-up instance may hold a Team Leader to their store; a real one refuses
-  if (!base || !(await (base.available?.('Job Assignment') ?? Promise.resolve(true)))) return (await orgOf(ctx)) === madeUp
-  const org = await orgChart(base, store, todayIST())
+  if (!live) return (await orgOf(ctx)) === madeUp
+  const org = await orgChart(base!, store, todayIST())
   // a subcategory's line is in its section today; a line merged from several codes is in none a Team Leader holds
   if (ctx.row.subcategory_name && !line.subcategory_code) return false
   const at = ctx.row.subcategory_name ? org.sections.find(s => s.id === org.subcategories[String(line.subcategory_code)]?.section) : org.sections.find(s => s.name === ctx.row.section_name)
@@ -232,11 +240,18 @@ async function reviews(ctx: Context, p: Who, line: Row): Promise<boolean> {
   if ('section_name' in ctx.row) ctx.row.section_name = at.name
   return true
 }
-async function reviewer(ctx: Context, named: unknown, line: Row): Promise<Who> {
-  // An administrator acts for a section's Team Leader by name (the app's "view a section as its Team Leader"),
-  // whether or not that person is on the forecasting org chart.
-  if (isAdmin(ctx)) return { name: String(named || 'Team Leader'), role: 'Team Leader', reportsTo: null, area: `${String(line.store_short_code)} · ${String(ctx.row.section_name ?? '')}` }
+/** The roles a manager's page acts in; an administrator viewing one acts in the role it names (#1442). */
+const PAGE_ROLES = ['Team Leader', 'Store Manager', 'Category Head', 'Chief Executive']
+/** Who answers a line or explains a day: a Team Leader for their section, a Store Manager for their store. The
+ *  category head and the Chief Executive also change a line and ask about it (#1442), and nothing more. */
+const LINE_ROLES = ['Team Leader', 'Store Manager', 'Department Manager']
+async function reviewer(ctx: Context, named: unknown, line: Row, claimedRole?: unknown, roles: string[] = LINE_ROLES): Promise<Who> {
+  // An administrator acts for a person by name (the app's "view a section as its Team Leader", a manager's page
+  // "viewing as"), whether or not that person is on the forecasting org chart: as a Team Leader unless the row names
+  // one of the managers' roles.
+  if (isAdmin(ctx)) return { name: String(named || 'Team Leader'), role: PAGE_ROLES.includes(String(claimedRole)) && roles.includes(String(claimedRole)) ? String(claimedRole) : 'Team Leader', reportsTo: null, area: `${String(line.store_short_code)} · ${String(ctx.row.section_name ?? '')}` }
   const p = await actor(ctx, await orgOf(ctx), named)
+  if (!roles.includes(p.role)) ctx.reject(`A ${p.role} does not do this on a line`)
   if (!(await reviews(ctx, p, line))) ctx.reject(`${p.name} reviews ${p.area}; ${String(line.store_short_code)} · ${String(line.subcategory_name)} is outside it`)
   return p
 }
@@ -250,17 +265,10 @@ function unchanged(ctx: Context, keep: string[]) {
 /** A change asked for on a line's month: the engine figure and the result are worked out here; once sent it is
  *  never edited, only replaced by a new one or withdrawn by the person who sent it. */
 async function prepareChange(ctx: Context) {
-  const { row, old } = ctx
-  if (!ctx.isNew) {
-    if (isAdmin(ctx)) return
-    const p = await actor(ctx, await orgOf(ctx), old?.proposed_by)
-    const moved = unchanged(ctx, ['change_status', 'reasons'])
-    if (moved.length || p.name !== old?.proposed_by || old?.change_status !== 'sent' || !['replaced', 'withdrawn'].includes(String(row.change_status)))
-      ctx.reject('A sent change is not edited: send a new one that replaces it, or withdraw it')
-    return
-  }
+  const { row } = ctx
+  if (!ctx.isNew) return moveChange(ctx)
   const line = await lineOf(ctx)
-  const p = await reviewer(ctx, row.proposed_by, line)
+  const p = await reviewer(ctx, row.proposed_by, line, row.proposed_by_role, PAGE_ROLES)
   row.proposed_by_role = p.role
   if (!String(row.explanation ?? '').trim()) ctx.reject('Explain your proposed change', { explanation: 'Required' })
   if (row.change_scope !== 'month') ctx.reject('A change covers the whole month for now', { change_scope: 'month' })
@@ -280,10 +288,71 @@ async function prepareChange(ctx: Context) {
   // quantity moves with value, so the selling price stays the engine's (data model, "From changes to days")
   Object.assign(row, { engine_value_before_tax: Math.round(engine), engine_qty: Math.round(qty * 10) / 10,
     changed_value_before_tax: Math.round(changed), changed_qty: engine ? Math.round(qty * changed / engine * 10) / 10 : 0 })
-  if (isAdmin(ctx)) return
-  // Team Leaders send for approval; a Store Manager's own change is final (data model, settled 27-Nov-2026)
+  // Team Leaders send for approval; a manager's own change is final (data model, settled 27-Nov-2026: the Store
+  // Manager's; a category head's and the Chief Executive's alike, #1442)
+  // an administrator viewing the Team Leader's page keeps the status it sends (as before #1442)
+  if (isAdmin(ctx) && p.role === 'Team Leader') return
   row.change_status = p.role === 'Team Leader' ? 'sent' : 'approved'
   Object.assign(row, { decided_by: null, decided_at: null, decision_note: null })
+}
+
+/** Who moves a change's status once it is entered (#1442), from → to: the proposer takes back their own sent change
+ *  (withdrawn, or replaced by one they send next) and their own final change (withdrawn); the Store Manager of the
+ *  line's store decides a sent change (approved, rejected, or replaced by their own number); whoever decided takes
+ *  the decision back (to sent). Nothing else on a change moves: a revision is a new row. */
+type Mover = 'proposer' | 'decider' | 'who decided'
+const CHANGE_MOVES: Record<string, Record<string, Mover[]>> = {
+  sent: { withdrawn: ['proposer'], replaced: ['proposer', 'decider'], approved: ['decider'], rejected: ['decider'] },
+  approved: { withdrawn: ['proposer'], sent: ['who decided'] },
+  rejected: { sent: ['who decided'] },
+  replaced: { sent: ['who decided'] },
+}
+/** The settled rule (27-Nov-2026): the Store Manager of the line's store decides; nobody above them does. */
+const DECIDERS = ['Store Manager']
+async function moveChange(ctx: Context) {
+  const { row, old } = ctx
+  const from = String(old?.change_status), to = String(row.change_status)
+  const movers = CHANGE_MOVES[from]?.[to]
+  if (!movers) ctx.reject(from === to ? 'A sent change is not edited: send a new one that replaces it, or withdraw it' : `A change cannot go from ${from} to ${to}`)
+  const moved = unchanged(ctx, ['change_status', 'reasons', 'decided_by', 'decided_at', 'decision_note'])
+  if (moved.length) ctx.reject(`A change's ${moved.join(', ')} cannot change once it is sent: send a new one that replaces it`)
+  // a decision is the person's who makes it; a proposer's own move leaves the decision columns alone
+  const deciding = to === 'approved' || to === 'rejected' || (to === 'replaced' && Boolean(row.decided_by))
+  if (deciding && !String(row.decided_by ?? '').trim()) ctx.reject('Say who decides', { decided_by: 'Required' })
+  // the reasons are the proposer's: a decision, or taking one back, never sends them (a sub-table is in the row only when sent)
+  if ((deciding || to === 'sent') && Array.isArray(row.reasons)) ctx.reject("A change's reasons are its proposer's")
+  const undoing = to === 'sent'
+  const stamp = () => {
+    if (undoing) Object.assign(row, { decided_by: null, decided_at: null, decision_note: null })
+    else if (deciding) {
+      row.decided_at = new Date().toISOString()
+      if (to === 'rejected' && !String(row.decision_note ?? '').trim()) ctx.reject('Say why you are sending it back', { decision_note: 'Required' })
+    } else Object.assign(row, { decided_by: old?.decided_by ?? null, decided_at: old?.decided_at ?? null, decision_note: old?.decision_note ?? null })
+  }
+  // an approved change that was never sent (a manager's own) has no decision to take back
+  if (undoing && !old?.decided_by) ctx.reject('This change was never decided, so there is nothing to take back')
+  if (isAdmin(ctx)) { stamp(); return } // an administrator acts for the person the row names ("viewing as")
+
+  const org = await orgOf(ctx)
+  const named = deciding ? row.decided_by : undoing ? old?.decided_by : old?.proposed_by
+  const p = await actor(ctx, org, named)
+  const as: Mover = deciding ? 'decider' : undoing ? 'who decided' : 'proposer'
+  if (!movers.includes(as)) ctx.reject(`A change goes from ${from} to ${to} only by ${movers.join(' or ')}`)
+  if (as === 'proposer') {
+    if (p.name !== old?.proposed_by) ctx.reject('Only the person who proposed a change takes it back')
+    // a final change taken back is a manager's own; a Team Leader's approved change is the Store Manager's to undo
+    if (from === 'approved' && (old?.proposed_by_role === 'Team Leader' || old?.decided_by)) ctx.reject("An approved change is taken back by the person who approved it")
+  } else if (as === 'who decided') {
+    if (p.name !== old?.decided_by) ctx.reject(`Only ${String(old?.decided_by)}, who decided this change, takes it back`)
+  } else {
+    if (!DECIDERS.includes(p.role)) ctx.reject(`The Store Manager decides a sent change; ${p.name} is a ${p.role}`)
+    if (old?.proposed_by === p.name) ctx.reject('A change is decided by someone other than the person who sent it')
+    // the line is the change's own, read from the Run: the decider must be that store's Store Manager
+    const [line] = await ctx.documents.list!('forecasting.forecast_line_month', { fields: ['store_short_code', 'subcategory_name', 'subcategory_code'],
+      filters: [['run_id', '=', old?.run_id], ['store_code', '=', old?.store_code], ['subcategory_name', '=', old?.subcategory_name]], limit_page_length: 1 })
+    if (!line || !(await reviews(ctx, p, line))) ctx.reject(`${p.name} decides changes at ${p.area}; this change is outside it`)
+  }
+  stamp()
 }
 
 /** One person's answer on a line: theirs alone, inside their own section; a proposed change names its change. */
@@ -331,7 +400,7 @@ async function prepareQuestion(ctx: Context) {
   const { row, old } = ctx
   if (ctx.isNew) {
     const line = await lineOf(ctx)
-    await reviewer(ctx, row.asked_by, line)
+    await reviewer(ctx, row.asked_by, line, undefined, PAGE_ROLES)
     if (!String(row.question_text ?? '').trim()) ctx.reject('Write your question', { question_text: 'Required' })
     Object.assign(row, { question_status: 'open', answered_by: null, answered_by_role: null, answered_at: null, answer_seen_at: null, about: row.about || 'line' })
     return

@@ -48,11 +48,10 @@ function ViewTabs({ views, value, onChange }: { views: View[]; value: string; on
   </>
 }
 
-export function ReviewFrame({ title, status, actions, all, scope, kinds, views, view, onView, testId, unsaved = false }: {
+export function ReviewFrame({ title, status, actions, all, scope, kinds, views, view, onView, testId, problem = null }: {
   title: string; status: string; actions?: ReactNode
-  /** On a real Run the managers' approvals, changes and questions are not saved yet (the hook is a stand-in until
-   *  they write the tables): say so rather than show "You approved" and lose it on reload. */
-  unsaved?: boolean
+  /** Why the last save failed (the server's words), so a decision is never shown as made when it was not (#1442). */
+  problem?: string | null
   /** Every line the page may show, for the search box; `scope` is the page's useScope. */
   all: Line[]; scope: ScopeState; kinds?: Kind[]
   /** The page's views in order, Help last; `view` is the one shown. */
@@ -62,7 +61,7 @@ export function ReviewFrame({ title, status, actions, all, scope, kinds, views, 
   return (
     <div className="fr flex flex-col" data-testid={testId}>
       <PageHeader title={title} status={status} actions={actions} />
-      {unsaved && <Notice tone="caution" className="mb-3">Approvals, changes and questions on this page are not saved yet: they last until you reload. Team Leaders' proposals do not show here yet.</Notice>}
+      {problem && <Notice tone="caution" className="mb-3">{problem}</Notice>}
       <ScopeSearch all={all} state={scope} kinds={kinds} />
       <ViewTabs views={views} value={view} onChange={onView} />
     </div>
