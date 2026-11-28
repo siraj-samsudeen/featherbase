@@ -21,25 +21,12 @@ import { Questions } from '../shared/Questions'
 import { HelpTab } from '../shared/Help'
 import { aopText, aopTone } from '../shared/Aop'
 import { REASONS } from '../shared/review'
-import { chainHeader, personIn, type ChainPageProps } from '../shared/chainPage'
-import type { Chain } from '../shared/chainData'
+import { chainHeader, type ChainPageProps } from '../shared/chainPage'
 import type { SortKey } from '../shared/MeasureTable'
-import { boardOrder, focusOpen, fullyAnswered, meterWidth, sectionLine, sectionsOf, type SectionSummary } from './sections'
+import { boardOrder, focusOpen, fullyAnswered, meterWidth, sectionLine, sectionsOf, storeOf, type SectionSummary } from './sections'
 import '../shared/forecasting.css'
 import './storeManager.css'
 
-/** The store the page reviews: ?store= (its code or name), else the Store Manager's (?as= picks one), else the store
- *  with the most subcategories. */
-function storeOf(chain: Chain): string {
-  const asked = new URLSearchParams(window.location.search).get('store')
-  const found = asked && chain.lines.find(l => l.store === asked || l.storeName === asked)
-  if (found) return found.store
-  const mgr = personIn(chain, 'Store Manager', p => p.places.length === 1)
-  if (mgr && chain.lines.some(l => l.store === mgr.places[0].store)) return mgr.places[0].store
-  const n = new Map<string, number>()
-  for (const l of chain.lines) n.set(l.store, (n.get(l.store) ?? 0) + 1)
-  return [...n.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
-}
 /** One row of views, Help last (the prototype's views()): The Store, Approvals, the Section Board. */
 const SCREENS = ['store', 'approvals', 'board', 'help']
 /** One store: a floor, section or merchandise, never another store. */
@@ -48,12 +35,15 @@ type Pivot = 'layout' | 'merch'
 const reasonLabel = (c: string) => REASONS.find(r => r.code === c)?.label ?? c
 const toggle = (s: Set<string>, id: string) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n }
 
-export function StoreManagerReview({ chain, hrefFor, openLine, onOpenLine }: ChainPageProps) {
-  const STORE = useMemo(() => storeOf(chain), [chain])
+export function StoreManagerReview({ chain, hrefFor, openLine, onOpenLine, person, admin }: ChainPageProps) {
+  const STORE = useMemo(() => storeOf(chain, person, admin, new URLSearchParams(window.location.search).get('store')), [chain, person, admin])
   const all = useMemo(() => chain.lines.filter(l => l.store === STORE), [chain.lines, STORE])
   const info = useMemo(() => chain.sections.filter(s => s.store === STORE), [chain.sections, STORE])
   const ids = useMemo(() => new Set(all.map(l => l.rowId)), [all])
-  const manager = personIn(chain, 'Store Manager', p => p.places.some(x => x.store === STORE))
+  // the store's Store Manager: the signed-in one, or the one an administrator views as; an administrator naming
+  // nobody sees the store's Store Manager today
+  const manager = person?.places.some(x => x.store === STORE) ? person
+    : admin ? chain.people.find(p => p.role === 'Store Manager' && p.places.some(x => x.store === STORE)) : undefined
   const header = chainHeader(chain, manager?.name ?? 'Store Manager', 'Store Manager', STORE)
   const review = useChainReview(chain.proposals.filter(p => ids.has(p.line)))
   const storeStep = useMemo(() => storeStepOf(all), [all])

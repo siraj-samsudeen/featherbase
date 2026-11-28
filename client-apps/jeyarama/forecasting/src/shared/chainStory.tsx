@@ -9,7 +9,7 @@ import { paintTheme } from '@featherbase/shop-floor/theme'
 import { StoreManagerReview } from '../storeManager/StoreManagerReview'
 import { CategoryHeadReview } from '../categoryHead/CategoryHeadReview'
 import { RbReview } from '../rb/RbReview'
-import type { ChainPageProps } from './chainPage'
+import { ownerOf, type ChainPageProps } from './chainPage'
 import { madeUpChain } from './madeUpChain'
 import '../style.css'
 
@@ -19,8 +19,11 @@ const q = new URLSearchParams(location.search)
 const key = (q.get('page') ?? 'rb-review') as keyof typeof PAGES
 const Page = PAGES[key] ?? RbReview
 const href = (rowId: string) => { const x = new URLSearchParams(location.search); x.set('line', rowId); return `?${x}` }
+const chain = madeUpChain()
+// no sign-in here: the story views each page as an administrator would (?as=<made-up id> picks someone)
+const owner = ownerOf(key in PAGES ? key : 'rb-review', chain, { admin: true, employees: [], chiefs: [] }, q.get('as'))
 const props: ChainPageProps = {
-  chain: madeUpChain(),
+  chain, person: 'person' in owner ? owner.person : null, admin: true,
   hrefFor: l => href(l.rowId), openLine: q.get('line'),
   onOpenLine: rowId => { const x = new URLSearchParams(location.search); if (rowId) x.set('line', rowId); else x.delete('line'); history.replaceState(null, '', `?${x}`) },
 }

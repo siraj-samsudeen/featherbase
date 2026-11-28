@@ -5,7 +5,7 @@
 import { UNNAMED_TL } from './teamLeader/live'
 import { createElement, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Button, Card, EmptyState, Field, PersonLabel, Select, Skeleton } from '@featherbase/shop-floor'
-import { listAll, saveRow } from './api'
+import { listAll, readOp, saveRow } from './api'
 import { PEOPLE, person, type Person } from './madeUp'
 import { COPIES_ONLY, DATASET } from './dataset'
 import { MONTH_OPTIONS, monthOf, type Month } from './months'
@@ -18,7 +18,7 @@ import { SectionPage } from './teamLeader/SectionPage'
 import { StoreManagerReview } from './storeManager/StoreManagerReview'
 import { CategoryHeadReview } from './categoryHead/CategoryHeadReview'
 import { RbReview } from './rb/RbReview'
-import type { ChainPageProps } from './shared/chainPage'
+import { ownerOf, type ChainPageProps, type SignedIn } from './shared/chainPage'
 import { loadRealChain, type Chain } from './shared/chainData'
 import { madeUpChain } from './shared/madeUpChain'
 import { RecordPagesProvider } from '@featherbase/shop-floor'
@@ -216,18 +216,24 @@ function useInAppNavigation() {
  *  kept in the address (?line=<rowId>) and its record opens here. The Run is read once and kept while the app is open. */
 const CHAIN_PAGES = { 'store-review': StoreManagerReview, 'category-review': CategoryHeadReview, 'rb-review': RbReview } as const
 type ChainView = keyof typeof CHAIN_PAGES
-let chainLoad: Promise<Chain> | null = null
-const loadChain = () => (chainLoad ??= loadRealChain().then(real => real ?? madeUpChain(), e => { chainLoad = null; throw e }))
+let chainLoad: Promise<{ chain: Chain; me: SignedIn }> | null = null
+/** The Run and who is signed in (#1438): the page opens for that person, matched on the org chart by Employee row. */
+const loadChain = () => (chainLoad ??= Promise.all([loadRealChain().then(real => real ?? madeUpChain()), readOp<SignedIn>('signed_in')])
+  .then(([chain, me]) => ({ chain, me }), e => { chainLoad = null; throw e }))
 function ChainPage({ view }: { view: ChainView }) {
   const Page = CHAIN_PAGES[view]
-  const [chain, setChain] = useState<Chain | null>(null)
+  const [loaded, setLoaded] = useState<{ chain: Chain; me: SignedIn } | null>(null)
   const [failed, setFailed] = useState(false)
-  useEffect(() => { loadChain().then(setChain, () => setFailed(true)) }, [])
-  const line = new URLSearchParams(window.location.search).get('line')
-  if (failed) return <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => { setFailed(false); loadChain().then(setChain, () => setFailed(true)) }}>Try again</Button>} /></Card>
-  if (!chain) return <Skeleton label="Opening the review" lines={8} />
+  useEffect(() => { loadChain().then(setLoaded, () => setFailed(true)) }, [])
+  const q = new URLSearchParams(window.location.search), line = q.get('line')
+  if (failed) return <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => { setFailed(false); loadChain().then(setLoaded, () => setFailed(true)) }}>Try again</Button>} /></Card>
+  if (!loaded) return <Skeleton label="Opening the review" lines={8} />
+  const { chain, me } = loaded
+  // the signed-in person's own page; ?as=<Employee row> only for an administrator, as "view as"
+  const owner = ownerOf(view, chain, me, q.get('as'))
+  if ('missing' in owner) return <Card><EmptyState title={owner.missing.title} body={owner.missing.body} /></Card>
   const props: ChainPageProps = {
-    chain,
+    chain, person: owner.person, admin: me.admin,
     hrefFor: l => address(view, { line: l.rowId }),
     openLine: line,
     onOpenLine: rowId => {
@@ -305,7 +311,8 @@ export function ForecastingApp() {
     <div className="fc-shell">
       <Sidebar current={view} waiting={data ? waitingFor(data, viewer).length : 0} news={data ? unseenFor(data, viewer).length : 0} />
       <main key={moves} className="fc-page" data-testid={`page-${view}`}>
-        {offChart ? <Card><EmptyState title="You are not on the forecasting org chart" body={`${offChart} has no store, section or merchandise to review in this month's Run. If that is wrong, your job or merchandise assignment needs setting up in Featherbase.`} /></Card> : <>
+        {/* the managers' pages find the signed-in person on the live org chart themselves (#1438), not the made-up one */}
+        {offChart && !CHAIN_PAGES[view as ChainView] ? <Card><EmptyState title="You are not on the forecasting org chart" body={`${offChart} has no store, section or merchandise to review in this month's Run. If that is wrong, your job or merchandise assignment needs setting up in Featherbase.`} /></Card> : <>
         {/* My Section is the screen as agreed (#1419): no picker bar above it for the person it belongs to. */}
         {!(view === 'section' || view === 'attention' || view === 'days' || view === 'unassigned' || view === 'sections' || CHAIN_PAGES[view as ChainView]) && <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} signedIn={!!me} />}
         {failed ? <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => void reload()}>Try again</Button>} /></Card>

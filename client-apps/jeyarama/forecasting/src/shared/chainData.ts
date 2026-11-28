@@ -12,7 +12,9 @@ import type { ProposalItem } from './review'
 export interface SectionInfo { store: string; section: string; floor: string; floorOrder: number; teamLeader: string }
 /** A store a person covers, whole (codes null) or for some subcategory codes (a category head's merchandise). */
 export interface Place { store: string; codes: string[] | null }
-export interface ChainPerson { name: string; role: string; place: string; places: Place[] }
+/** Someone on the chain. id is their Employee row (made-up ids on the made-up chain): a page matches the signed-in
+ *  person by it, never by name, since two employees can share a name. */
+export interface ChainPerson { id: string; name: string; role: string; place: string; places: Place[] }
 export interface Chain {
   /** Whether this is a real Run or the made-up chain. */
   real: boolean
@@ -73,22 +75,24 @@ export async function loadRealChain(): Promise<Chain | null> {
   }
 
   // the people, from today's Job Assignments and Merchandise Assignments (the org chart), not a reach table
-  const sections: SectionInfo[] = [], people: ChainPerson[] = [], heads = new Map<string, Map<string, Set<string>>>()
+  const sections: SectionInfo[] = [], people: ChainPerson[] = [], heads = new Map<string, Map<string, Set<string>>>(), headNames = new Map<string, string>()
   for (const [store, org] of orgs) {
     for (const s of org.sections) {
       sections.push({ store, section: s.name, floor: s.floor, floorOrder: s.floorOrder, teamLeader: s.teamLeaders.join(', ') })
-      for (const tl of s.teamLeaders) people.push({ name: tl, role: 'Team Leader', place: `${store} · ${s.name}`, places: [{ store, codes: null }] })
+      for (const tl of s.teamLeaders) people.push({ id: org.people[tl] ?? tl, name: tl, role: 'Team Leader', place: `${store} · ${s.name}`, places: [{ store, codes: null }] })
     }
-    for (const sm of org.storeManagers) people.push({ name: sm, role: 'Store Manager', place: store, places: [{ store, codes: null }] })
+    org.storeManagers.forEach((sm, i) => people.push({ id: org.storeManagerIds[i], name: sm, role: 'Store Manager', place: store, places: [{ store, codes: null }] }))
     for (const [code, sub] of Object.entries(org.subcategories)) {
-      if (!sub.categoryHead) continue
-      const mine = heads.get(sub.categoryHead) ?? heads.set(sub.categoryHead, new Map()).get(sub.categoryHead)!
+      // grouped by the head's Employee row: two heads who share a name stay two people
+      if (!sub.categoryHeadId) continue
+      headNames.set(sub.categoryHeadId, sub.categoryHead ?? sub.categoryHeadId)
+      const mine = heads.get(sub.categoryHeadId) ?? heads.set(sub.categoryHeadId, new Map()).get(sub.categoryHeadId)!
       ;(mine.get(store) ?? mine.set(store, new Set()).get(store)!).add(code)
     }
   }
   const size = (p: ChainPerson) => p.places.reduce((t, x) => t + (x.codes?.length ?? 0), 0)
   // the biggest category head first, so the page opens on the one with the most to review
-  const headPeople = [...heads].map(([name, at]): ChainPerson => ({ name, role: 'Category Head',
+  const headPeople = [...heads].map(([id, at]): ChainPerson => ({ id, name: headNames.get(id)!, role: 'Category Head',
     place: [...new Set([...at.keys()].map(s => lines.find(l => l.store === s)?.region).filter(Boolean))].join(' and '),
     places: [...at].map(([store, codes]) => ({ store, codes: [...codes].sort() })) })).sort((a, b) => size(b) - size(a))
   return { real: true, lines, sections, people: [...people, ...headPeople], proposals: [], cutOff: run.origin_date.slice(0, 10), horizon: first }

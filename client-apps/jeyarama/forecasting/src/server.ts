@@ -16,6 +16,7 @@ import { person as madeUpPerson } from './madeUp'
 import { causesProblem, linesOf } from './causes'
 import { orgChart } from './orgChart'
 import { noticesFor } from './notices'
+import { signedIn } from './signedIn'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -351,13 +352,17 @@ export const platformVersion = '2026-10'
 /** Today in India, YYYY-MM-DD. */
 const todayIST = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
 /** The app's read operations (/api/app_reads/forecasting/<name>). org_chart: one store's org chart today, from the
- *  instance's own Tables (baseTables.read), so a page knows each subcategory's section without reading them. */
+ *  instance's own Tables (baseTables.read), so a page knows each subcategory's section without reading them.
+ *  signed_in: the signed-in person on that org chart. */
 export const reads = {
   org_chart: (ctx: { payload: unknown; baseTables: Parameters<typeof orgChart>[0] }) => {
     const store = String((ctx.payload as { store?: unknown } | null)?.store ?? '')
     if (!/^[A-Z0-9]{2,8}$/.test(store)) throw new Error('Name a store by its site code, such as ATK')
     return orgChart(ctx.baseTables, store, todayIST())
   },
+  /** Who the signed-in person is on the org chart (#1438): their Employee rows and Chief Executive jobs, so each
+   *  manager's page opens for them; an administrator also gets every Chief Executive, to view RB Review as one. */
+  signed_in: (ctx: { user: string; roles?: string[]; baseTables?: Context['baseTables'] }) => signedIn(ctx.baseTables, ctx.user, ctx.roles ?? [], todayIST()),
 }
 export const validators = { 'forecasting.number': prepareNumber, 'forecasting.decision': prepareDecision, 'forecasting.explanation': prepareExplanation,
   'forecasting.forecast_change': prepareChange, 'forecasting.forecast_line_review': prepareLineReview, 'forecasting.forecast_question': prepareQuestion, 'forecasting.day_explanation': prepareDayExplanation }
@@ -385,9 +390,13 @@ export const jobs = {
     // each store's Store Managers today (the org chart names them; the store's short code is its Site)
     const managers: Record<string, string[]> = {}
     const base = ctx.baseTables
-    if (base && (await (base.available?.('Job Assignment') ?? Promise.resolve(true))))
-      for (const [code, short] of new Map(moves.map(m => [String(m.group.store_code), String(m.group.store_short_code)])))
-        managers[code] = (await orgChart(base, short, todayIST())).storeManagers
+    if (base && (await (base.available?.('Job Assignment') ?? Promise.resolve(true))) && (await (base.available?.('Employee', ['person']) ?? Promise.resolve(true))))
+      for (const [code, short] of new Map(moves.map(m => [String(m.group.store_code), String(m.group.store_short_code)]))) {
+        // by their Employee row's Person, never their name (#1438): two managers can share one
+        const ids = (await orgChart(base, short, todayIST())).storeManagerIds
+        managers[code] = ids.length ? (await base.list('Employee', { fields: ['row_id', 'person'], filters: [['row_id', 'in', ids]], limit_page_length: 500 }))
+          .map(e => String(e.person ?? '')).filter(Boolean) : []
+      }
     let told = 0
     for (const month of [...new Set(moves.map(m => String(m.group.forecast_month).slice(0, 10)))]) {
       const mine = moves.filter(m => String(m.group.forecast_month).slice(0, 10) === month)

@@ -20,7 +20,7 @@ import { KINDS } from '../shared/scope'
 import { useChainReview } from '../shared/useChainReview'
 import { nodeWaiting } from '../shared/Proposals'
 import { HelpTab } from '../shared/Help'
-import { chainHeader, personIn, type ChainPageProps } from '../shared/chainPage'
+import { chainHeader, type ChainPageProps } from '../shared/chainPage'
 import type { SortKey, TableRow } from '../shared/MeasureTable'
 import { crumbSteps, focusScope, linesAt, rbLevels, storeProgress, type InsideStore } from './rbModel'
 import { Crumbs, PendingTab, type RbQuestion } from './RbParts'
@@ -38,7 +38,7 @@ const PLURAL: Record<string, string> = { Store: 'Stores', Division: 'Divisions',
 /** What the side pane shows: a child's card (a node one level down) or a subcategory's. */
 type Pane = { kind: 'node'; key: string; title: string; level: string; lines: Line[]; next: Level | null } | { kind: 'line'; l: Line }
 
-export function RbReview({ chain, hrefFor, openLine, onOpenLine }: ChainPageProps) {
+export function RbReview({ chain, hrefFor, openLine, onOpenLine, person }: ChainPageProps) {
   const everyLine = useMemo(() => foldSmall(chain.lines, SMALL_UNDER), [chain.lines])
   const byRow = useMemo(() => new Map(everyLine.map(l => [l.rowId, l])), [everyLine])
   // Kerala first; a link to a Tamil Nadu subcategory opens on Tamil Nadu
@@ -50,7 +50,8 @@ export function RbReview({ chain, hrefFor, openLine, onOpenLine }: ChainPageProp
   })
   /** Everything the page shows: the lines of the region picked. */
   const all = useMemo(() => (region === 'Both' ? everyLine : everyLine.filter(l => l.region === region)), [everyLine, region])
-  const header = chainHeader(chain, personIn(chain, 'Chief Executive')?.name ?? 'RB', 'Chief Executive')
+  // the Chief Executive from the org chart (ownerOf): the page never opens without one
+  const header = chainHeader(chain, person?.name ?? '', 'Chief Executive')
   const review = useChainReview(chain.proposals)
   const [screen, setScreen] = useView(SCREENS)
   const [view, setView] = useState(MANAGER_VIEW)
