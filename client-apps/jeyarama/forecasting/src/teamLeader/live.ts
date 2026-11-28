@@ -8,6 +8,7 @@ import { day, linesFrom, monthOfRun, type LineMonthRow, type OtherModelRow, type
 import { ITEM_HEALTH_FIELDS, needsAttention, type Finding, type ItemHealthRow } from '../shared/findings'
 import { ITEM_FIELDS, MIX_FIELDS, STOCK_FIELDS, daysLeft, stockAsOf, type BandMixRow, type StockBandRow, type TopItemRow } from '../shared/bands'
 import type { OrgChart } from '../orgChart'
+import { carryAnswers } from '../shared/carry'
 import type { Answer, Header, Proposal, Question, ReviewActions, ReviewState } from '../shared/review'
 
 export interface Viewer { name: string; role: string; place: string }
@@ -19,7 +20,7 @@ const LINE_FIELDS = ['run_id', 'store_code', 'store_short_code', 'subcategory_co
   'forecast_value_before_tax', 'forecast_qty', 'seasonal_factor', 'growth_factor', 'from_recent_selling', 'seasonal_step_on_top', 'from_last_year', 'adjustments', 'rebalanced_within_category', 'price_and_rounding',
   ...[1, 2, 3, 4, 5, 6].flatMap(i => [`own_value_b${i}`, `adds_value_b${i}`, `weight_b${i}`])]
 
-interface ReviewRow { row_id: string; subcategory_name: string; answer: Answer['status']; forecast_change: string | null }
+interface ReviewRow { row_id: string; run_id: string; subcategory_name: string; answer: Answer['status']; forecast_change: string | null; forecast_month: string | null; engine_value_before_tax: number | string | null; updated_at: string }
 interface ChangeRow { row_id: string; set_value_before_tax: string | number | null; changed_value_before_tax: string | number | null; explanation: string; reasons?: { reason_code: string }[]; change_status: string }
 interface QuestionRow { row_id: string; subcategory_name: string; question_text: string; created_at: string; answered_by_role: string | null; answer_seen_at: string | null }
 interface CommentRow { ref_name: string; content: string; created_at: string }
@@ -108,7 +109,7 @@ export async function loadSection(viewer: Viewer): Promise<Section | null> {
   ])
   const lines = linesFrom({ lines: mine, sales, plans, others, bands: { mix, stock, items } }, storeCode)
   const header: Header = { store, section, person: viewer.name, role: viewer.role, cutOff: day(run.origin_date), month: monthOfRun(run.horizon_from), stockAsOf: stockAsOf(stock) }
-  return { run, storeCode, header, lines, org, state: await loadState(run.run_id, storeCode, viewer.name) }
+  return { run, storeCode, header, lines, org, state: await loadState(run, storeCode, viewer.name, lines) }
 }
 
 /** Needs Your Attention for a section: every item's health here and at the region's other stores (each store's own
@@ -129,13 +130,21 @@ export async function loadFindings(section: Section): Promise<{ findings: Findin
 /** The newest of some dates, YYYY-MM-DD. */
 const newest = (dates: (string | null)[]) => dates.reduce<string | null>((a, d) => (d && (!a || d.slice(0, 10) > a) ? d.slice(0, 10) : a), null)
 
-/** The person's answers and questions on this Run at this store. */
-export async function loadState(runId: string, storeCode: string, person: string): Promise<ReviewState> {
+/** The person's answers and questions on this Run at this store. An answer given on an earlier official Run of the
+ *  same month is carried while Feather Forecast moved 10% or less, else asked for again (carry.ts). */
+export async function loadState(run: RunRow, storeCode: string, person: string, lines: Line[]): Promise<ReviewState> {
+  const runId = run.run_id, month = run.horizon_from.slice(0, 10)
   const at = [['run_id', '=', runId], ['store_code', '=', storeCode]] as [string, string, unknown][]
-  const [reviews, asked] = await Promise.all([
-    listWhere<ReviewRow>('forecasting.forecast_line_review', ['subcategory_name', 'answer', 'forecast_change'], [...at, ['reviewer', '=', person]]),
+  const [stored, asked] = await Promise.all([
+    listWhere<ReviewRow>('forecasting.forecast_line_review', ['run_id', 'subcategory_name', 'answer', 'forecast_change', 'forecast_month', 'engine_value_before_tax'],
+      [['store_code', '=', storeCode], ['reviewer', '=', person], ['forecast_month', '=', month]]),
     listWhere<QuestionRow>('forecasting.forecast_question', ['subcategory_name', 'question_text', 'created_at', 'answered_by_role', 'answer_seen_at'], [...at, ['asked_by', '=', person]], 'created_at asc'),
   ])
+  // this Run's own answers, and earlier Runs' answers carried while Feather Forecast stayed within 10%
+  const { answers: kept, moved } = carryAnswers(stored.map(r => ({ run: r.run_id, month: r.forecast_month, subcategory: r.subcategory_name,
+    engine: r.engine_value_before_tax == null || r.engine_value_before_tax === '' ? null : Number(r.engine_value_before_tax), updatedAt: r.updated_at, answer: r })),
+    runId, month, Object.fromEntries(lines.map(l => [l.name, l.fc])))
+  const reviews = Object.values(kept)
   const changes = await Promise.all(reviews.filter(r => r.forecast_change).map(r => getRow<ChangeRow>('forecasting.forecast_change', r.forecast_change!)))
   const comments = asked.length ? await listWhere<CommentRow>('Comment', ['ref_name', 'content', 'created_at'],
     [['ref_table', '=', 'forecasting.forecast_question'], ['ref_name', 'in', asked.map(q => q.row_id)]], 'created_at asc') : []
@@ -151,7 +160,7 @@ export async function loadState(runId: string, storeCode: string, person: string
       answer: last ? { text: plain(last.content), by: `${q.answered_by_role || 'Forecast Creator'} · Head Office` } : null,
       seen: Boolean(last && q.answer_seen_at && Date.parse(q.answer_seen_at) >= Date.parse(last.created_at)) }
   })
-  return { answers, questions }
+  return { answers, questions, moved }
 }
 /** A Comment's words without its markup. */
 const plain = (html: string) => new DOMParser().parseFromString(html, 'text/html').body.textContent?.trim() ?? html

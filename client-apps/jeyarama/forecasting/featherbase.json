@@ -980,6 +980,20 @@
                 "column_type": "Reference",
                 "reference_table": "forecasting.forecast_change",
                 "description": "The change proposed with this answer."
+              },
+              {
+                "column_name": "forecast_month",
+                "label": "Month",
+                "column_type": "Date",
+                "read_only": true,
+                "description": "The month of the Run the answer was given on, so a later official Run of the same month can carry it."
+              },
+              {
+                "column_name": "engine_value_before_tax",
+                "label": "Feather Forecast (Before Tax)",
+                "column_type": "Currency",
+                "read_only": true,
+                "description": "Feather Forecast for the subcategory when the answer was given. A later Run that moves it by more than 10% asks for the answer again."
               }
             ],
             "title_column": "subcategory_name"
@@ -2221,6 +2235,20 @@
           "column_type": "Reference",
           "reference_table": "forecasting.forecast_change",
           "description": "The change proposed with this answer."
+        },
+        {
+          "column_name": "forecast_month",
+          "label": "Month",
+          "column_type": "Date",
+          "read_only": true,
+          "description": "The month of the Run the answer was given on, so a later official Run of the same month can carry it."
+        },
+        {
+          "column_name": "engine_value_before_tax",
+          "label": "Feather Forecast (Before Tax)",
+          "column_type": "Currency",
+          "read_only": true,
+          "description": "Feather Forecast for the subcategory when the answer was given. A later Run that moves it by more than 10% asks for the answer again."
         }
       ],
       "title_column": "subcategory_name"

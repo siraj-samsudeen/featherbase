@@ -24,7 +24,7 @@ export function SectionPage({ viewer, href, sectionHref, storeHref }: {
   useEffect(() => { if (sectionHref) loadStore(viewer.place.split(' · ')[0]).then(setStore, () => setStore(null)) }, [viewer.place, sectionHref])
   const refresh = useCallback(async () => {
     if (!section) return
-    const state = await loadState(section.run.run_id, section.storeCode, viewer.name)
+    const state = await loadState(section.run, section.storeCode, viewer.name, section.lines)
     setSection(s => (s ? { ...s, state } : s))
   }, [section, viewer.name])
 

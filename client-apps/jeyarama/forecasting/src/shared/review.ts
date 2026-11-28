@@ -13,7 +13,9 @@ export interface Question {
   seen: boolean
 }
 
-export interface ReviewState { answers: Record<string, Answer>; questions: Question[] }
+export interface ReviewState { answers: Record<string, Answer>; questions: Question[]
+  /** Answered on an earlier official Run of the month, but Feather Forecast has since moved by more than 10%: asked again. */
+  moved?: Record<string, { from: number; to: number }> }
 
 export interface Proposal { value: number; reasons: string[]; note: string }
 export interface ReviewActions {

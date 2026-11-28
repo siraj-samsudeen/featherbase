@@ -4,7 +4,7 @@
 // `actions`, so the same screen runs on a story's memory or on the app's tables.
 import { useMemo, useState, type ReactNode } from 'react'
 import { Chip, PageHeader, RecordLink, StatusPill } from '@featherbase/shop-floor'
-import { byGapToLastYear, combine, groupsOf, matches, type Group, type HelpTopic, type Line } from '../shared/model'
+import { byGapToLastYear, combine, groupsOf, inr, matches, type Group, type HelpTopic, type Line } from '../shared/model'
 import { SubcategorySearch } from '../shared/SubcategorySearch'
 import type { Header, ReviewActions, ReviewState } from '../shared/review'
 import { DEFAULT_VIEW, PartsLegend, ReviewToolbar, type ViewChoices } from '../shared/ReviewToolbar'
@@ -58,6 +58,8 @@ export function TeamLeaderReview({ header, lines, storeStep, state, actions, hre
 
   const pills = (name: string) => {
     const a = state.answers[name], qs = state.questions.filter(q => q.line === name), out: ReactNode[] = []
+    const m = state.moved?.[name]
+    if (m && !a) out.push(<Hover key="m" text={`Your answer was given when Feather Forecast was ${inr(m.from)}; it is now ${inr(m.to)}.`}><StatusPill tone="caution" className="fr-pill">Feather Forecast moved: answer again</StatusPill></Hover>)
     if (a?.status === 'accepted') out.push(<StatusPill key="a" tone="positive" className="fr-pill">Accepted</StatusPill>)
     if (a?.status === 'change_proposed') out.push(<StatusPill key="c" tone="neutral" className="fr-pill">Change proposed</StatusPill>)
     if (qs.some(q => !q.answer)) out.push(<StatusPill key="q" tone="caution" className="fr-pill">Question open</StatusPill>)

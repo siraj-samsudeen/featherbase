@@ -203,7 +203,7 @@ const LINE_KEY = ['run_id', 'store_code', 'division_name', 'subdivision_name', '
 async function lineOf(ctx: Context): Promise<Row> {
   const { row } = ctx
   const [line] = await ctx.documents.list!('forecasting.forecast_line_month', {
-    fields: ['row_id', ...LINE_KEY, 'store_name', 'section_name', 'forecast_value_before_tax', 'forecast_qty'],
+    fields: ['row_id', ...LINE_KEY, 'store_name', 'section_name', 'forecast_month', 'forecast_value_before_tax', 'forecast_qty'],
     filters: [['run_id', '=', row.run_id], ['store_code', '=', row.store_code], ['subcategory_name', '=', row.subcategory_name]], limit_page_length: 1 })
   if (!line) ctx.reject(`${String(row.subcategory_name || 'That line')} is not in Run ${String(row.run_id || '')}`)
   for (const k of LINE_KEY) row[k] = line[k] // the key is the Run's, whatever the page sent
@@ -276,6 +276,9 @@ async function prepareLineReview(ctx: Context) {
   const line = await lineOf(ctx)
   const p = await reviewer(ctx, row.reviewer, line)
   row.reviewer_role = p.role
+  // what the answer was given against, so a later Run of the same month can carry it, or ask again (carry.ts)
+  row.forecast_month = line.forecast_month
+  row.engine_value_before_tax = Math.round(Number(line.forecast_value_before_tax))
   if (row.answer === 'accepted') { row.forecast_change = null; return }
   if (row.answer !== 'change_proposed') ctx.reject('Accepted or change proposed', { answer: 'Required' })
   // The hook API cannot read forecast_change back (a Table with a sub-table, its reasons), so the link is required
