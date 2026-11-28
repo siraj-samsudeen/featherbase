@@ -11,6 +11,7 @@ import { AppError } from './errors'
 import { NoPersonScope, resolvePersonScope } from './person-scope'
 import { PLATFORM_ROLES } from './permissions'
 import { activeApps } from './app-lifecycle'
+import { logActivity } from './audit'
 
 export const ORG_CHART_ROLES_JOB = 'sync_org_chart_roles'
 const packages = () => import('./runtime-packages')
@@ -32,6 +33,23 @@ async function rolesTurnedOn(): Promise<{ app: string; app_role: string }[]> {
       and r.app_role not in ${sql(PLATFORM_ROLES)}
     order by r.app, r.app_role`
   return rows.map((r) => ({ app: String(r.app), app_role: String(r.app_role) })).filter((r) => activeApps.has(r.app))
+}
+
+/** Ships on (owner, 28-Nov-2026): the roles an app declares the org chart gives are turned on when it is installed,
+ *  or when an upgrade first declares them (its preview lists them), and each one is logged. A System Manager turns
+ *  one off by removing its rule; a later upgrade does not turn it on again unless the app declares it anew. */
+export async function seedOrgChartRules(app: string, roles: readonly string[], actor: string, version?: string): Promise<string[]> {
+  const added: string[] = []
+  for (const role of roles) {
+    if (PLATFORM_ROLES.includes(role)) continue
+    const [written] = await sql`insert into org_chart_role_rule (row_id, app, app_role, created_by, updated_by)
+      values (${createHash('sha256').update(`${app}\u0000${role}`).digest('hex').slice(0, 20)}, ${app}, ${role}, ${actor}, ${actor})
+      on conflict (app, app_role) do nothing returning 1`
+    if (!written) continue
+    added.push(role)
+    await logActivity(actor, `app_org_chart_role_added ${app}${version ? `@${version}` : ''}: ${role}`.slice(0, 140))
+  }
+  return added
 }
 
 export interface OrgChartRolesReport { people: number; holders: number; roles: string[]; gained: number; lost: number; published: boolean }

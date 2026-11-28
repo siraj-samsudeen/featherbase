@@ -46,27 +46,6 @@ When a System Manager opens App Roles From The Org Chart
 Then the Team Leader's row says "1 place on the org chart: North kids"
 ```
 
-### Requirement: Each app role from the org chart is turned on by a System Manager
-A role an app declares the org chart may give SHALL be given only while a System Manager's rule for that app and role stands, and only if the app created the role when it was installed. An upgrade SHALL list the roles it adds to or removes from what the org chart may give.
-
-#### Scenario: An upgrade cannot give a role unseen
-
-```gherkin
-Given an upgrade of an app declares that the org chart may give "Chart Reader"
-And no System Manager has added a rule for it
-When the rule's job runs
-Then nobody holds "Chart Reader" from the org chart
-```
-
-#### Scenario: A role the app only adopted is never given
-
-```gherkin
-Given the instance already had a role named "Chart Reader" before the app was installed
-And a System Manager adds a rule for it
-When the rule's job runs
-Then nobody holds "Chart Reader" from the org chart
-```
-
 ### Requirement: A run that cannot read the org chart keeps the last holders
 A run SHALL change no holder when the instance's scope provider is missing, not set up, or cannot answer for anyone, and SHALL fail saying so.
 
@@ -77,4 +56,32 @@ Given a made-up Team Leader holds "Chart Reader" from the org chart
 When the scope provider fails and the rule's job runs
 Then the run fails saying the last holders stand
 And the Team Leader still holds "Chart Reader"
+```
+
+### Requirement: An app role from the org chart starts on, visibly, and a System Manager can turn it off
+Installing an app, or an upgrade that first declares a role the org chart gives, SHALL turn that role on and record it in the activity log, and an upgrade's preview SHALL list it. A System Manager SHALL be able to turn it off by removing its rule; only a role the app created SHALL be given.
+
+#### Scenario: Installed, the role is on
+
+```gherkin
+Given an app declares that the org chart gives "Chart Reader"
+When the app is installed and the rule's job runs
+Then everyone the org chart gives a place holds "Chart Reader"
+And the activity log says the role was turned on
+```
+
+#### Scenario: Turned off by a System Manager
+
+```gherkin
+Given people hold "Chart Reader" from the org chart
+When a System Manager removes its rule
+Then none of them holds "Chart Reader" through it
+```
+
+#### Scenario: A role the app only adopted is never given
+
+```gherkin
+Given the instance already had a role named "Chart Reader" before the app was installed
+When the app is installed and the rule's job runs
+Then nobody holds "Chart Reader" from the org chart
 ```

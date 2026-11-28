@@ -989,6 +989,9 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
           for (const p of prepared.granted)
             await logActivity(actor, `app_grant_added ${name}@${version}: ${grantWords(p)}`.slice(0, 140))
         }
+        // #1453: roles this version first declares the org chart gives are turned on (ships on), as its preview said
+        if (prepared.plan.orgChartRoles.added.length)
+          await (await import('./org-chart-roles')).seedOrgChartRules(name, prepared.plan.orgChartRoles.added, actor, version)
         await sql`update installed_app set package_version = ${version}, artifact_digest = ${prepared.target.digest},
           manifest = ${sql.json(prepared.target.app.runtime_manifest as never)},
           migration_ledger = ${sql.json(prepared.ledger)}, activation_pending = true,

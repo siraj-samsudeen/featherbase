@@ -1,7 +1,7 @@
 // #1453: an app's role from the org chart. The app `chartproof` declares that everyone the org chart gives a place
 // may hold its role Chart Reader; the places come from test-apps/fixtures/place-roster's positions (a person's rows
-// there are their places). A System Manager turns it on with an Org Chart Role Rule row; the job keeps holders in
-// step. Every person and place is made up.
+// there are their places). It ships on: installing the app writes its Org Chart Role Rule; a System Manager turns it
+// off by removing the rule. The job keeps holders in step. Every person and place is made up.
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
@@ -49,10 +49,9 @@ async function installed(admin: TestClient, createUser: CreateUserFn) {
 }
 const position = (admin: TestClient, person: string, place: string, store: string, section: string) =>
   admin.post('/api/save_row', { table: 'placeroster.position', row: { row_id: `${person}-${section}`, person, place, store, section } })
-/** A System Manager turns the role on (a rule row), or off (the row removed). */
-async function turnOn(admin: TestClient, on = true) {
-  if (on) await admin.post('/api/save_row', { table: 'Org Chart Role Rule', row: { app: APP, app_role: 'Chart Reader' } })
-  else await sql`delete from org_chart_role_rule where app = ${APP}`
+/** On by itself at install (ships on); a System Manager turns it off by removing the rule row. */
+async function turnOn(_admin: TestClient, on = true) {
+  if (!on) await sql`delete from org_chart_role_rule where app = ${APP}`
 }
 async function roster(): Promise<{ faults: { provider?: unknown } }> {
   const digest = availableRuntimeVersions().find((p) => p.name === 'placeroster')!.digest
@@ -60,12 +59,12 @@ async function roster(): Promise<{ faults: { provider?: unknown } }> {
 }
 
 describe('an app role from the org chart', () => {
-  test('is held by everyone the org chart gives a place, once the instance turns it on', async ({ admin, createUser }) => {
+  test('ships on: installing writes the rule, logged, and everyone the org chart gives a place holds the role', async ({ admin, createUser }) => {
     const { leader, manager, outsider } = await installed(admin, createUser)
-    await syncOrgChartRoles()
-    // installed, nothing is turned on: nobody holds it
+    expect(await sql`select app, app_role from org_chart_role_rule where app = ${APP}`).toEqual([{ app: APP, app_role: 'Chart Reader' }])
+    expect((await sql`select 1 from activity_log where operation like ${`app_org_chart_role_added ${APP}%`}`).length).toBe(1)
+    // nobody until the job runs, then everyone with a place
     expect(await getRoles(leader)).not.toContain('Chart Reader')
-    await turnOn(admin)
     await syncOrgChartRoles()
     expect(await getRoles(leader)).toContain('Chart Reader')
     expect(await getRoles(manager)).toContain('Chart Reader')
