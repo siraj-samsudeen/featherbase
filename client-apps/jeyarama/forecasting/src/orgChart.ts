@@ -13,7 +13,9 @@ export interface OrgSubcategory { section: string | null; buyer: string | null; 
  *  subcategory's section, buyer and category head, by subcategory code. */
 export interface OrgChart { store: string; region: string | null; sections: OrgSection[]; storeManagers: string[]; subcategories: Record<string, OrgSubcategory>
   /** The region's stores, short code → name, for the stores a transfer names. */
-  stores: Record<string, string> }
+  stores: Record<string, string>
+  /** Each person the chart names → their Employee row, so a page can link them (#1227). */
+  people: Record<string, string> }
 
 /** A Date column's calendar day: the database client returns a Date at UTC midnight, a page or a test the text. */
 const day = (v: unknown) => {
@@ -79,5 +81,5 @@ export async function orgChart(base: BaseTables, store: string, today: string): 
   const subcategories: Record<string, OrgSubcategory> = {}
   for (const code of codes) subcategories[code] = { section: latest(bySub.get(code) ?? []) ? String(latest(bySub.get(code)!).section ?? '') || null : null,
     buyer: who(code, 'Buyer'), categoryHead: who(code, 'Category head') }
-  return { store, region, stores, sections: orgSections, storeManagers: todays.filter(j => j.job === 'Store Manager').map(j => nameOf(j.employee)!).filter(Boolean), subcategories }
+  return { store, region, stores, people: Object.fromEntries([...names].map(([id, name]) => [name, id])), sections: orgSections, storeManagers: todays.filter(j => j.job === 'Store Manager').map(j => nameOf(j.employee)!).filter(Boolean), subcategories }
 }

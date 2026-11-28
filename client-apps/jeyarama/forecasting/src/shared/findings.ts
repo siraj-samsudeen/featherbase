@@ -42,7 +42,9 @@ export const ITEM_HEALTH_FIELDS = ['store_code', 'store_short_code', 'subcategor
   'days_since_stock_movement', 'is_dead_stock', 'sales_qty_7d', 'sales_qty_14d', 'sales_qty_28d', 'sales_value_before_tax_28d', 'selling_price_90d_incl_tax',
   'other_stores_selling', 'other_stores_sales_qty_14d']
 /** What the live org chart says about who to ask, and the region's store names (orgChart.ts). */
-export interface People { subcategories: Record<string, { buyer: string | null; categoryHead: string | null }>; stores: Record<string, string> }
+export interface People { subcategories: Record<string, { buyer: string | null; categoryHead: string | null }>; stores: Record<string, string>
+  /** A named person's Employee row, for their link. */
+  people?: Record<string, string> }
 
 /** The same item at another store of the region, from that store's own item health row. */
 interface OtherStoreRow { item_code: string; short: string; name: string; stock: number; sold: number }
@@ -61,10 +63,10 @@ export interface Finding {
    *  only elsewhere (elsewhere); and, for a group, the stores that can spare or will run short of its items. */
   items: PaneItem[]; itemsShow: 'sales' | 'stock' | 'elsewhere'; options: PaneOption[]
   /** Who to ask: the buyer, or the category head for dead and slow stock. */
-  who: { name: string; role: string }[]
+  who: { name: string; role: string; id?: string }[]
 }
 export interface PaneItem { item: string; code: string; qty: number | null; value: number | null; stock: number; stores?: number }
-export interface PaneOption { item: string; store: string; theirStock: number; theirSold: number; pcs: number }
+export interface PaneOption { item: string; store: string; storeCode?: string; theirStock: number; theirSold: number; pcs: number }
 
 /** Bands that are not price bands: an item sold but not on the board, or with no band published. */
 const NOT_A_BAND = [NO_BAND, 'No price band published']
@@ -106,14 +108,15 @@ export function needsAttention(lines: Line[], items: ItemHealthRow[], people: Pe
     const add = (kind: Finding['kind'], colour: Colour, rupees: number, title: string, evidence: string, action: string, band: string | null = null,
       nums: Finding['n'] = {}, pane: Partial<Pick<Finding, 'items' | 'itemsShow' | 'options'>> = {}, ask: 'buyer' | 'head' = 'buyer') =>
       out.push({ kind, colour, rupees: r0(rupees), line: sub, band, title, evidence, action, n: nums, items: pane.items ?? [], itemsShow: pane.itemsShow ?? 'sales',
-        options: pane.options ?? [], who: [ask === 'head' ? { name: who.categoryHead || 'Your category head', role: 'Category head' } : { name: who.buyer || 'Your buyer', role: 'Buyer' }] })
+        options: pane.options ?? [], who: [ask === 'head' ? { name: who.categoryHead || 'Your category head', role: 'Category head', id: who.categoryHead ? people.people?.[who.categoryHead] : undefined }
+          : { name: who.buyer || 'Your buyer', role: 'Buyer', id: who.buyer ? people.people?.[who.buyer] : undefined }] })
     /** The pane's top items: a group's best sellers of the last 28 days, with their stock here. */
     const topOf = (group: ItemHealthRow[]): PaneItem[] => [...group].sort((a, b) => n(b.sales_value_before_tax_28d) - n(a.sales_value_before_tax_28d) || n(b.stock_qty) - n(a.stock_qty))
       .slice(0, S.topSellers).map(i => ({ item: name(i), code: i.item_code, qty: r0(n(i.sales_qty_28d)), value: r0(n(i.sales_value_before_tax_28d)), stock: r0(n(i.stock_qty)) }))
     /** The pane's transfer options for a group: per item, the region's store that can spare it (in) or will run out of it (out). */
     const optionsOf = (group: ItemHealthRow[], side: 'in' | 'out'): PaneOption[] => [...group]
       .sort((a, b) => (side === 'in' ? n(b.sales_value_before_tax_28d) - n(a.sales_value_before_tax_28d) : n(b.stock_qty) - n(a.stock_qty))).slice(0, 8)
-      .flatMap(i => { const c = (side === 'in' ? spareAt(i) : shortAt(i))[0]; return c ? [{ item: name(i), store: storeName(c[1]), theirStock: r0(c[1].stock), theirSold: r0(c[1].sold), pcs: r0(c[0]) }] : [] })
+      .flatMap(i => { const c = (side === 'in' ? spareAt(i) : shortAt(i))[0]; return c ? [{ item: name(i), store: storeName(c[1]), storeCode: c[1].short, theirStock: r0(c[1].stock), theirSold: r0(c[1].sold), pcs: r0(c[0]) }] : [] })
       .slice(0, 5)
     /** Transfers in: each (item, pieces still needed here) against the region's stores that can spare it. Returns the
      *  best one's words for the parent finding's action. */
@@ -128,7 +131,7 @@ export function needsAttention(lines: Line[], items: ItemHealthRow[], people: Pe
         add('xin', 'red', rupees, `Bring in ${name(i)} from ${r.short}`,
           `${sub} · ${band}: ${why}; ${here(i)}. ${storeName(r)} holds ${pcs(r.stock)} pcs and sold ${pcs(r.sold)} in 28 days there`,
           `Ask ${storeName(r)} for ${pcs(take)} pcs; tell ${buyer}`, band,
-          { item: name(i), store: storeName(r), hereStock: r0(n(i.stock_qty)), hereSold: r0(n(i.sales_qty_28d)), theirStock: r0(r.stock), theirSold: r0(r.sold), move: r0(take) },
+          { item: name(i), store: storeName(r), storeCode: r.short, hereStock: r0(n(i.stock_qty)), hereSold: r0(n(i.sales_qty_28d)), theirStock: r0(r.stock), theirSold: r0(r.sold), move: r0(take) },
           { items: topOf([i]) })
       const best = found[0]
       return best ? `; ${storeName(best.r)} holds ${pcs(best.r.stock)} pcs of ${name(best.i)} and sold only ${pcs(best.r.sold)} in 28 days there, so ask for a transfer` : ''
@@ -145,7 +148,7 @@ export function needsAttention(lines: Line[], items: ItemHealthRow[], people: Pe
         add('xout', 'purple', rupees, `Send ${pcs(offer)} pcs of ${name(i)} to ${r.short}`,
           `${sub} · ${band ?? 'all bands'}: ${why}; ${pcs(n(i.stock_qty))} pcs here, ${pcs(n(i.sales_qty_28d))} sold in 28 days. ${storeName(r)} sold ${pcs(r.sold)} in 28 days and holds only ${pcs(r.stock)}`,
           `Offer them to ${storeName(r)}; tell ${buyer}`, band,
-          { item: name(i), store: storeName(r), hereStock: r0(n(i.stock_qty)), hereSold: r0(n(i.sales_qty_28d)), theirStock: r0(r.stock), theirSold: r0(r.sold), move: r0(offer) },
+          { item: name(i), store: storeName(r), storeCode: r.short, hereStock: r0(n(i.stock_qty)), hereSold: r0(n(i.sales_qty_28d)), theirStock: r0(r.stock), theirSold: r0(r.sold), move: r0(offer) },
           { items: topOf([i]) })
       const best = found[0]
       return best ? `; offer ${pcs(best.offer)} pcs of ${name(best.i)} to ${storeName(best.r)}, which sold ${pcs(best.r.sold)} in 28 days and holds only ${pcs(best.r.stock)}` : ''

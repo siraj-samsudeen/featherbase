@@ -7,7 +7,7 @@ import { ATTENTION_SETTINGS, needsAttention, type ItemHealthRow, type People } f
 const lines = linesFrom({ lines: fixture.forecast_line_month, sales: fixture.sales_reference, plans: fixture.annual_plan_line, others: fixture.other_model_day,
   bands: { mix: fixture.price_band_mix, stock: fixture.stock_band, items: fixture.price_band_top_item } } as unknown as CopiedRows, '9001')
 const DEC = { name: 'December', days: 31, left: 34 }
-const people: People = { subcategories: { X1: { buyer: 'Kavya', categoryHead: 'Ravi' } }, stores: { MOT: 'Store MOT', HLT: 'Store HLT', NOR: 'Store NOR' } }
+const people: People = { subcategories: { X1: { buyer: 'Kavya', categoryHead: 'Ravi' } }, stores: { MOT: 'Store MOT', HLT: 'Store HLT', NOR: 'Store NOR' }, people: { Kavya: 'E4', Ravi: 'E5' } }
 
 // one subcategory, X, with its bands; 31 forecast pieces a band is one a day
 const band = (name: string, over: Partial<Band>): Band => ({ name, order: 1, fc: 0, fq: 31, share: 0, stock: 0, q28: 28, v28: 2800, shareSales: null, shareStock: null, sold: 1, n50: 1, n70: 1, items: [], ...over })
@@ -59,6 +59,13 @@ describe('Needs Your Attention (#1419, approved 28-Nov-2026)', () => {
     const f = find(line([band('a', { stock: 10, q28: 28 })]), [item('1', { stock_qty: 10, sales_qty_28d: 28, sales_value_before_tax_28d: 2800 })], [at('1', 'MOT', 50, 0)])
     expect(f.find(x => x.kind === 'xin')).toMatchObject({ colour: 'red', rupees: 2400, title: 'Bring in Item 1 from MOT', action: 'Ask MOT Store MOT for 24 pcs; tell Kavya (buyer)' })
     expect(f.find(x => x.kind === 'short')!.action).toContain('; MOT Store MOT holds 50 pcs of Item 1 and sold only 0 in 28 days there, so ask for a transfer')
+  })
+
+  it('names its store and person as records, so the page can link them: the store by its short code, the person by their Employee row', () => {
+    const f = find(line([band('a', { stock: 10, q28: 28 })]), [item('1', { stock_qty: 10, sales_qty_28d: 28, sales_value_before_tax_28d: 2800 })], [at('1', 'MOT', 50, 0)])
+    const xin = f.find(x => x.kind === 'xin')!
+    expect(xin.n.storeCode).toBe('MOT')
+    expect(xin.who).toEqual([{ name: 'Kavya', role: 'Buyer', id: 'E4' }])
   })
 
   it('offers no transfer under 3 pieces, and to no store that sold under 5 in 28 days', () => {

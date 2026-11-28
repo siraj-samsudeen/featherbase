@@ -7,6 +7,7 @@
 // their own findings the same way.
 import { Fragment, useEffect, useState, type KeyboardEvent } from 'react'
 import { Button, DrillPane, PaneSection, RecordLink, SplitWithPane, TABLE_CLASSES, cellClasses, cx, headCellClasses, resolvePanePlace } from '@featherbase/shop-floor'
+import { PersonLink, StoreLink } from './records'
 import { count, day, inr } from './model'
 import { ATTENTION_SETTINGS as T, type Finding } from './findings'
 import type { Header } from './review'
@@ -107,7 +108,7 @@ function Pane({ f, header, place, index, of, onClose, onMove, href, onOpen }: {
         <PaneSection title="Numbers"><dl className="fr-att-kv">{nums.map(c => <Fragment key={c}><dt>{headOf(c, header.month)}</dt><dd>{show(c, f)}</dd></Fragment>)}</dl></PaneSection>
         <PaneSection title="What we see"><p className="fr-att-p">{f.evidence}</p></PaneSection>
         <PaneSection title="What to do"><p className="fr-att-p">{f.action}</p></PaneSection>
-        <PaneSection title="Who to ask"><p className="fr-att-p">{f.who.map(w => <span key={w.role}><b>{w.name}</b> <span className="fr-dim">· {w.role}</span></span>)}</p></PaneSection>
+        <PaneSection title="Who to ask"><p className="fr-att-p">{f.who.map(w => <span key={w.role}><b><PersonLink id={w.id} name={w.name} /></b> <span className="fr-dim">· {w.role}</span></span>)}</p></PaneSection>
         {f.items.length > 0 && (
           <PaneSection title={f.itemsShow === 'stock' ? 'Biggest items by stock' : f.itemsShow === 'elsewhere' ? 'Items not selling here' : 'Top items, last 28 days'}>
             <table className="fr-mini fr-att-mini">
@@ -122,7 +123,7 @@ function Pane({ f, header, place, index, of, onClose, onMove, href, onOpen }: {
           <PaneSection title={f.colour === 'red' ? 'Stores that can spare these items' : 'Stores that will run out of these items'}>
             <table className="fr-mini fr-att-mini">
               <thead><tr><th>Item</th><th>Store</th><th>Their stock</th><th>Their sold 28 d</th><th>{f.colour === 'red' ? 'Can spare' : 'Will be short'}</th></tr></thead>
-              <tbody>{f.options.map((o, k) => <tr key={k}><td>{o.item}</td><td>{o.store}</td><td>{count(o.theirStock)}</td><td>{count(o.theirSold)}</td><td>{count(o.pcs)}</td></tr>)}</tbody>
+              <tbody>{f.options.map((o, k) => <tr key={k}><td>{o.item}</td><td><StoreLink code={o.storeCode} name={o.store} /></td><td>{count(o.theirStock)}</td><td>{count(o.theirSold)}</td><td>{count(o.pcs)}</td></tr>)}</tbody>
             </table>
           </PaneSection>)}
         <div><Button variant="primary" onClick={onOpen} data-href={href}>Open in Team Leader Review</Button></div>
@@ -157,6 +158,7 @@ function TabTable({ tab, findings, open, onOpen, month, lineHref, onLine }: { ta
                 {cols.map((c, j) => <td key={c} className={cellClasses({ first: j === 0, last: j === cols.length - 1,
                   className: cx(numeric(c) && 'text-right tabular-nums', j === 0 && 'fr-att-name', tone(c, f)) })}>{c === 'sub'
                   ? <span onClick={e => e.stopPropagation()}><RecordLink table="forecasting.forecast_line_month" rowId={f.line} name={f.line} href={lineHref(f)} onNavigate={() => onLine(f)} /></span>
+                  : c === 'store' && f.n.storeCode ? <span onClick={e => e.stopPropagation()}><StoreLink code={String(f.n.storeCode)} name={show(c, f)} /></span>
                   : show(c, f)}</td>)}
               </tr>))}
           </Fragment>))}</tbody>

@@ -60,6 +60,7 @@ describe('the live org chart (#1419)', () => {
     expect(org.sections.map(s => [s.name, s.floor, s.floorOrder, s.teamLeaders])).toEqual([['Girls', 'First Floor', 1, ['Asha']], ['Saree', 'Ground Floor', 0, []]])
     expect(org.storeManagers).toEqual(['Omar'])
     expect(org.stores).toEqual({ LKS: 'Lakeside', HLT: 'Hilltop' })
+    expect(org.people).toMatchObject({ Asha: 'E1', Omar: 'E3' })
     expect((await orgChart(base, 'LKS', '2026-11-27')).sections[0].teamLeaders).toEqual(['Asha', 'Bina'])
   })
 
