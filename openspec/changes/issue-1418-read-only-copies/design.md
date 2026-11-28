@@ -17,7 +17,7 @@ flowchart LR
 ## Decisions
 
 ### D1. A Read-only copy is a view over loads kept apart; the swap is a registry flip
-Each load is written into its own partition of a load table in a platform schema (`featherbase_copy`), under a new load id. The Table people and apps read is a view in the app's schema that shows only the load the registry (`dataset_snapshot`) marks active. Activating a load is one update of the registry, so a reader sees the old load or the new one, never half. The previous load stays until the next load succeeds (D7), and older loads are dropped whole (a partition drop, no row deletes).
+Each load is written into its own partition of a load table in a platform schema (`featherbase_copy`), under a new load id. The Table people and apps read is a view in the app's schema that shows only the load the registry (`dataset_snapshot`) marks active. Activating a load is one update of the registry, so a reader sees the old load or the new one, never half. A read-only copy holds no link to a Data Source row: its app names the source, which an administrator connects after the install, as for a JSON dataset. The previous load stays until the next load succeeds (D7), and older loads are dropped whole (a partition drop, no row deletes).
 *Rejected:* rename-swapping two tables (whatever depends on the old table follows it, and constraint names drift); delete-and-insert in one transaction (millions of row writes inside the swap, and bloat); one table with a load-id column that every reader filters (an app query that forgets the filter reads two runs at once).
 
 ### D2. The copy's Table comes from the declaration, not from migration steps
@@ -33,11 +33,11 @@ The loader asks the source for the columns and types the declared query returns,
 *Rejected:* checking the first rows (an empty result or a null column hides a change).
 
 ### D5. One job per copy, every 15 minutes: the run check and the daily time
-The copy keeps #840's Scheduled Job, at "every 15 minutes", so a System Manager pauses it where they pause any copy. Each run: if the dataset declares a **run check** (a one-row query, such as the official run for the month), it loads only when the answer differs from the last loaded one, and the answer's values fill `{name}` placeholders in the declared query; if it declares a **daily time**, it loads once a day after that time in the instance's timezone. A copy with neither loads on every run.
+The copy keeps #840's link to a Scheduled Job, at "every 15 minutes"; a System Manager pauses it on that Scheduled Job (the copy's own schedule actions are write actions, which a system-written Table refuses). Each run: if the dataset declares a **run check** (a one-row query, such as the official run for the month), it loads only when the answer differs from the last loaded one, and the answer's values fill `{name}` placeholders in the declared query; if it declares a **daily time**, it loads once a day after that time in the instance's timezone. A copy with neither loads on every run.
 *Rejected:* a daily cadence for daily feeds (the time would drift with each run); two jobs per copy.
 
 ### D6. The warehouse may ask for the check now
-`POST /api/table/<copy>:copy_check_now` queues the copy's check to run at once and returns. Whoever may read the copy may ask, a System Manager included: the check only does sooner what the schedule would do within 15 minutes, and a load still needs a new run. A service account with read on the copy, and an access token, is all the warehouse worker needs.
+`POST /api/copy_check_now { "table": "<copy>" }` moves the copy's queued check to now and returns. It is its own route, not a write action on the Table, since it changes no row and the Table is system-written; the queued run stays the schedule's own, so the 15-minute recurrence carries on after it. Whoever may read the copy may ask, a System Manager included: the check only does sooner what the schedule would do within 15 minutes, and a load still needs a new run. A service account with read on the copy, and an access token, is all the warehouse worker needs.
 *Rejected:* System Manager only (the worker would need the role that administers the whole instance).
 
 ### D7. After a new load the app's job is told both loads; the platform works out what moved
