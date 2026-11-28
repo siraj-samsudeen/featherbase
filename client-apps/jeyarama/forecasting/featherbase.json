@@ -1106,6 +1106,12 @@
           }
         }
       ]
+    },
+    {
+      "id": "managers_writes_and_signed_in",
+      "fromVersion": "0.13.0",
+      "toVersion": "0.13.1",
+      "operations": []
     }
   ],
   "tables": [
