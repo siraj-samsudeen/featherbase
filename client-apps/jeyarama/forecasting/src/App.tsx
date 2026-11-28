@@ -2,7 +2,7 @@
 // Baseline on made-up data (#4870 in the warehouse repo): Runs, bases and sales come from madeUp.ts and
 // sales.ts; numbers, their history, Review questions and ideas are Featherbase rows. The month is
 // picked beside "Viewing as" and kept in the address (?month=), as Dash's top-bar Month picker keeps it.
-import { UNNAMED_TL } from './teamLeader/live'
+import { UNNAMED_TL, officialRuns } from './teamLeader/live'
 import { createElement, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Button, Card, EmptyState, Field, PersonLabel, Select, Skeleton } from '@featherbase/shop-floor'
 import { listAll, saveRow } from './api'
@@ -213,16 +213,20 @@ function useInAppNavigation() {
  *  kept in the address (?line=<rowId>) and its record opens here. The Run is read once and kept while the app is open. */
 const CHAIN_PAGES = { 'store-review': StoreManagerReview, 'category-review': CategoryHeadReview, 'rb-review': RbReview } as const
 type ChainView = keyof typeof CHAIN_PAGES
-let chainLoad: Promise<Chain> | null = null
-const loadChain = () => (chainLoad ??= loadRealChain().then(real => real ?? madeUpChain(), e => { chainLoad = null; throw e }))
+// the made-up chain only where the made-up fixture Run is installed (a development or stand-in instance, started with
+// --made-up-data); an instance with no Run loaded yet (production before the first copy) says so instead of inventing one
+let chainLoad: Promise<Chain | 'none'> | null = null
+const loadChain = () => (chainLoad ??= loadRealChain().then(async real => real
+  ?? ((await officialRuns()).some(r => r.model === 'made_up') ? madeUpChain() : 'none' as const), e => { chainLoad = null; throw e }))
 function ChainPage({ view }: { view: ChainView }) {
   const Page = CHAIN_PAGES[view]
-  const [chain, setChain] = useState<Chain | null>(null)
+  const [chain, setChain] = useState<Chain | 'none' | null>(null)
   const [failed, setFailed] = useState(false)
   useEffect(() => { loadChain().then(setChain, () => setFailed(true)) }, [])
   const line = new URLSearchParams(window.location.search).get('line')
   if (failed) return <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => { setFailed(false); loadChain().then(setChain, () => setFailed(true)) }}>Try again</Button>} /></Card>
   if (!chain) return <Skeleton label="Opening the review" lines={8} />
+  if (chain === 'none') return <Card><EmptyState title="No official Run is loaded yet" body="The month opens here once Feather Forecast's official Run is loaded." /></Card>
   const props: ChainPageProps = {
     chain,
     hrefFor: l => address(view, { line: l.rowId }),
