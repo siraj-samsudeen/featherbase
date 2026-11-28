@@ -51,6 +51,11 @@ describe('the declaration', () => {
     expect(parse([lines({ rowKey: ['value'] })])).toEqual(["Dataset forecast_line_day's row key value must be text, integer or date"])
     expect(parse([lines({ name: 'a_dataset_name_that_is_far_too_long' })])).toEqual(['Dataset a_dataset_name_that_is_far_too_long becomes a Table, so its name is at most 31 characters'])
     expect(parse([lines({ refresh: { dailyAt: '7:30' } })])).toEqual(['A daily time is HH:MM, 00:00 to 23:59'])
+    const own = lines({ columns: [...(lines().columns as unknown[]), { name: 'snapshot_id', type: 'text' }, { name: 'created_at', type: 'date' }] })
+    expect(parse([own])).toEqual([
+      'Dataset forecast_line_day becomes a Table, whose own column snapshot_id it cannot declare',
+      'Dataset forecast_line_day becomes a Table, whose own column created_at it cannot declare',
+    ])
   })
 
   test('a JSON dataset takes none of a copy’s fields or guards', () => {
@@ -100,6 +105,14 @@ describe('a copy follows its app', () => {
       .toEqual(['store_code', 'subcategory_code', 'sale_date', 'value'])
   })
 
+  test('a JSON dataset that becomes a copy leaves its snapshots behind', async ({ admin }) => {
+    const first = await installed(admin, [lines({ store: 'json', rowKey: undefined, refresh: undefined, query: `select * from ${warehouse.schema}.forecast_line_day` })])
+    await sql`insert into dataset_snapshot (row_id, dataset, state, built_at, activated_at) values ('json-snapshot', ${LINES}, 'active', now(), now())`
+    await upgrade(admin, first, await writeApp([lines({ guard: [{ kind: 'keeps_values', column: 'store_code' }] })], '1.1.0'), '1.1.0')
+    expect(await loads()).toEqual([])
+    expect(await load(LINES)).toMatchObject({ status: 'loaded', previous: null })
+  })
+
   test('a dataset the app stops declaring goes', async ({ admin }) => {
     const first = await installed(admin, [lines(), dailySales(warehouse.schema)])
     expect(await load(LINES)).toMatchObject({ status: 'loaded' })
@@ -130,6 +143,26 @@ describe('a load', () => {
   test('is refused when a column holds another kind of value, naming both', async ({ admin }) => {
     await installed(admin, [lines({ query: `select run_id, store_code, subcategory_code, sale_date, value::text as value from ${warehouse.schema}.forecast_line_day where run_id = {run_id}` })])
     expect(await load(LINES)).toMatchObject({ status: 'refused', reason: 'forecast_line_day: value is text in the source, not money. The last good load is kept' })
+  })
+
+  test('is refused a source total on a float column, which no exact total can check', async ({ admin }) => {
+    await installed(admin, [lines({ guard: [{ kind: 'source_total', column: 'value' }],
+      query: `select run_id, store_code, subcategory_code, sale_date, value::float8 as value from ${warehouse.schema}.forecast_line_day where run_id = {run_id}` })])
+    expect(await load(LINES)).toMatchObject({ reason: 'forecast_line_day: value is double precision in the source, so its total cannot be checked exactly; make it a decimal there or drop the source_total guard. The last good load is kept' })
+  })
+
+  test('refused again and again keeps only the last ten refusals', async ({ admin }) => {
+    await installed(admin)
+    await warehouse.db.unsafe(`truncate ${warehouse.schema}.forecast_run`)
+    for (let i = 0; i < 12; i++) await load(LINES)
+    expect(await loads()).toEqual(Array(10).fill('failed'))
+  })
+
+  test('is indexed on its row id and its key and scope columns', async ({ admin }) => {
+    await installed(admin)
+    const { snapshot } = await load(LINES)
+    const indexes = await sql`select indexdef from pg_indexes where tablename = ${`l_${snapshot!.replaceAll('-', '')}`}`
+    expect(indexes.map((i) => String(i.indexdef).replace(/^.* USING /, ''))).toEqual(expect.arrayContaining(['btree (row_id)', 'btree (store_code)', 'btree (sale_date)']))
   })
 
   test('is refused when a source type is none it knows', async ({ admin }) => {
@@ -166,7 +199,7 @@ describe('a load', () => {
   test('is refused when the source’s own total is not the loaded one', async ({ admin }) => {
     // The source answers a different total each time it is asked.
     const restless = lines({
-      query: `select run_id, store_code, subcategory_code, sale_date, value + floor(random() * 1000) + 1 as value from ${warehouse.schema}.forecast_line_day where run_id = {run_id}`,
+      query: `select run_id, store_code, subcategory_code, sale_date, value + floor(random() * 1000)::numeric + 1 as value from ${warehouse.schema}.forecast_line_day where run_id = {run_id}`,
       guard: [{ kind: 'source_total', column: 'value' }],
     })
     await installed(admin, [restless])

@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { sql, type Sql } from './db'
 import { platformRelation } from './platform-schema'
+import { RESERVED_COLUMNS } from './table-engine'
 import type { PersonScope, ScopePlace } from 'shared'
 import { activeSnapshot, recordMiss, registerDataset, unregisterDataset } from './dataset-snapshot'
 import { AppError, errorMessage } from './errors'
@@ -217,6 +218,9 @@ const datasetSchema = z.object({
     // Its Table is <app>.<name>, whose name part is at most 31 characters.
     if (dataset.name.length > 31) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name} becomes a Table, so its name is at most 31 characters` })
     if (!dataset.rowKey) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name} becomes a Table, so it names its rowKey` })
+    for (const { name } of dataset.columns)
+      if ([...RESERVED_COLUMNS, 'snapshot_id'].includes(name))
+        context.addIssue({ code: 'custom', message: `Dataset ${dataset.name} becomes a Table, whose own column ${name} it cannot declare` })
     for (const column of dataset.rowKey ?? []) {
       if (!types.has(column)) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s row key ${column} is not one of its columns` })
       else if (!FILTERABLE.includes(types.get(column)!))

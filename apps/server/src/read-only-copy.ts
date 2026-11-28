@@ -150,6 +150,8 @@ async function ensureCopy(app: string, dataset: DatasetDeclaration): Promise<boo
     daily_at: dataset.refresh?.dailyAt ?? null, key_column: dataset.rowKey!.join(','),
   }
   if (!copy) {
+    // A dataset that was a JSON snapshot under this name leaves its snapshots behind.
+    await sql`delete from dataset_snapshot where dataset = ${target}`
     await createTable({
       name: target, label: words(dataset.name), id_pattern: 'prompt',
       description: `Read-only copy from ${dataset.source}, loaded whole per run by its app`,
@@ -333,6 +335,7 @@ export async function checkCopy(target: string, opts: LoadOptions = {}): Promise
     if (!due) return runKey ? { status: 'unchanged', reason: `the run is unchanged (${runKeyText})` } : { status: 'not_due', reason: `next load after ${dataset.refresh!.dailyAt}` }
 
     let snapshot: string | undefined
+    let activated = false
     try {
       const { text, values } = boundQuery(dataset.query, runKey)
       await checkShape(dataset, await describeOrRefuse(() => driver.describe!(source, text, values)))
@@ -350,11 +353,13 @@ export async function checkCopy(target: string, opts: LoadOptions = {}): Promise
       })
       await indexAndAttach(target, dataset, snapshot)
       await assertStillServing(app, identity, () => activate(target, snapshot!, rows, loadMs, runKeyText, now))
+      activated = true
       if (dataset.onNewLoad) await queueNewLoad(app, dataset.onNewLoad, target, previous, snapshot)
       await prune(target)
       return { status: 'loaded', snapshot, previous, rows }
     } catch (error) {
-      if (snapshot) await failLoad(target, snapshot, errorMessage(error))
+      // A load that went live stays live, whatever fails after it.
+      if (snapshot && !activated) await failLoad(target, snapshot, errorMessage(error))
       if (error instanceof Refusal) return refused(target, error.message, opts, snapshot)
       throw error
     }
@@ -368,7 +373,14 @@ async function refused(target: string, reason: string, opts: LoadOptions, snapsh
     await sql`insert into dataset_snapshot (row_id, dataset, state, built_at, triggered_by, error)
       values (${snapshot}, ${target}, 'failed', clock_timestamp(), ${opts.trigger ?? null}, ${reason})`
   }
+  await trimFailures(target)
   return { status: 'refused', snapshot, reason: `${target.split('.')[1]}: ${reason}` }
+}
+
+/** The last ten failures are the record of why a copy is old; older ones go. */
+async function trimFailures(target: string): Promise<void> {
+  await sql`delete from dataset_snapshot where row_id in (select row_id from dataset_snapshot where dataset = ${target} and state = 'failed'
+    order by built_at desc offset 10)`
 }
 
 /** A query that names a column the source no longer has fails to describe:
@@ -393,6 +405,10 @@ async function checkShape(dataset: DatasetDeclaration, shape: { name: string; ty
     if (!found) problems.push(`the source has no column ${column.name} (renamed or removed?)`)
     else if (!ACCEPTS[column.type].includes(found.family)) problems.push(`${column.name} is ${found.type} in the source, not ${column.type}`)
   }
+  // An exact total cannot be checked against a float sum.
+  for (const guard of dataset.guard ?? [])
+    if (guard.kind === 'source_total' && source.get(guard.column!)?.family === 'float')
+      problems.push(`${guard.column} is ${source.get(guard.column!)!.type} in the source, so its total cannot be checked exactly; make it a decimal there or drop the source_total guard`)
   if (problems.length) refuse(`${problems.join('; ')}. The last good load is kept`)
 }
 
@@ -470,6 +486,8 @@ async function indexAndAttach(target: string, dataset: DatasetDeclaration, snaps
   const part = partRelation(snapshot)
   await sql.unsafe(`create unique index on ${part} (row_id)`)
   for (const column of new Set([...Object.values(dataset.filters), ...dataset.keys]))
+    // A scoped read compares as text: for a text column (a store or section
+    // code) that is the column itself, so this index serves it.
     await sql.unsafe(`create index on ${part} (${q(column)})`)
   await sql.unsafe(`alter table ${part} add check (snapshot_id = ${literal(snapshot)})`)
   await sql.unsafe(`alter table ${loadsRelation(target)} attach partition ${part} for values in (${literal(snapshot)})`)
@@ -487,9 +505,11 @@ async function activate(target: string, snapshot: string, rows: number, loadMs: 
   })
 }
 
+/** Only a load still being made: never one that went live. */
 async function failLoad(target: string, snapshot: string, reason: string): Promise<void> {
-  await sql.unsafe(`drop table if exists ${partRelation(snapshot)}`)
-  await sql`update dataset_snapshot set state = 'failed', error = ${reason}, updated_at = now() where row_id = ${snapshot} and dataset = ${target}`
+  const [failed] = await sql`update dataset_snapshot set state = 'failed', error = ${reason}, updated_at = now()
+    where row_id = ${snapshot} and dataset = ${target} and state = 'building' returning row_id`
+  if (failed) await sql.unsafe(`drop table if exists ${partRelation(snapshot)}`)
 }
 
 /** A load a stopped server left half made: never activated, so it goes. */
@@ -499,7 +519,7 @@ async function abandonInterrupted(target: string): Promise<void> {
 }
 
 /** Keep the active load and the one before it (D7); drop older loads whole,
- *  and keep the last ten failures as the record of why. A drop waits at most
+ *  and trim the failures. A drop waits at most
  *  two seconds for a long read and is otherwise left for the next load. */
 async function prune(target: string): Promise<void> {
   const old = await sql`select row_id from dataset_snapshot where dataset = ${target} and state = 'superseded'
@@ -515,8 +535,7 @@ async function prune(target: string): Promise<void> {
       console.warn(`[copy] ${target}: an old load stays until the next one: ${errorMessage(error)}`)
     }
   }
-  await sql`delete from dataset_snapshot where row_id in (select row_id from dataset_snapshot where dataset = ${target} and state = 'failed'
-    order by built_at desc offset 10)`
+  await trimFailures(target)
 }
 
 // ------------------------------------------------------------- after a load (D7)
