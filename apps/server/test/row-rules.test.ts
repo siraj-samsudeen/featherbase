@@ -192,6 +192,14 @@ describe('#1459 "through": the rows whose reference names a row the person can r
     expect([...new Set(await attached('Version'))]).toEqual(['p1'])
   })
 
+  test('someone with no grant on the project Table reads no task through it', async ({ admin, createUser }) => {
+    await world(admin, createUser, { kind: 'all' }, THROUGH)
+    await grantRole(admin, { role: 'Rr Task Only', table: TASK.name, can_read: true })
+    const outsider = await createUser({ roles: ['Rr Task Only'] })
+    expect(await ids(outsider, TASK)).toEqual([])
+    await expectRefused(outsider.get(TASK.rowUrl('t1')), 403)
+  })
+
   test('a ring of rules ends closed', async ({ admin, createUser }) => {
     const { reader } = await world(admin, createUser, { kind: 'own' }, THROUGH)
     await admin.put(PROJECT.defUrl, { name: PROJECT.name, columns: [{ column_name: 'title', column_type: 'Data' }, { column_name: 'stage', column_type: 'Data' },
