@@ -192,7 +192,7 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 
 /* The day review (#1425, the 26-Nov mockup): the day and the month to date side by side, the month to date shaded;
    a day more than 10% off has an edge, red under and amber over; weekend days in the group purple. */
-.fr-day { --fr-mtd: color-mix(in srgb, var(--color-action) 7%, transparent); }
+.fr-day { --fr-mtd: color-mix(in srgb, var(--color-action) 7%, transparent); --fr-mtd-ink: color-mix(in srgb, var(--color-action) 55%, var(--color-ink)); }
 .fr-day-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 12px; }
 .fr-day-bar p { margin: 0; font-size: 14px; }
 .fr-day-controls { display: flex; gap: 8px; align-items: center; }
@@ -202,8 +202,8 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 .fr-days th { font-size: 12px; font-weight: 500; color: var(--color-ink-subtle); }
 .fr-days th:first-child, .fr-days td:first-child { text-align: left; }
 .fr-days .fr-day-grp { text-align: center; color: var(--color-ink-muted); border-bottom: 0; }
-.fr-days .fr-mtd { background: var(--fr-mtd); color: var(--color-action); }
-.fr-days .fr-day-grp.fr-mtd { color: var(--color-action); }
+.fr-days .fr-mtd { background: var(--fr-mtd); color: var(--fr-mtd-ink); }
+.fr-days .fr-day-grp.fr-mtd { color: var(--fr-mtd-ink); }
 .fr-days .fr-day-why { text-align: left; white-space: normal; min-width: 220px; }
 .fr-day-row { cursor: pointer; } .fr-day-row:hover > td { background: var(--color-hover); }
 .fr-day-future td { color: var(--color-ink-muted); }
@@ -216,12 +216,12 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 .fr-day-small { font-size: 12px; margin: 6px 0 0; }
 .fr-day-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
 .fr-day-tile { background: var(--color-surface); border-radius: 12px; padding: 14px 16px; box-shadow: inset 4px 0 0 var(--color-action); }
-.fr-mtd-tile { background: var(--fr-mtd); box-shadow: none; color: var(--color-action); }
+.fr-mtd-tile { background: var(--fr-mtd); box-shadow: none; color: var(--fr-mtd-ink); }
 .fr-day-lab { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-ink-muted); }
-.fr-mtd-tile .fr-day-lab { color: var(--color-action); }
+.fr-mtd-tile .fr-day-lab { color: var(--fr-mtd-ink); }
 .fr-day-big { display: flex; align-items: baseline; gap: 12px; margin: 6px 0 0; font-size: 14px; }
 .fr-day-big > span:first-child { font-size: 24px; font-weight: 700; color: var(--color-ink); }
-.fr-mtd-tile .fr-day-big > span:first-child { color: var(--color-action); }
+.fr-mtd-tile .fr-day-big > span:first-child { color: var(--fr-mtd-ink); }
 .fr-day-prog { height: 6px; border-radius: 9999px; background: var(--color-fill); margin-top: 10px; overflow: hidden; }
 .fr-day-prog i { display: block; height: 100%; background: var(--color-action); border-radius: 9999px; }
 .fr-day-cardhead { display: flex; justify-content: space-between; align-items: center; }
