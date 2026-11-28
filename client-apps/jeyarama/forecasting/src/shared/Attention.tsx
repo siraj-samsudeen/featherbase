@@ -15,6 +15,8 @@ type TabKey = 'short' | 'follow' | 'topout' | 'transfers' | 'hidden' | 'dead' | 
 interface Tab { key: TabKey; label: string; kinds: Finding['kind'][]; about: (m: Header['month']) => string }
 
 const endOf = (m: Header['month']) => `${m.days}-${m.name.slice(0, 3)}`
+/** A column's heading, the month's last day filled in ("Needed to 31-Dec"). */
+const headOf = (c: string, m: Header['month']) => COL[c].head.replace('{end}', endOf(m))
 export const ATTENTION_TABS: Tab[] = [
   { key: 'short', label: 'Will Run Short', kinds: ['short', 'mix'], about: m => `Bands that run out before ${endOf(m)} at ${m.name}'s forecast pace, or where demand is moving to a band with thin stock. ₹ = the pieces you will be short × the band's selling price.` },
   { key: 'follow', label: "Stock Doesn't Follow Sales", kinds: ['follow'], about: () => `A band's share of the subcategory's stock is more than ${T.wellApartPoints} points away from its share of sales. Red: too little stock where it sells; purple: too much where it doesn't.` },
@@ -40,7 +42,7 @@ interface Col { head: string; value: (f: Finding) => number | string | null; fmt
 const nv = (k: string) => (f: Finding) => f.n[k] ?? null
 const COL: Record<string, Col> = {
   sub: { head: 'Subcategory', value: f => f.line, fmt: 't' }, band: { head: 'Price band', value: f => f.band ?? '—', fmt: 't' }, amt: { head: '₹', value: f => f.rupees, fmt: 'r' },
-  need: { head: `Needed to month end`, value: nv('need'), fmt: 'n' }, stock: { head: 'Stock', value: nv('stock'), fmt: 'n' }, lasts: { head: 'Lasts', value: nv('lasts'), fmt: 'd' },
+  need: { head: 'Needed to {end}', value: nv('need'), fmt: 'n' }, stock: { head: 'Stock', value: nv('stock'), fmt: 'n' }, lasts: { head: 'Lasts', value: nv('lasts'), fmt: 'd' },
   short: { head: 'Short by', value: nv('short'), fmt: 'n' }, wh: { head: 'Warehouse', value: nv('wh'), fmt: 'n' }, ss: { head: 'Share of sales', value: nv('shareSales'), fmt: 'p' },
   st: { head: 'Share of stock', value: nv('shareStock'), fmt: 'p' }, gap: { head: 'Gap', value: nv('gap'), fmt: 'g' }, sold: { head: 'Sold 28 days', value: nv('sold'), fmt: 'n' },
   pcsOff: { head: 'Pieces off', value: nv('pcsOff'), fmt: 'n' }, extra: { head: 'Extra pieces', value: nv('extra'), fmt: 'n' }, item: { head: 'Item', value: nv('item'), fmt: 't' },
@@ -102,7 +104,7 @@ function Pane({ f, header, place, index, of, onClose, onMove, href, onOpen }: {
     <div className="fr fr-att-pane" onKeyDown={keys} data-testid="attention-pane">
       <DrillPane kind={`${index + 1} of ${of} · ↑ ↓ to move, Esc to close`} title={f.title} onClose={onClose} place={place}>
         <div><p className={cx('fr-att-pane-amt', f.colour === 'red' ? 'fr-short' : f.colour === 'purple' ? 'fr-over' : 'fr-dim')}>{inr(f.rupees)}</p><p className="fr-dim fr-att-small">{what}</p></div>
-        <PaneSection title="Numbers"><dl className="fr-att-kv">{nums.map(c => <Fragment key={c}><dt>{COL[c].head}</dt><dd>{show(c, f)}</dd></Fragment>)}</dl></PaneSection>
+        <PaneSection title="Numbers"><dl className="fr-att-kv">{nums.map(c => <Fragment key={c}><dt>{headOf(c, header.month)}</dt><dd>{show(c, f)}</dd></Fragment>)}</dl></PaneSection>
         <PaneSection title="What we see"><p className="fr-att-p">{f.evidence}</p></PaneSection>
         <PaneSection title="What to do"><p className="fr-att-p">{f.action}</p></PaneSection>
         <PaneSection title="Who to ask"><p className="fr-att-p">{f.who.map(w => <span key={w.role}><b>{w.name}</b> <span className="fr-dim">· {w.role}</span></span>)}</p></PaneSection>
@@ -129,7 +131,7 @@ function Pane({ f, header, place, index, of, onClose, onMove, href, onOpen }: {
   )
 }
 
-function TabTable({ tab, findings, open, onOpen }: { tab: Tab; findings: Finding[]; open: Finding | null; onOpen: (f: Finding) => void }) {
+function TabTable({ tab, findings, open, onOpen, month }: { tab: Tab; findings: Finding[]; open: Finding | null; onOpen: (f: Finding) => void; month: Header['month'] }) {
   const [sort, setSort] = useState<Sort>({ col: COLS[tab.key].includes('amt') ? 'amt' : 'soldValue', dir: -1 })
   const cols = open ? KEY_COLS[tab.key] : COLS[tab.key]
   const groups: [string | null, Finding[], string][] = tab.key === 'transfers'
@@ -142,7 +144,7 @@ function TabTable({ tab, findings, open, onOpen }: { tab: Tab; findings: Finding
         <thead><tr>{cols.map((c, k) => (
           <th key={c} className={headCellClasses({ first: k === 0, last: k === cols.length - 1, className: cx('fr-att-th', numeric(c) && 'text-right') })}
             aria-sort={sort.col === c ? (sort.dir < 0 ? 'descending' : 'ascending') : undefined}>
-            <button type="button" className="fr-att-sort" onClick={() => pick(c)}>{COL[c].head}{sort.col === c && <span aria-hidden> {sort.dir < 0 ? '↓' : '↑'}</span>}</button>
+            <button type="button" className="fr-att-sort" onClick={() => pick(c)}>{headOf(c, month)}{sort.col === c && <span aria-hidden> {sort.dir < 0 ? '↓' : '↑'}</span>}</button>
           </th>))}</tr></thead>
         <tbody>{groups.filter(([, fs]) => fs.length).map(([g, fs, note]) => (
           <Fragment key={g ?? 'all'}>
@@ -200,7 +202,7 @@ export function NeedsAttention({ findings, header, othersAsOf, tab: chosen, onTa
             onClose={() => setOpen(null)} onMove={move} href={href(open)} onOpen={() => onOpen(open)} /> : null}>
             <p className="fr-att-about">{openTab.about(m)}</p>
             {!fs.length ? <p className="fr-att-none">Nothing here for {header.section} today.</p>
-              : <TabTable key={openTab.key} tab={openTab} findings={fs} open={open} onOpen={setOpen} />}
+              : <TabTable key={openTab.key} tab={openTab} findings={fs} open={open} onOpen={setOpen} month={m} />}
             <p className="fr-dim fr-att-note">₹ at selling price (never cost), to {endOf(m)} from the stock on {asOf} at {m.name}'s forecast pace.
               {openTab.key === 'transfers' && ` Other stores' stock as of ${othersAsOf ? day(othersAsOf) : '—'}; same region only; at least ${T.minTransferPcs} pcs, and a store must have sold at least ${T.minSellingTherePcs} in 28 days to be offered stock.`}
               {' '}Click a row for its details; sort by any heading.</p>
