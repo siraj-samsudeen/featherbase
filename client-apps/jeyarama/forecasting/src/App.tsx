@@ -8,6 +8,7 @@ import { Button, Card, EmptyState, Field, PersonLabel, Select, Skeleton } from '
 import { listAll, readOp, saveRow } from './api'
 import { PEOPLE, person, type Person } from './madeUp'
 import { COPIES_ONLY, DATASET } from './dataset'
+import { signedIn } from './startup'
 import { MONTH_OPTIONS, monthOf, type Month } from './months'
 import { ChartsPage } from './ChartsPage'
 import { MyNumbersPage, unseenFor } from './MyNumbersPage'
@@ -298,10 +299,9 @@ export function ForecastingApp() {
   const [offChart, setOffChart] = useState('')
   useEffect(() => {
     fetch('/api/whoami', { credentials: 'same-origin' }).then(r => r.json()).then((u: { row_id?: string; full_name?: string; roles?: string[] }) => {
-      const admin = u.row_id === 'Administrator' || (u.roles ?? []).includes('System Manager')
-      if (admin) return
-      const mine = PEOPLE.find(p => p.name === u.full_name)
-      if (mine) setMe(mine); else setOffChart(u.full_name || 'You')
+      const who = signedIn(u, name => PEOPLE.some(p => p.name === name), COPIES_ONLY)
+      if (who === 'on-chart') setMe(PEOPLE.find(p => p.name === u.full_name)!)
+      if (who === 'off-chart') setOffChart(u.full_name || 'You')
     }, () => {})
   }, [])
   const viewer = me ?? person(PEOPLE.some(p => p.id === viewerId) ? viewerId : top)
