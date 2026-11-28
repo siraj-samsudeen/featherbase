@@ -1,6 +1,8 @@
 ## Context
 
-The owner agreed the data flow on 28-Nov-2026 (Forecasting backend design, sections 2–4): the warehouse publishes one feed per need; Featherbase copies each feed read-only, loads a new run beside the old one, swaps when its checks pass, checks the feed's shape before every load, keeps the copies out of CDC, checks for a new run every 15 minutes and refreshes daily feeds each morning. These decisions are how the platform does it. They were taken in autopilot from that design and the issue; the owner ratifies or changes them on the PR.
+The owner agreed the data flow on 28-Nov-2026 (Forecasting backend design, sections 2–4): the warehouse publishes one feed per need; Featherbase copies each feed read-only, loads a new run beside the old one, swaps when its checks pass, checks the feed's shape before every load, keeps the copies out of CDC, checks for a new run every 15 minutes and refreshes daily feeds each morning. These decisions are how the platform does it. They were taken in autopilot from that design and the issue.
+
+**Ratified 28-Nov-2026** (Siraj, through #4935: "yes with the changes above"): D1–D4 and D6–D10 as written; D5 changed to a load that runs only when someone asks (below). The 15-minute check and the daily time it replaced are gone.
 
 ```mermaid
 flowchart LR
@@ -32,13 +34,13 @@ Installing or upgrading an app makes its Read-only copies match its `datasets[]`
 The loader asks the source for the columns and types the declared query returns, without running it, and compares them with the declaration by type family (any integer width is `integer`; any decimal, float or integer is `number`). An extra source column is ignored. A declared column the source lacks, or holds as another family, refuses the load: the job is marked refused, which alerts as any refused job does (#464), and the last good copy keeps serving.
 *Rejected:* checking the first rows (an empty result or a null column hides a change).
 
-### D5. One job per copy, every 15 minutes: the run check and the daily time
-The copy keeps #840's link to a Scheduled Job, at "every 15 minutes"; a System Manager pauses it on that Scheduled Job (the copy's own schedule actions are write actions, which a system-written Table refuses). Each run: if the dataset declares a **run check** (a one-row query, such as the official run for the month), it loads only when the answer differs from the last loaded one, and the answer's values fill `{name}` placeholders in the declared query; if it declares a **daily time**, it loads once a day after that time in the instance's timezone. A copy with neither loads on every run.
-*Rejected:* a daily cadence for daily feeds (the time would drift with each run); two jobs per copy.
+### D5. A load runs only when someone asks (changed 28-Nov-2026)
+Siraj's ruling on the first D5 (a check every 15 minutes and a daily time): "that is too much. we want a manually triggered run. not an automated one." So nothing loads a read-only copy on its own. A System Manager, or a holder of a role the dataset names in `loadRoles` (one of the app's roles), presses **Check for a new run** (loads only when the run check answers a new run; a copy with no run check loads every time) or **Load now** (loads whatever the run is) on the copy in the Admin. The same is `POST /api/copy_load { "table": "<copy>", "force": true|false }` for a script after the warehouse's build. A request queues one background job (a run can be millions of rows); a request while one waits or runs is that load. The copy says what its last load did, the run it holds and why its last load failed (`:copy_load_state`). A read-only copy has no Scheduled Job; editable copies keep #840 as it is.
+*Rejected (by the owner):* the 15-minute check and the daily time. *Rejected:* loading inside the request (a large run outlasts it).
 
-### D6. The warehouse may ask for the check now
-`POST /api/copy_check_now { "table": "<copy>" }` moves the copy's queued check to now and returns. It is its own route, not a write action on the Table, since it changes no row and the Table is system-written; the queued run stays the schedule's own, so the 15-minute recurrence carries on after it. Whoever may read the copy may ask, a System Manager included: the check only does sooner what the schedule would do within 15 minutes, and a load still needs a new run. A service account with read on the copy, and an access token, is all the warehouse worker needs.
-*Rejected:* System Manager only (the worker would need the role that administers the whole instance).
+### D6. Who may ask
+A System Manager, or a holder of one of the dataset's `loadRoles`. A warehouse script uses a service account holding such a role, with an access token. A reader of the copy may not load it.
+*Rejected:* anyone who may read the copy (a team leader could reload the month's forecast).
 
 ### D7. After a new load the app's job is told both loads; the platform works out what moved
 A dataset may name one of its app's jobs as `onNewLoad`. After a swap the platform queues that job; its context carries the copy, the previous and the new load, and `moves({ by, measure, threshold })`: the per-group totals of the measure in both loads where the change is more than the threshold (a share, 10% unless given; a group new or gone counts as moved). An app has no SQL of its own, so the comparison is the platform's. The previous load is kept until the next one succeeds, so the job can compare even if it runs late or is retried.
