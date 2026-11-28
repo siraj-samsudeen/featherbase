@@ -3778,9 +3778,16 @@
       "name": "carry_changes",
       "title": "Carry Changes To A New Run",
       "cadence": "daily",
-      "description": "After a new load of the Run's monthly forecast: carries the changes people sent or approved to the new Run, and sends a subcategory back for another look where Feather Forecast moved more than 10%. Does nothing on its daily run.",
+      "description": "After a new load of the Run's monthly forecast: tells the people who had answered a subcategory this month that Feather Forecast moved by more than 10%, so they answer again (the review asks again on its own). Does nothing on its daily run.",
       "datasets": [
         "forecast_line_month"
+      ],
+      "grants": [
+        "read_people",
+        "notify_people"
+      ],
+      "readsAllRows": [
+        "forecasting.forecast_line_review"
       ]
     }
   ],
