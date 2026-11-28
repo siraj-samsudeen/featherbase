@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { SIDEBAR_ROWS_EVENT, SIDEBAR_ROWS_GLOBAL, isSidebarAddress, mergeSidebarSections, namesDefaultPiece, type SidebarItem, type SidebarRows, type SidebarSection } from 'shared'
 import { List } from '@featherbase/shop-floor'
-import { api } from '../lib/api'
+import { fetchAppCatalog } from '../lib/app-catalog'
 import { SIDEBAR_ICON } from '../lib/app-icons'
 import { SidebarSections, type ShownItem, type ShownSection } from './SidebarSections'
 
@@ -74,11 +74,8 @@ export function shownAppSections(declared: readonly SidebarSection[], rows: Side
   }))
 }
 
-/** What the catalog says of the app behind this page. */
-interface CatalogApp { name: string; sidebar?: SidebarSection[] }
-
 export function AppSidebarSections({ app }: { app: string }) {
-  const catalog = useQuery({ queryKey: ['app-catalog'], queryFn: () => api.get<CatalogApp[]>('/api/app_catalog') })
+  const catalog = useQuery({ queryKey: ['app-catalog'], queryFn: fetchAppCatalog })
   const declared = catalog.data?.find((entry) => entry.name === app)?.sidebar ?? []
   const rows = useAppSidebarRows()
   const here = usePageHref()

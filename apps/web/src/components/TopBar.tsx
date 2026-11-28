@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, appHref, type AppTabLink } from 'shared'
 import { SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, landingPath, signOut } from '../lib/api'
 import { flushPendingEvents } from '../lib/recents'
+import { fetchAppCatalog } from '../lib/app-catalog'
 import { pageLoad } from '../lib/page-load'
 import { AccountSwitcherSection } from './AccountSwitcherSection'
 import { useBarAddress } from '../lib/bar-address'
@@ -139,7 +140,7 @@ function homeHref(context: string): string {
 function useAppTabs(context: string | undefined, enabled: boolean): AppTabLink[] {
   const catalog = useQuery({
     queryKey: ['app-catalog'],
-    queryFn: () => api.get<{ name: string; title: string; href: string; tabs?: AppTabLink[] }[]>('/api/app_catalog'),
+    queryFn: fetchAppCatalog,
     enabled: enabled && Boolean(context && context !== ADMIN),
   })
   if (!context || context === ADMIN) return []
