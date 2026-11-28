@@ -51,9 +51,10 @@ async function orgsOf(stores: string[]): Promise<Map<string, OrgChart>> {
   return new Map(stores.map(s => [s, got.get(s)!]))
 }
 
-/** The newest real official Run, every store loaded; null when only the made-up Run (or none) is there. */
-export async function loadRealChain(): Promise<Chain | null> {
-  const runs = (await officialRuns()).filter(r => r.model !== 'made_up')
+/** The newest real official Run, or the one of the month named (YYYY-MM), every store loaded; null when only the
+ *  made-up Run (or none) is there. */
+export async function loadRealChain(monthOf: string | null = null): Promise<Chain | null> {
+  const runs = (await officialRuns()).filter(r => r.model !== 'made_up' && (!monthOf || r.horizon_from.slice(0, 7) === monthOf))
   const run = runs[0]
   if (!run) return null
   const month = runs.filter(r => r.horizon_from === run.horizon_from).map(r => r.run_id), first = run.horizon_from.slice(0, 10)

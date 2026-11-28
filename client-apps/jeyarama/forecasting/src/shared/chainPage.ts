@@ -21,7 +21,11 @@ export interface ChainPageProps {
   person: ChainPerson | null
   /** An administrator's view: it may open any store or person. */
   admin: boolean
+  /** The page's own Day Review and Needs Your Attention, for a store or a region (#4935): tabs that open them. */
+  pagesFor?: (reach: { store: string } | { region: string }) => PageLink[]
 }
+/** A tab that opens another page (the Team Leader's Day Review's "Review the month", the other way round). */
+export interface PageLink { id: string; label: string; href: string }
 
 /** A manager's header: who, in what role, over what; the Run's month and sales cut-off. */
 export const chainHeader = (chain: Chain, person: string, role: string, store = '', section = ''): Header =>

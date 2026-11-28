@@ -35,7 +35,7 @@ type Pivot = 'layout' | 'merch'
 const reasonLabel = (c: string) => REASONS.find(r => r.code === c)?.label ?? c
 const toggle = (s: Set<string>, id: string) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n }
 
-export function StoreManagerReview({ chain, hrefFor, openLine, onOpenLine, person, admin }: ChainPageProps) {
+export function StoreManagerReview({ chain, hrefFor, openLine, onOpenLine, person, admin, pagesFor }: ChainPageProps) {
   const STORE = useMemo(() => storeOf(chain, person, admin, new URLSearchParams(window.location.search).get('store')), [chain, person, admin])
   const all = useMemo(() => chain.lines.filter(l => l.store === STORE), [chain.lines, STORE])
   const info = useMemo(() => chain.sections.filter(s => s.store === STORE), [chain.sections, STORE])
@@ -218,7 +218,7 @@ export function StoreManagerReview({ chain, hrefFor, openLine, onOpenLine, perso
   return (
     <ReviewFrame testId="store-manager-review" problem={review.problem} title={`${STORE} · ${all[0]?.storeName ?? ''} · ${header.month.label}`}
       status={`${header.person} · ${header.role} · sales to ${header.cutOff} · before tax`}
-      all={all} scope={scope} kinds={KINDS_HERE} views={views} view={screen}
+      all={all} scope={scope} kinds={KINDS_HERE} views={views} view={screen} links={pagesFor?.({ store: STORE })}
       onView={v => { setScreen(v); setOpen(null); if (v !== 'help') setHelp({ at: null, from: null }) }} />
   )
 }

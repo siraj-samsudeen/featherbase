@@ -16,7 +16,11 @@ export const OFF_POINTS = 10
 
 /** One subcategory's month: Feather Forecast and sales by day of the month (index 0 is the 1st); sold is null for a
  *  day not yet loaded. */
-export interface SubDays { name: string; category: string; section: string; fc: number[]; sold: (number | null)[] }
+export interface SubDays { name: string; category: string; section: string; fc: number[]; sold: (number | null)[]
+  /** On a page over many stores: one subcategory at one store ("ATK|Kurti"); the name alone otherwise. */
+  id?: string
+  /** Where it sits, on a store's or a region's page: the store, and the section's floor (building order). */
+  store?: string; storeName?: string; floor?: string; floorOrder?: number }
 
 /** One row of the days, for the section or one subcategory: the day and the month to date. */
 export interface DayFigures { day: number; fc: number; sold: number | null; off: number | null; mtdFc: number; mtdSold: number | null; mtdOff: number | null }

@@ -38,7 +38,7 @@ const PLURAL: Record<string, string> = { Store: 'Stores', Division: 'Divisions',
 /** What the side pane shows: a child's card (a node one level down) or a subcategory's. */
 type Pane = { kind: 'node'; key: string; title: string; level: string; lines: Line[]; next: Level | null } | { kind: 'line'; l: Line }
 
-export function RbReview({ chain, hrefFor, openLine, onOpenLine, person }: ChainPageProps) {
+export function RbReview({ chain, hrefFor, openLine, onOpenLine, person, pagesFor }: ChainPageProps) {
   const everyLine = useMemo(() => foldSmall(chain.lines, SMALL_UNDER), [chain.lines])
   const byRow = useMemo(() => new Map(everyLine.map(l => [l.rowId, l])), [everyLine])
   // Kerala first; a link to a Tamil Nadu subcategory opens on Tamil Nadu
@@ -172,7 +172,7 @@ export function RbReview({ chain, hrefFor, openLine, onOpenLine, person }: Chain
   return (
     <ReviewFrame testId="rb-review" problem={review.problem} title={`${region === 'Both' ? regions.join(' and ') : region} · ${header.month.label}`} actions={regionToggle}
       status={`${header.person} · ${header.role} · ${new Set(all.map(l => l.store)).size} stores · sales to ${header.cutOff} · before tax`}
-      all={all} scope={scope} view={screen}
+      all={all} scope={scope} view={screen} links={pagesFor?.({ region: region === 'Both' ? 'Kerala' : region })}
       onView={v => { setScreen(v); setPane(null); if (v !== 'help') setHelp({ at: null, from: null }) }}
       views={[
         { id: 'forecast', label: 'Forecast', content: screen === 'forecast' && <SplitWithPane place={place} pane={paneView}><div data-testid="rb-forecast">{forecast}</div></SplitWithPane> },
