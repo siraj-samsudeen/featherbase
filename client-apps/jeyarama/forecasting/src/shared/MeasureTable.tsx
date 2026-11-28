@@ -6,7 +6,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { ChevronRight, PartsBar, cx } from '@featherbase/shop-floor'
 import { Hover } from './Hover'
-import { asp, count, inr, pc, shares, type Group, type Line } from './model'
+import { asp, contribution, count, inr, pc, shares, type Group, type Line } from './model'
 import type { Header } from './review'
 import type { ViewChoices } from './ReviewToolbar'
 
@@ -26,6 +26,19 @@ export interface TableRow {
   opens?: boolean
 }
 type Block = [string, string, string, string]
+
+/** Each row's parent, by key ('' for the top): the nearest row above it one level up, a row's level being its tree
+ *  depth, or 1 for a group's member. Rows with one parent are siblings, whose shares come to 100%. */
+export function parentsOf(rows: Pick<TableRow, 'key' | 'depth' | 'look'>[]): Map<string, string> {
+  const parent = new Map<string, string>(), stack: string[] = []
+  for (const r of rows) {
+    const lv = r.depth ?? ((r.look ?? []).includes('member') ? 1 : 0)
+    stack.length = lv
+    parent.set(r.key, lv ? stack[lv - 1] ?? '' : '')
+    stack[lv] = r.key
+  }
+  return parent
+}
 
 export function MeasureTable({ header, view, rows, total, totalLabel = 'Section', firstHeading = 'Subcategory', open, onToggle, panel, flash }: {
   header: Header; view: ViewChoices; rows: TableRow[]; total: Item; totalLabel?: string; firstHeading?: string
@@ -62,13 +75,27 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
   const measures = ({ all: ['v', 'q', 'a'], vq: ['v', 'q'], v: ['v'], q: ['q'] } as const)[view.measure]
   // Value vs stays against last year and last month, AOP on or off (prototype b93dacc16)
   const vs = 2
-  const columns = 1 + blocks.length * measures.length + vs + 1
+  // Feather Forecast and Last year each end in a Share column: the row's value among its siblings (the section's
+  // top rows, or a group's members), so siblings come to 100% and the total row shows 100%
+  const SHARED = new Set(['fc', 'ly'])
+  const span = (b: Block) => measures.length + (SHARED.has(b[0]) ? 1 : 0)
+  const columns = 1 + blocks.reduce((t, b) => t + span(b), 0) + vs + 1
+  const parentOf = parentsOf(rows)
+  const siblingsTotal = (key: string, k: string) => rows.filter(x => parentOf.get(x.key) === parentOf.get(key))
+    .reduce((t, x) => t + ((x.item as unknown as Record<string, number>)[k] || 0), 0)
   const cell = (l: Item, [k, q]: Block, m: 'v' | 'q' | 'a', first: boolean, cls: string) => {
     const v = (l as unknown as Record<string, number>)[k], qty = (l as unknown as Record<string, number>)[q]
     return <td key={`${k}${m}`} className={`${first ? 'fr-b0 ' : ''}${cls}`}>{m === 'v' ? inr(v) : m === 'q' ? count(qty) : asp(v, qty)}</td>
   }
-  const figures = (l: Item, strong: boolean) => <>
-    {blocks.map((b, bi) => measures.map((m, mi) => cell(l, b, m, mi === 0, strong && bi === 0 ? 'fr-fc' : strong ? 'fr-dim' : '')))}
+  const share = (key: string | null, l: Item, k: string) => {
+    const v = (l as unknown as Record<string, number>)[k] || 0
+    return key == null ? (v ? '100%' : '—') : contribution(v, siblingsTotal(key, k))
+  }
+  const figures = (l: Item, strong: boolean, key: string | null) => <>
+    {blocks.map((b, bi) => <Fragment key={b[0]}>
+      {measures.map((m, mi) => cell(l, b, m, mi === 0, strong && bi === 0 ? 'fr-fc' : strong ? 'fr-dim' : ''))}
+      {SHARED.has(b[0]) && <td className="fr-dim fr-share">{share(key, l, b[0])}</td>}
+    </Fragment>)}
     <td className="fr-b0">{pc(l.fc, l.ly)}</td><td>{pc(l.fc, l.r31)}</td>
     <td className="fr-b0"><PartsBar parts={shares(l)} shape={view.shape} /></td>
   </>
@@ -78,11 +105,14 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
       <table className="fr-table">
         <thead>
           <tr className="fr-blocks"><th />
-            {blocks.map(b => <th key={b[2]} colSpan={measures.length} className="fr-b0"><Hover text={b[3]}>{b[2]}</Hover></th>)}
+            {blocks.map(b => <th key={b[2]} colSpan={span(b)} className="fr-b0"><Hover text={b[3]}>{b[2]}</Hover></th>)}
             <th colSpan={vs} className="fr-b0"><Hover text="Feather Forecast's value against last year and last month">Value vs</Hover></th>
             <th className="fr-b0">Built from</th></tr>
           <tr><th>{firstHeading}</th>
-            {blocks.map(b => measures.map((m, i) => <th key={b[2] + m} className={i === 0 ? 'fr-b0' : ''}>{{ v: 'Value', q: 'Qty', a: 'ASP' }[m]}</th>))}
+            {blocks.map(b => <Fragment key={b[2]}>
+              {measures.map((m, i) => <th key={b[2] + m} className={i === 0 ? 'fr-b0' : ''}>{{ v: 'Value', q: 'Qty', a: 'ASP' }[m]}</th>)}
+              {SHARED.has(b[0]) && <th><Hover text={`This row's ${b[2]} value as a share of the rows beside it (a group's members, or the section's rows)`}>Share</Hover></th>}
+            </Fragment>)}
             <th className="fr-b0"><Hover text={`${month.name} ${month.year - 1}`}>Last year</Hover></th>
             <th><Hover text={`Last 28 days at ${month.name}'s ${month.days} days`}>Last month</Hover></th>
             <th className="fr-b0" /></tr>
@@ -98,12 +128,12 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
                   <span className="fr-name"><span className="fr-twisty" aria-hidden>{r.opens !== false && <ChevronRight size={14} className={cx('transition-transform motion-reduce:transition-none', isOpen && 'rotate-90')} />}</span>{r.label}{r.after}</span>
                   {r.note && <span className="fr-gwhy">{r.note}</span>}
                 </td>
-                {figures(r.item, true)}
+                {figures(r.item, true, r.key)}
               </tr>
               {isOpen && <tr className="fr-panelrow"><td colSpan={columns}>{panel(r, width)}</td></tr>}
             </Fragment>)
         })}</tbody>
-        <tfoot><tr><td>{totalLabel}</td>{figures(total, false)}</tr></tfoot>
+        <tfoot><tr><td>{totalLabel}</td>{figures(total, false, null)}</tr></tfoot>
       </table>
     </div>
   )
