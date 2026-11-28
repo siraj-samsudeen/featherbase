@@ -556,9 +556,10 @@ a.fb-record-link:hover { text-decoration: underline; }
 }
 
 /* ==== Patterns that are NOT YET A SHARED COMPONENT ====
-   The Forecasting screens need these three and packages/shop-floor has none of them
-   yet. They are drawn from the same tokens so a prototype has one way to show them;
-   the look is the kit's proposal until each becomes a component. */
+   The Forecasting screens need these three. They are drawn from the same tokens so a
+   prototype has one way to show them; the look is the kit's proposal until each
+   becomes a component. The first to become one is the small share bar and small
+   donut of pattern 3: PartsBar (#1419). */
 
 /* ---- Pattern 1: a table with grouped column bands ----
    A first header row names each group of columns. Groups are set apart by a gap of
@@ -631,12 +632,18 @@ a.fb-record-link:hover { text-decoration: underline; }
 
 /* ---- Pattern 3: "built from": a share bar and a donut ----
    Each part takes a series colour (fb-series-1 to 5) and its share as --share.
-   The donut's ring is a conic gradient given as --fb-donut (fbLook.donut() writes it). */
+   The donut's ring is a conic gradient given as --fb-donut (fbLook.donut() writes it).
+   The parts of a forecast have colours of their own, the same on every screen
+   (fb-part-recent, -step, -last-year, -adjust), as PartsBar draws them. */
 .fb-series-1 { --fb-series: var(--color-series-1); }
 .fb-series-2 { --fb-series: var(--color-series-2); }
 .fb-series-3 { --fb-series: var(--color-series-3); }
 .fb-series-4 { --fb-series: var(--color-series-4); }
 .fb-series-5 { --fb-series: var(--color-series-5); }
+.fb-part-recent { --fb-series: var(--color-part-recent); }
+.fb-part-step { --fb-series: var(--color-part-step); }
+.fb-part-last-year { --fb-series: var(--color-part-last-year); }
+.fb-part-adjust { --fb-series: var(--color-part-adjust); }
 .fb-sharebar { display: flex; height: 0.75rem; min-width: 6rem; gap: 2px; overflow: hidden; border-radius: 9999px; }
 .fb-sharebar > * { flex: var(--share, 1) 1 0; min-width: 2px; background: var(--fb-series, var(--color-missing)); }
 .fb-sharebar--small { height: 0.5rem; }
@@ -652,7 +659,12 @@ a.fb-record-link:hover { text-decoration: underline; }
   -webkit-mask: radial-gradient(closest-side, transparent 62%, black 63%);
   mask: radial-gradient(closest-side, transparent 62%, black 63%);
 }
-.fb-donut--small { --fb-donut-size: 1.75rem; }
+/* PartsBar's donut: 26px, its hole 6px across the middle. */
+.fb-donut--small {
+  --fb-donut-size: 26px;
+  -webkit-mask: radial-gradient(circle, transparent 6px, black 6.5px);
+  mask: radial-gradient(circle, transparent 6px, black 6.5px);
+}
 .fb-donut-wrap { position: relative; display: inline-grid; flex-shrink: 0; place-items: center; }
 .fb-donut-wrap > .fb-donut-label { position: absolute; text-align: center; font-size: 0.75rem; line-height: 1rem; color: var(--color-ink-muted); }
 .fb-donut-wrap > .fb-donut-label strong { display: block; font-size: 1rem; line-height: 1.5rem; font-weight: 600; color: var(--color-ink); font-variant-numeric: tabular-nums; }

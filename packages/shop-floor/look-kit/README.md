@@ -127,9 +127,9 @@ markup. The same file can then be fed real rows later by filling that block, wit
 
 Do not invent a look. Build it from the nearest controls, mark it on the page with
 `<span class="fb-tag">not in the kit</span>`, and list it at the end of your hand-over. It is then decided once,
-as a shared component, instead of differently in each prototype. Three such patterns are already in the kit
-and labelled "not yet a shared component": a table with grouped column bands, a row that opens in place, and
-the "built from" share bar and donut.
+as a shared component, instead of differently in each prototype. Three such patterns are already in the kit,
+each labelled in the gallery with how far it is a shared component: a table with grouped column bands, a row
+that opens in place, and the "built from" share bar and donut.
 
 ## For whoever changes the kit
 
