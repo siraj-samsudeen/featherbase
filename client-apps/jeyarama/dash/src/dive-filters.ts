@@ -38,7 +38,8 @@ export interface Opening {
   everyCode?: readonly string[]
 }
 
-export type Refusal = 'not_your_store' | 'whole_stores_only' | 'report_not_set_up'
+/** #1423: `no_reach` is a reader who reaches no store at all yet; `not_your_store` one whose store isn't among theirs. */
+export type Refusal = 'no_reach' | 'not_your_store' | 'whole_stores_only' | 'report_not_set_up'
 export type Filters = { state: Record<string, unknown> } | { refused: Refusal }
 
 /** Per store, null for the whole store, else its subcategories. A whole-store place beats a section's. */
@@ -75,7 +76,7 @@ function reachState(reach: Map<string, Set<string> | null>, everyCode: readonly 
  * one-store contract: the Dive takes `reach` beside one of them as a scope error.
  */
 function pickerFilters(report: ReportRecord, reach: Map<string, Set<string> | null>, opening: Opening): Filters {
-  if (!reach.size) return { refused: 'not_your_store' }
+  if (!reach.size) return { refused: 'no_reach' }
   return { state: { reach: reachState(reach, opening.everyCode), ...(opening.store !== undefined && reach.has(opening.store) ? { store: opening.store } : {}),
     month: opening.month ?? 'this', ...(report.ready_signal && opening.appOrigin ? { app_origin: opening.appOrigin } : {}) } }
 }
@@ -87,6 +88,7 @@ export function diveFilters(report: ReportRecord, places: readonly Place[], open
   switch (report.filter_shape) {
     case 'One store and subcategories': {
       if (!report.store_key || !report.subcategory_key || !report.whole_store_key) return { refused: 'report_not_set_up' }
+      if (!reach.size) return { refused: 'no_reach' }
       const held = opening.store === undefined ? undefined : reach.get(opening.store)
       if (held === undefined) return { refused: 'not_your_store' }
       state[report.store_key] = opening.store

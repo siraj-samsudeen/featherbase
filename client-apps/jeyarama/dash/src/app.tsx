@@ -188,7 +188,13 @@ export function Dash() {
         </div>
       )}
       {view.kind === 'empty' && (
-        <Notice testid={`empty-${view.why}`}>This report covers whole stores, so it isn't available for your job.</Notice>
+        <Notice testid={`empty-${view.why}`}>This report covers whole stores only.</Notice>
+      )}
+      {/* #1423: a refusal says why in plain words; trying again can't help, so no Try Again. */}
+      {view.kind === 'refused' && (
+        <Notice testid={`refused-${view.why}`}>{view.why === 'no_reach'
+          ? "You don't have any stores or sections set up for this report yet. Ask your Store Manager to confirm your department's sections."
+          : "This report isn't set up yet. Tell your System Manager."}</Notice>
       )}
       {view.kind === 'no_access' && <NoAccess otherReports={!!reports?.length} />}
       {view.kind === 'signed_out' && (
@@ -254,7 +260,7 @@ function NoAccess({ otherReports }: { otherReports: boolean }) {
   if (otherReports)
     return (
       <Notice testid="not-your-report">
-        <span>You can't open this report. Choose one of your reports from the list.</span>
+        <span>You don't have this report. Choose one of your reports from the list.</span>
       </Notice>
     )
   if (message && (!message.readerOnly || help.kind === 'reader'))

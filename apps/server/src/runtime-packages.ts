@@ -20,6 +20,7 @@ import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
 import { roleDefaultsDeclaration, validateRoleDefaults } from './app-role-bindings'
 import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './app-datasets'
+import { forgetAppCopies, registerAppCopies, syncAppCopies, validateAppCopies } from './read-only-copy'
 import { glossaryDeclaration, syncAppGlossary, validateGlossary } from './glossary'
 import { sql, withTransaction, usingTransaction } from './db'
 import { logActivity } from './audit'
@@ -302,6 +303,7 @@ function selectPackage(pkg: RuntimePackage) {
   registerApp(pkg.app)
   packages.set(pkg.name, pkg)
   registerAppDatasets(pkg.name, pkg.manifest.datasets)
+  registerAppCopies(pkg.name, pkg.manifest.datasets)
 }
 
 /** #703: whether an installed app still is the folder on the app path; if only
@@ -554,6 +556,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
         if (!declaredSecrets.has(secret)) throw new Error(`The ${kind} ${operation} needs the secret ${secret}, which the app does not declare in its secrets`)
   for (const operation of allOperations) validateOperationFacts(operation, manifest.tables)
   validateAppJobs(manifest.name, manifest, declaredSecrets)
+  validateAppCopies(manifest.name, manifest)
   for (const declaration of [manifest.actions, manifest.reads]) {
     if (!declaration) continue
     if (!manifest.server) throw new Error('Declared operations require a server module')
@@ -702,6 +705,7 @@ export function discoverPackages(paths: string[]) {
   return appOperation(async () => {
     forgetRuntimePackages()
     forgetAppDatasets()
+    forgetAppCopies()
     packages.clear()
     artifacts.clear()
     packageFailures.length = 0
@@ -952,6 +956,8 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
           upgrade_plan = ${planId} where name = ${name}`
         await syncAppGlossary(name, prepared.target.manifest.glossary, actor)
         await applyJobPlan(name, prepared.jobs, prepared.prior.manifest.jobs ?? [], actor)
+        // #1418: its read-only copies follow its declaration.
+        await syncAppCopies(name, prepared.target.manifest.datasets)
       }))
     } catch (error) {
       invalidateMeta()
@@ -1042,6 +1048,11 @@ export async function installedAppDatasets(name: string) {
 }
 
 /** A discovered app package's title, for an address that opens it (#488). */
+/** #1418: the selected package's declared datasets, parsed. */
+export function selectedDatasets(name: string) {
+  return packages.get(name)?.manifest.datasets ?? []
+}
+
 export function packageTitle(name: string): string | undefined {
   return packages.get(name)?.title
 }

@@ -393,10 +393,31 @@ describe('a report on the rendered page', () => {
     await unmount()
   })
 
-  it("says a whole-stores report isn't available for this job", async () => {
+  it("says a whole-stores report covers whole stores only", async () => {
     const { answer, container, unmount } = await open('?report=whole')
     await answer('report', { state: 'whole_stores_only' })
-    expect(container.querySelector('[data-testid=empty-whole_stores_only]')?.textContent).toBe("This report covers whole stores, so it isn't available for your job.")
+    expect(container.querySelector('[data-testid=empty-whole_stores_only]')?.textContent).toBe('This report covers whole stores only.')
+    await unmount()
+  })
+
+  // #1423: a refusal says why in plain words, never "couldn't open", and offers no Try Again.
+  it.each([
+    ['no_reach', "You don't have any stores or sections set up for this report yet. Ask your Store Manager to confirm your department's sections."],
+    ['report_not_set_up', "This report isn't set up yet. Tell your System Manager."],
+  ])('says why the report was refused: %s', async (state, words) => {
+    const { answer, container, view, unmount } = await open('?report=whole')
+    await answer('report', { state })
+    await answer('embed_session', { refused: state })
+    expect([view(), container.querySelector(`[data-testid=refused-${state}]`)?.textContent, container.querySelector('[data-testid=failed]'), container.querySelector('[data-testid=refused-' + state + '] button')])
+      .toEqual(['refused', words, null, null])
+    await unmount()
+  })
+
+  it('says why when only the session refuses, though the report read answered ready', async () => {
+    const { answer, container, unmount } = await open('?report=whole')
+    await answer('report', plain)
+    await answer('embed_session', { refused: 'no_reach' })
+    expect(container.querySelector('[data-testid=refused-no_reach]')).not.toBeNull()
     await unmount()
   })
 

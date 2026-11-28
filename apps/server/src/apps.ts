@@ -628,6 +628,9 @@ export async function installApp(name: string): Promise<InstallResult> {
       const glossaryModule = await import('./glossary')
       const { glossary } = manifest.runtime_manifest as { glossary?: Parameters<typeof glossaryModule.syncAppGlossary>[1] }
       await glossaryModule.syncAppGlossary(name, glossary, 'Administrator')
+      // #1418: its read-only copies, empty until someone loads them.
+      const { selectedDatasets } = await import('./runtime-packages')
+      await (await import('./read-only-copy')).syncAppCopies(name, selectedDatasets(name))
       return result
     })
   })

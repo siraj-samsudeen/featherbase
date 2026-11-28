@@ -15,6 +15,8 @@ export type View =
   | { kind: 'opening' }
   | { kind: 'dive'; src: string }
   | { kind: 'empty'; why: 'whole_stores_only' }
+  /** #1423: refused for a reason the reader is told: nothing set up for them yet, or the report itself not set up. */
+  | { kind: 'refused'; why: 'no_reach' | 'report_not_set_up' }
   | { kind: 'no_access' }
   | { kind: 'signed_out' }
   | { kind: 'failed' }
@@ -43,10 +45,14 @@ export function pageView({ embed, report, frameFailed = false, timedOut = false,
 }): View {
   if (refusedBy(embed, 401) || refusedBy(report, 401)) return { kind: 'signed_out' }
   if (refusedBy(embed, 403) || refusedBy(report, 403)) return { kind: 'no_access' }
-  const state = report?.ok ? report.value.state : undefined
-  if (state === 'no_access') return { kind: 'no_access' }
-  if (state === 'report_not_set_up') return { kind: 'failed' }
-  if (state === 'whole_stores_only') return { kind: 'empty', why: state }
+  // #1423: a refusal, from the report read or the session's, says why; never "couldn't open".
+  const reportState = report?.ok ? report.value.state : undefined
+  const refused = (embed?.ok ? embed.value.refused : undefined)
+  for (const state of [reportState, refused]) {
+    if (state === 'no_access' || state === 'not_your_store') return { kind: 'no_access' }
+    if (state === 'no_reach' || state === 'report_not_set_up') return { kind: 'refused', why: state }
+    if (state === 'whole_stores_only') return { kind: 'empty', why: state }
+  }
   if (embed?.ok && embed.value.frame && !frameFailed && (!timedOut || diveReady)) return { kind: 'dive', src: embed.value.frame }
   // Past the deadline the session request counts as failed, answered or not.
   if ((!embed && !frameFailed && !timedOut) || !report) return { kind: 'opening' }

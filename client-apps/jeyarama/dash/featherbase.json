@@ -103,6 +103,7 @@
     {
       "name": "organisation_dives",
       "source": "motherduck",
+      "store": "json",
       "unscoped": true,
       "query": "select cast(id as varchar) as dive_id, title, owner_name, cast(updated_at as date) as saved_on from MD_LIST_DIVES(include_org_shares => true) where coalesce(status, '') <> 'archived'",
       "columns": [
@@ -3626,6 +3627,18 @@
       "id": "dive_failure_detail",
       "fromVersion": "0.13.45",
       "toVersion": "0.13.46",
+      "operations": []
+    },
+    {
+      "id": "report_refusals_explained",
+      "fromVersion": "0.13.46",
+      "toVersion": "0.13.47",
+      "operations": []
+    },
+    {
+      "id": "datasets_kept_as_json",
+      "fromVersion": "0.13.47",
+      "toVersion": "0.13.48",
       "operations": []
     }
   ],

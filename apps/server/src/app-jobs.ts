@@ -7,7 +7,7 @@
 // each one a narrow platform operation, and an undeclared one is refused and
 // recorded in the Access Log.
 import { z } from 'zod'
-import { APP_JOB_GRANTS, type AppJobGrant, type AppJobPerson, type RuntimeJobContext, type RuntimeJobHandler, type PersonScope } from 'shared'
+import { APP_JOB_GRANTS, type AppJobGrant, type AppJobPerson, type NewLoad, type RuntimeJobContext, type RuntimeJobHandler, type PersonScope } from 'shared'
 import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
@@ -25,6 +25,7 @@ import { admittedToTable } from './mandatory-access'
 import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
 import { getSystemSettings } from './settings'
+import { NEW_LOAD_PAYLOAD, copyTarget, declaredCopy, loadMoves } from './read-only-copy'
 
 const distinct = (values: string[]) => new Set(values).size === values.length
 const identifier = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
@@ -130,7 +131,7 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
   datasets: readonly DatasetDeclaration[]): JobHandler {
   const actor = appJobMethod(app, job.name)
   const grants = jobGrants(job)
-  return async (_payload, ctx) => {
+  return async (payload, ctx) => {
     const [installed] = await sql`select enabled, activation_pending from installed_app where name = ${app}`
     if (!installed?.enabled || installed.activation_pending || !activeApps.has(app))
       throw new FinalJobFailure(`The app ${app} is disabled or unavailable, so its job ${job.name} did not run`)
@@ -229,6 +230,7 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
       void work.catch(() => {})
       return work
     }
+    const newLoad = await newLoadFor(app, job.name, payload)
     const timeZone = (await getSystemSettings()).time_zone
     const context: RuntimeJobContext = Object.freeze({
       now: new Date().toISOString(), timeZone,
@@ -236,6 +238,7 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
       job: Object.freeze({ name: actor, run: ctx.job.row_id, trigger: ctx.job.trigger }),
       settings: ready.settings,
       secrets: ready.secrets,
+      newLoad,
       datasets: Object.freeze({
         active: (name: string, filters?: Parameters<typeof readable.active>[1]) => dataset(name, () => readable.active(name, filters)),
         live: (name: string, filters?: Parameters<typeof readable.live>[1]) => dataset(name, () => readable.live(name, filters)),
@@ -292,6 +295,27 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
     // A handler that caught the refusal and carried on still fails, for good.
     if (refusedGrant) throw new FinalJobFailure(refusedGrant)
   }
+}
+
+/** #1418: the new load a queued run names, checked against the registry: a
+ *  payload never chooses a copy or a load the platform did not make. */
+async function newLoadFor(app: string, job: string, payload: Record<string, unknown>): Promise<NewLoad | null> {
+  const given = payload?.[NEW_LOAD_PAYLOAD] as { dataset?: unknown; previous?: unknown; current?: unknown } | undefined
+  if (given === undefined) return null
+  const target = copyTarget(app, String(given?.dataset))
+  const entry = declaredCopy(target)
+  const loads = typeof given?.current === 'string' ? await sql`select row_id from dataset_snapshot
+    where dataset = ${target} and state in ('active', 'superseded') and row_id in ${sql([given.current, ...(typeof given.previous === 'string' ? [given.previous] : [])])}` : []
+  const expected = typeof given?.previous === 'string' && given.previous !== given.current ? 2 : 1
+  if (!entry || entry.dataset.onNewLoad !== job || (given.previous !== null && typeof given.previous !== 'string') || loads.length !== expected)
+    throw new FinalJobFailure(`The job ${appJobMethod(app, job)} was queued for a new load it was not told of`)
+  const previous = (given.previous as string | null)
+  const current = given.current as string
+  return Object.freeze({
+    dataset: String(given.dataset), previous, current,
+    moves: async (options: { by: string[]; measure: string; threshold?: number }) =>
+      previous ? loadMoves(target, previous, current, options) : [],
+  })
 }
 
 // ------------------------------------------------------------- capabilities

@@ -56,6 +56,7 @@ import './actions/collection-import-revert'
 import './actions/source-actions'
 import './actions/motherduck-actions'
 import './actions/copy-refresh-actions'
+import { requestLoad } from './read-only-copy-loads'
 import './actions/master-sync-actions'
 import './actions/row-connections'
 import './actions/row-sources'
@@ -1020,6 +1021,16 @@ app.post('/api/open_admin', async (c) => {
   const opened = await openAdminFor({ token, user: c.get('user') }, requestHost(c.req.url), next)
   if (!opened) throw new AppError('PermissionError', 'You cannot use the Admin screens')
   return c.json(opened)
+})
+
+// #1418 (design D5, D6): load a read-only copy, as the Admin's "Check for a
+// new run" ({ table }) and "Load now" ({ table, force: true }) do, or a
+// script after the warehouse's build. Not a write action on the Table: it
+// changes no row itself, and a read-only copy is system-written.
+app.post('/api/copy_load', async (c) => {
+  const { table, force } = (await c.req.json().catch(() => ({}))) as { table?: unknown; force?: unknown }
+  if (typeof table !== 'string' || !table) throw new AppError('ValidationError', 'Name the read-only copy to load', { table: 'Required' })
+  return c.json(await requestLoad(c.get('user'), table, force === true))
 })
 
 // #101 Phase 3: batched capture of the caller's read-side intent (rows

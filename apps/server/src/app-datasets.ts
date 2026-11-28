@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { sql, type Sql } from './db'
 import { platformRelation } from './platform-schema'
+import { RESERVED_COLUMNS } from './table-engine'
 import type { PersonScope, ScopePlace } from 'shared'
 import { activeSnapshot, recordMiss, registerDataset, unregisterDataset } from './dataset-snapshot'
 import { AppError, errorMessage } from './errors'
@@ -27,7 +28,10 @@ const FILTERABLE: readonly string[] = ['text', 'integer', 'date']
 
 /** #669: the completeness checks a dataset may declare. Each is checked on a
  *  refresh's candidate before it can replace the active snapshot. */
-export const DATASET_GUARD_KINDS = ['min_rows', 'not_all_zero', 'max_drop_pct', 'max_sum_drop_pct'] as const
+export const DATASET_GUARD_KINDS = ['min_rows', 'not_all_zero', 'max_drop_pct', 'max_sum_drop_pct', 'source_total', 'keeps_values'] as const
+/** #1418 (design D9): guards only a read-only copy can check, against its
+ *  source's own total or the values its current load holds. */
+export const COPY_GUARD_KINDS: readonly string[] = ['source_total', 'keeps_values']
 /** A guarded column holds figures, so "zero" and "a drop" mean something. */
 const GUARDABLE: readonly string[] = ['integer', 'number', 'money']
 
@@ -49,9 +53,12 @@ const guardSchema = z.object({
     return
   }
   if (guard.column === undefined) issue(`A ${guard.kind} guard needs a column`)
-  if (guard.kind === 'not_all_zero' && guard.value !== undefined) issue('A not_all_zero guard takes no value')
+  if (['not_all_zero', ...COPY_GUARD_KINDS].includes(guard.kind)) {
+    if (guard.value !== undefined) issue(`A ${guard.kind} guard takes no value`)
+    return
+  }
   // Whole percentages, so the limit is checked in integers, exactly.
-  if (guard.kind !== 'not_all_zero' && (guard.value === undefined || !Number.isInteger(guard.value) || guard.value < 0 || guard.value > 100))
+  if ((guard.value === undefined || !Number.isInteger(guard.value) || guard.value < 0 || guard.value > 100))
     issue(`A ${guard.kind} value must be a whole percentage from 0 to 100`)
 })
 
@@ -184,13 +191,51 @@ const datasetSchema = z.object({
   // all of its rows. The app's read policy alone decides who may ask.
   unscoped: z.literal(true).optional(),
   guard: z.array(guardSchema).optional(),
+  // #1418 (design D8): a read-only copy, a typed Table in the app's schema,
+  // unless the app asks for today's JSON snapshot.
+  store: z.enum(['table', 'json']).default('table'),
+  // The columns that identify a row of the copy (store × subcategory × day).
+  rowKey: z.array(identifier).min(1).refine(distinct, 'A dataset row key names each column once').optional(),
+  // A one-row query naming the current run: "Check for a new run" loads only
+  // when its answer changes (design D5, as ruled 28-Nov-2026). None: every
+  // check loads.
+  runKey: z.string().min(1).refine(query => !query.includes(';'), 'A run check is one statement, with no ";"').optional(),
+  // Besides a System Manager, the app's roles whose holders may load the copy.
+  loadRoles: z.array(z.string().min(1)).refine(distinct, 'A dataset names each load role once').optional(),
+  // The app's job told about each new load (design D7).
+  onNewLoad: identifier.optional(),
 }).strict().superRefine((dataset, context) => {
   const mapped = Object.keys(dataset.filters).length > 0
   if (dataset.unscoped && mapped) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name} is unscoped, so it maps no scope filter` })
   if (!dataset.unscoped && !mapped) context.addIssue({ code: 'custom', message: 'A dataset maps at least one scope filter' })
   const types = new Map(dataset.columns.map(column => [column.name, column.type]))
-  for (const { column } of dataset.guard ?? []) {
+  if (dataset.store === 'json') {
+    for (const field of ['rowKey', 'runKey', 'loadRoles', 'onNewLoad'] as const)
+      if (dataset[field] !== undefined) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name} is stored as JSON, so it takes no ${field}` })
+    for (const { kind } of dataset.guard ?? [])
+      if (COPY_GUARD_KINDS.includes(kind)) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name} is stored as JSON, so it cannot check ${kind}` })
+  } else {
+    // Its Table is <app>.<name>, whose name part is at most 31 characters.
+    if (dataset.name.length > 31) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name} becomes a Table, so its name is at most 31 characters` })
+    if (!dataset.rowKey) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name} becomes a Table, so it names its rowKey` })
+    for (const { name } of dataset.columns)
+      if ([...RESERVED_COLUMNS, 'snapshot_id'].includes(name))
+        context.addIssue({ code: 'custom', message: `Dataset ${dataset.name} becomes a Table, whose own column ${name} it cannot declare` })
+    for (const column of dataset.rowKey ?? []) {
+      if (!types.has(column)) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s row key ${column} is not one of its columns` })
+      else if (!FILTERABLE.includes(types.get(column)!))
+        context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s row key ${column} must be text, integer or date` })
+    }
+  }
+  for (const { kind, column } of dataset.guard ?? []) {
     if (column === undefined) continue
+    // A store's values, like a key, are compared as text.
+    if (kind === 'keeps_values') {
+      if (!types.has(column)) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s guard column ${column} is not one of its columns` })
+      else if (!FILTERABLE.includes(types.get(column)!))
+        context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s keeps_values column ${column} must be text, integer or date` })
+      continue
+    }
     if (!types.has(column)) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s guard column ${column} is not one of its columns` })
     else if (!GUARDABLE.includes(types.get(column)!))
       context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s guard column ${column} must be integer, number or money` })
@@ -360,8 +405,11 @@ const registered = new Map<string, string[]>()
  */
 export function registerAppDatasets(app: string, datasets: DatasetDeclaration[] = []): void {
   for (const key of registered.get(app) ?? []) unregisterDataset(key)
-  registered.set(app, datasets.map((dataset) => datasetKey(app, dataset.name)))
-  for (const dataset of datasets) {
+  // #1418: a read-only copy is loaded by its own job (read-only-copy.ts),
+  // not built on demand here.
+  const snapshots = datasets.filter((dataset) => dataset.store === 'json')
+  registered.set(app, snapshots.map((dataset) => datasetKey(app, dataset.name)))
+  for (const dataset of snapshots) {
     registerDataset<string>({
       name: datasetKey(app, dataset.name),
       version: createHash('sha256').update(JSON.stringify({ ...dataset, guard: undefined })).digest('hex').slice(0, 16),
@@ -452,9 +500,10 @@ function unmappedKeys(dataset: DatasetDeclaration, keys: readonly string[]): str
   return keys.filter((name) => !Object.hasOwn(dataset.filters, name)).sort()
 }
 
-// The same where, over the snapshot's stored rows.
-function storedRowsWhere(where: DatasetWhere) {
-  const condition = (c: DatasetCondition) => (c.values.length ? sql`(row->>${c.column}) in ${sql(c.values)}` : sql`false`)
+// The same where, over the snapshot's stored rows (#1418: or a read-only
+// copy's typed columns, each read as text, as the snapshot's are).
+function storedRowsWhere(where: DatasetWhere, asText = (column: string) => sql`row->>${column}`) {
+  const condition = (c: DatasetCondition) => (c.values.length ? sql`(${asText(c.column)}) in ${sql(c.values)}` : sql`false`)
   const group = (conditions: DatasetCondition[]) => conditions.reduce((clause, c) => sql`${clause} and ${condition(c)}`, sql`true`)
   const any = where.any.length ? where.any.map((g) => sql`(${group(g)})`).reduce((clause, g) => sql`${clause} or ${g}`) : sql`false`
   return sql`(${any}) and (${group(where.all)})`
@@ -605,6 +654,20 @@ export function appDatasets({ app, operation, user, title, declarations, places,
       const dataset = await declared(name)
       const where = datasetWhere(dataset, places, filters)
       noteDrops(dataset)
+      if (dataset.store === 'table') {
+        // #1418: the active load and its rows in one statement, so the rows
+        // are the load named. None yet: its own check is loading it.
+        const [schema, relation] = datasetKey(app, name).split('.')
+        const stored = await sql`select ${sql(dataset.columns.map((c) => c.name))},
+            (select row_id from dataset_snapshot where dataset = ${datasetKey(app, name)} and state = 'active') as fb_load,
+            (select activated_at from dataset_snapshot where dataset = ${datasetKey(app, name)} and state = 'active') as fb_at
+          from ${sql(schema)}.${sql(relation)} where ${storedRowsWhere(where, (column) => sql`${sql(column)}::text`)}`
+        const [load] = await sql`select row_id, activated_at from dataset_snapshot where dataset = ${datasetKey(app, name)} and state = 'active'`
+        if (!load) return null
+        const at = stored[0]?.fb_at ?? load.activated_at
+        served.set(name, { served: 'cached', snapshot: String(stored[0]?.fb_load ?? load.row_id) })
+        return { dataset: name, served: 'cached', at: new Date(at as string).toISOString(), rows: ordered(dataset, shapeRows(dataset, stored)) }
+      }
       const snapshot = await activeSnapshot(datasetKey(app, name))
       if (!snapshot) {
         await recordMiss(datasetKey(app, name))
