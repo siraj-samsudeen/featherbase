@@ -1,6 +1,6 @@
 # jeyarama/forecasting
 
-A local development instance for the Forecasting app on made-up data only. It is not deployed.
+A local development instance for the Forecasting app. It is not deployed.
 
 ```bash
 pnpm dev jeyarama/forecasting --made-up-data
@@ -8,6 +8,6 @@ pnpm dev jeyarama/forecasting --made-up-data
 
 Sign in as Administrator / admin (development only) at `/featherbase/login?next=/forecasting/`,
 which lands on the app (from the Admin, the sidebar's Modules list has Forecasting, whose shortcut
-opens it), and pick a made-up person under "Viewing as" to see the pages as a Team Leader, a
-manager, the Forecasting Lead or the Chief Executive would. The real app reads Runs and actual sales from the warehouse; this instance
-bundles a made-up set in `client-apps/jeyarama/forecasting/src/madeUp.ts`.
+opens it). The instance installs the app and the change reasons; the pages read the read-only copies of
+the warehouse, so they say no Run is loaded until a load fills them. The older made-up people, numbers
+and ideas were removed with the legacy prototype Tables in 0.16.0.

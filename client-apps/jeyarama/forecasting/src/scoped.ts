@@ -13,3 +13,8 @@ export function myPlaces(ctx: { authorization: { places?: readonly unknown[] }; 
   if (!ctx.authorization.places?.length) ctx.reject(NO_PLACES)
   return { places: ctx.authorization.places.length }
 }
+
+/** #1461: the plant codes the reader's places name (each place's `store` filter holds plant codes, as a Run's lines do). */
+export function plantsIn(places: readonly { filters?: Readonly<Record<string, readonly string[]>> }[] | undefined): string[] {
+  return [...new Set((places ?? []).flatMap(p => p.filters?.store ?? []))]
+}
