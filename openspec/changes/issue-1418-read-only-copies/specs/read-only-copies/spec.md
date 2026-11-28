@@ -57,7 +57,7 @@ Then the forecast lines show only run "Dec-2"
 ```
 
 ### Requirement: The source's shape is checked before every load
-Before reading any row, a load SHALL compare the source's columns with the app's declaration. A column the app has not declared SHALL be ignored. A declared column the source no longer has, or holds as another kind of value, SHALL stop the load, keep the last good copy and alert the administrators.
+Before reading any row, a load SHALL compare the source's columns with the app's declaration. A column the app has not declared SHALL be ignored. A declared column the source no longer has, or holds as another kind of value, SHALL stop the load, keep the last good copy and say why on the copy.
 
 #### Scenario: A column added in the warehouse changes nothing
 
@@ -68,7 +68,7 @@ When the warehouse's run "Dec-2" is loaded
 Then the forecast lines show run "Dec-2" without the new column
 ```
 
-#### Scenario: A renamed column stops the load and raises an alert
+#### Scenario: A renamed column stops the load and says why
 
 ```gherkin
 Given the forecast lines copy holds run "Dec-1"
@@ -76,7 +76,7 @@ And the warehouse renames the feed's value column without keeping the old name
 When the warehouse's run "Dec-2" is loaded
 Then the load is refused, naming the missing value column
 And the forecast lines still show run "Dec-1"
-And the administrators are alerted
+And the copy shows why its last load failed
 ```
 
 #### Scenario: A column the app adds is filled by the next load
@@ -88,38 +88,43 @@ And the warehouse's run "Dec-2" is loaded
 Then the forecast lines show the quantity for store "LKS", subcategory "GJ01" on 1 December
 ```
 
-### Requirement: A new run is noticed within 15 minutes
-A copy whose app declares a run check SHALL be checked every 15 minutes and loaded only when the warehouse names a new run. The warehouse SHALL be able to ask for the check at once, instead of waiting.
+### Requirement: A load runs when someone asks
+Nothing SHALL load a read-only copy on its own. A System Manager, or a person the app lets load it, SHALL be able to check for a new run, which loads only when the warehouse names a new run, or load it now, whatever the run. A script SHALL be able to ask the same after the warehouse's build.
 
 #### Scenario: An unchanged run loads nothing
 
 ```gherkin
 Given the forecast lines copy holds run "Dec-1"
 And the warehouse still names run "Dec-1" as the official run
-When the 15-minute check runs
-Then nothing is loaded and the check says the run is unchanged
+When the user checks for a new run
+Then nothing is loaded and the copy says the run is unchanged
 ```
 
-#### Scenario: The warehouse asks for the check after its build
+#### Scenario: Loading now reloads the same run
+
+```gherkin
+Given the forecast lines copy holds run "Dec-1"
+And the warehouse still names run "Dec-1" as the official run
+When the user loads the copy now
+Then the forecast lines show run "Dec-1" from a new load
+```
+
+#### Scenario: The warehouse's script loads the new run
 
 ```gherkin
 Given the forecast lines copy holds run "Dec-1"
 And the warehouse now names run "Dec-2" as the official run
-When the warehouse asks for the check now
-Then the forecast lines show run "Dec-2" without waiting for the next 15-minute check
+When the warehouse's script asks for a check after its build
+Then the forecast lines show run "Dec-2"
 ```
 
-### Requirement: Daily feeds refresh once a day at their set time
-A copy whose app declares a daily time SHALL be loaded once a day, at the first check after that time in the instance's timezone.
-
-#### Scenario: Yesterday's sales arrive after the morning time
+#### Scenario: A reader cannot load the copy
 
 ```gherkin
-Given the daily sales copy was last loaded yesterday morning
-And the app declares its daily time as 07:30
-When the check runs at 07:45 today
-Then the daily sales copy is loaded
-And the check at 08:00 loads nothing
+Given the forecast lines copy holds run "Dec-1"
+And the user can read the forecast lines but may not load them
+When the user asks to load the copy
+Then the request is refused and nothing is loaded
 ```
 
 ### Requirement: The app learns what moved in a new run

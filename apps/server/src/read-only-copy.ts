@@ -16,7 +16,6 @@ import { invalidateMeta } from './meta'
 import { getDriver, getSource } from './sources/registry'
 import { datasetSourceReadOnly } from './sources/read-only'
 import { assertStillServing, servingIdentity } from './app-lifecycle'
-import { getSystemSettings } from './settings'
 import { COPY_GUARD_KINDS, datasetKey, guardRefusal, type DatasetDeclaration, type DatasetGuard, type GuardCounts } from './app-datasets'
 import type { SourceRow, SourceTypeFamily } from './sources/types'
 
@@ -66,12 +65,15 @@ export function declaredCopy(target: string): Declared | undefined {
 }
 
 /** Checked when an app's files are loaded: a new-load job is one the app declares. */
-export function validateAppCopies(app: string, manifest: { datasets?: readonly DatasetDeclaration[]; jobs?: readonly { name: string }[]; tables?: readonly { name: string }[] }): void {
+export function validateAppCopies(app: string, manifest: { datasets?: readonly DatasetDeclaration[]; jobs?: readonly { name: string }[]; tables?: readonly { name: string }[]; roles?: readonly string[] }): void {
   const jobs = new Set((manifest.jobs ?? []).map((job) => job.name))
+  const roles = new Set(manifest.roles ?? [])
   const tables = new Set((manifest.tables ?? []).map((table) => table.name))
   for (const dataset of manifest.datasets ?? []) {
     if (dataset.onNewLoad && !jobs.has(dataset.onNewLoad))
       throw new Error(`Dataset ${dataset.name} tells the job ${dataset.onNewLoad} about new loads, which the app does not declare in its jobs`)
+    for (const role of dataset.loadRoles ?? [])
+      if (!roles.has(role)) throw new Error(`Dataset ${dataset.name} lets ${role} load it, which is not one of the app's roles`)
     if (dataset.store === 'table' && tables.has(copyTarget(app, dataset.name)))
       throw new Error(`Dataset ${dataset.name} is a read-only copy, so the app cannot also declare a Table ${copyTarget(app, dataset.name)}`)
   }
@@ -129,23 +131,20 @@ const shapeVersion = (dataset: DatasetDeclaration) => createHash('sha256')
  * install or upgrade transaction (D2). A new dataset gets its Table and its
  * check; a dataset gone is removed; an added column is added, empty until
  * the next load; a dropped one goes; a changed type or key rebuilds the copy
- * empty. Answers the copies to load at once.
+ * empty, until someone loads it (design D5: loads are asked for, never scheduled).
  */
-export async function syncAppCopies(app: string, datasets: readonly DatasetDeclaration[] = []): Promise<string[]> {
+export async function syncAppCopies(app: string, datasets: readonly DatasetDeclaration[] = []): Promise<void> {
   const wanted = datasets.filter((d) => d.store === 'table')
   const names = new Set(wanted.map((d) => copyTarget(app, d.name)))
   for (const target of await appCopies(app)) if (!names.has(target)) await removeCopy(target)
-  const loadNow: string[] = []
-  for (const dataset of wanted) if (await ensureCopy(app, dataset)) loadNow.push(copyTarget(app, dataset.name))
-  return loadNow
+  for (const dataset of wanted) await ensureCopy(app, dataset)
 }
 
-async function ensureCopy(app: string, dataset: DatasetDeclaration): Promise<boolean> {
+async function ensureCopy(app: string, dataset: DatasetDeclaration): Promise<void> {
   const target = copyTarget(app, dataset.name)
   const [copy] = await sql`select * from featherbase.table_copy where target_table = ${target}`
   const provenance = {
-    query: dataset.query, run_key_query: dataset.refresh?.runKey ?? null,
-    daily_at: dataset.refresh?.dailyAt ?? null, key_column: dataset.rowKey!.join(','),
+    query: dataset.query, run_key_query: dataset.runKey ?? null, key_column: dataset.rowKey!.join(','),
   }
   if (!copy) {
     // A dataset that was a JSON snapshot under this name leaves its snapshots behind.
@@ -161,7 +160,7 @@ async function ensureCopy(app: string, dataset: DatasetDeclaration): Promise<boo
     await createView(target, dataset)
     await sql`insert into featherbase.table_copy ${sql({ target_table: target, mode: 'read_only', ...provenance } as unknown as Record<string, never>)}`
     invalidateMeta(target)
-    return true
+    return
   }
   const before = await sql`select column_name, column_type from column_def where parent = ${target} order by position`
   const was = new Map(before.map((c) => [String(c.column_name), String(c.column_type)]))
@@ -184,7 +183,6 @@ async function ensureCopy(app: string, dataset: DatasetDeclaration): Promise<boo
   await sql`update featherbase.table_copy set ${sql(provenance as unknown as Record<string, never>)}
     ${rebuilt ? sql`, last_run_key = null, last_run_id = null, last_copied_at = null` : sql``} where target_table = ${target}`
   invalidateMeta(target)
-  return rebuilt
 }
 
 /** The read-only copies an app owns now. */
@@ -216,24 +214,8 @@ export interface LoadOutcome {
 
 export interface LoadOptions {
   trigger?: string
-  /** Load whatever the run check says (an install, a rebuild). */
+  /** Load whatever the run check says ("Load now"). */
   force?: boolean
-  now?: Date
-}
-
-/** The parts of `when` in `timeZone`, as "YYYY-MM-DD HH:MM", which sorts as time does. */
-function localMinute(when: Date, timeZone: string): string {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
-    timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).formatToParts(when).map((p) => [p.type, p.value]))
-  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`
-}
-
-/** D5: a daily copy is due at the first check after its time, once a day. */
-export function dailyDue(dailyAt: string, last: Date | null, now: Date, timeZone: string): boolean {
-  const today = localMinute(now, timeZone)
-  const at = `${today.slice(0, 10)} ${dailyAt}`
-  return today >= at && (!last || localMinute(last, timeZone) < at)
 }
 
 class Refusal extends Error {}
@@ -295,9 +277,9 @@ async function appServing(app: string): Promise<boolean> {
 }
 
 /**
- * Check a read-only copy and load it when it is due (D5): when the run check
- * answers a new run, at the daily time, or on every check when it declares
- * neither. Serialized per copy. A refused load (its shape, its key or a
+ * Check a read-only copy and load it when someone asks (D5, as ruled
+ * 28-Nov-2026: no schedule): when the run check answers a new run, or always
+ * with `force` ("Load now") or when it declares no run check. Serialized per copy. A refused load (its shape, its key or a
  * guard) keeps the last good load and answers `refused`; a source that
  * cannot be reached throws, so the job retries.
  */
@@ -320,9 +302,9 @@ export async function checkCopy(target: string, opts: LoadOptions = {}): Promise
     const previous = await activeLoad(target)
 
     let runKey: SourceRow | null = null
-    if (dataset.refresh?.runKey) {
+    if (dataset.runKey) {
       const rows: SourceRow[] = []
-      for await (const chunk of driver.stream(source, dataset.refresh.runKey, [])) {
+      for await (const chunk of driver.stream(source, dataset.runKey, [])) {
         rows.push(...chunk)
         if (rows.length > 1) break
       }
@@ -330,13 +312,9 @@ export async function checkCopy(target: string, opts: LoadOptions = {}): Promise
       runKey = rows[0]
     }
     const runKeyText = runKey ? JSON.stringify(runKey) : null
-    const now = opts.now ?? new Date()
-    const timeZone = (await getSystemSettings()).time_zone
-    const due = opts.force || !previous ||
-      (runKey !== null && runKeyText !== copy.last_run_key) ||
-      (dataset.refresh?.dailyAt !== undefined && dailyDue(dataset.refresh.dailyAt, copy.last_copied_at ? new Date(copy.last_copied_at) : null, now, timeZone)) ||
-      (!dataset.refresh?.runKey && !dataset.refresh?.dailyAt)
-    if (!due) return runKey ? { status: 'unchanged', reason: `the run is unchanged (${runKeyText})` } : { status: 'not_due', reason: `next load after ${dataset.refresh!.dailyAt}` }
+    // Without a run check every request loads; with one, only a new run or "Load now".
+    if (runKey && previous && runKeyText === copy.last_run_key && !opts.force)
+      return { status: 'unchanged', reason: `the run is unchanged (${runKeyText})` }
 
     let snapshot: string | undefined
     let activated = false
@@ -356,7 +334,7 @@ export async function checkCopy(target: string, opts: LoadOptions = {}): Promise
         return String(total ?? 0)
       })
       await indexAndAttach(target, dataset, snapshot)
-      await assertStillServing(app, identity, () => activate(target, snapshot!, rows, loadMs, runKeyText, now))
+      await assertStillServing(app, identity, () => activate(target, snapshot!, rows, loadMs, runKeyText))
       activated = true
       if (dataset.onNewLoad) await queueNewLoad(app, dataset.onNewLoad, target, previous, snapshot)
       await prune(target)
@@ -498,13 +476,13 @@ async function indexAndAttach(target: string, dataset: DatasetDeclaration, snaps
 }
 
 /** The swap: one update of the registry, readers see one load or the other. */
-async function activate(target: string, snapshot: string, rows: number, loadMs: number, runKey: string | null, at: Date): Promise<void> {
+async function activate(target: string, snapshot: string, rows: number, loadMs: number, runKey: string | null): Promise<void> {
   const [size] = await sql.unsafe(`select pg_total_relation_size(${literal(partRelation(snapshot))}) as bytes`)
   await sql.begin(async (tx) => {
     await tx`update dataset_snapshot set state = 'superseded', updated_at = now() where dataset = ${target} and state = 'active'`
     await tx`update dataset_snapshot set state = 'active', activated_at = clock_timestamp(), row_count = ${rows}, bytes = ${Number(size.bytes)},
       load_ms = ${loadMs}, updated_at = now() where row_id = ${snapshot}`
-    await tx`update featherbase.table_copy set last_copied_at = ${at}, last_run_id = ${snapshot}, last_run_key = ${runKey}
+    await tx`update featherbase.table_copy set last_copied_at = clock_timestamp(), last_run_id = ${snapshot}, last_run_key = ${runKey}
       where target_table = ${target}`
   })
 }

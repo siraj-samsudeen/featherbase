@@ -196,12 +196,12 @@ const datasetSchema = z.object({
   store: z.enum(['table', 'json']).default('table'),
   // The columns that identify a row of the copy (store × subcategory × day).
   rowKey: z.array(identifier).min(1).refine(distinct, 'A dataset row key names each column once').optional(),
-  // When a copy loads: when the run check answers a new run, and/or once a
-  // day after a time (HH:MM, the instance's timezone). Neither: every check.
-  refresh: z.object({
-    runKey: z.string().min(1).refine(query => !query.includes(';'), 'A run check is one statement, with no ";"').optional(),
-    dailyAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'A daily time is HH:MM, 00:00 to 23:59').optional(),
-  }).strict().optional(),
+  // A one-row query naming the current run: "Check for a new run" loads only
+  // when its answer changes (design D5, as ruled 28-Nov-2026). None: every
+  // check loads.
+  runKey: z.string().min(1).refine(query => !query.includes(';'), 'A run check is one statement, with no ";"').optional(),
+  // Besides a System Manager, the app's roles whose holders may load the copy.
+  loadRoles: z.array(z.string().min(1)).refine(distinct, 'A dataset names each load role once').optional(),
   // The app's job told about each new load (design D7).
   onNewLoad: identifier.optional(),
 }).strict().superRefine((dataset, context) => {
@@ -210,7 +210,7 @@ const datasetSchema = z.object({
   if (!dataset.unscoped && !mapped) context.addIssue({ code: 'custom', message: 'A dataset maps at least one scope filter' })
   const types = new Map(dataset.columns.map(column => [column.name, column.type]))
   if (dataset.store === 'json') {
-    for (const field of ['rowKey', 'refresh', 'onNewLoad'] as const)
+    for (const field of ['rowKey', 'runKey', 'loadRoles', 'onNewLoad'] as const)
       if (dataset[field] !== undefined) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name} is stored as JSON, so it takes no ${field}` })
     for (const { kind } of dataset.guard ?? [])
       if (COPY_GUARD_KINDS.includes(kind)) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name} is stored as JSON, so it cannot check ${kind}` })

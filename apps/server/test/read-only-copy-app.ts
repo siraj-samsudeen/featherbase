@@ -13,6 +13,7 @@ import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packa
 import { invalidateSources } from '../src/sources/registry'
 import { sql } from '../src/db'
 import { checkCopy, type LoadOptions } from '../src/read-only-copy'
+import { runOneJob } from '../src/jobs'
 
 export const APP = 'copyproof'
 export const LINES = `${APP}.forecast_line_day`
@@ -72,16 +73,16 @@ export const forecastLines = (schema: string, more: Dataset = {}): Dataset => ({
   ],
   keys: ['store_code', 'subcategory_code', 'sale_date'], rowKey: ['store_code', 'subcategory_code', 'sale_date'],
   filters: { store: 'store_code' },
-  refresh: { runKey: `select run_id from ${schema}.forecast_run where status = 'official'` },
+  runKey: `select run_id from ${schema}.forecast_run where status = 'official'`,
+  loadRoles: ['Forecast Loader'],
   ...more,
 })
 
-/** Daily sales, refreshed each morning. */
+/** Daily sales: no run check, so every load reads it again. */
 export const dailySales = (schema: string, more: Dataset = {}): Dataset => ({
   name: 'sales_day', source: SOURCE, query: `select store_code, sale_date, value from ${schema}.sales_day`,
   columns: [{ name: 'store_code', type: 'text' }, { name: 'sale_date', type: 'date' }, { name: 'value', type: 'money' }],
   keys: ['store_code', 'sale_date'], rowKey: ['store_code', 'sale_date'], filters: { store: 'store_code' },
-  refresh: { dailyAt: '07:30' },
   ...more,
 })
 
@@ -119,7 +120,7 @@ export async function writeApp(datasets: Dataset[], version = '1.0.0'): Promise<
   await writeFile(join(dir, 'featherbase.json'), JSON.stringify({
     manifestVersion: 1, platformVersion: '2026-10', name: APP, title: 'Copy proof', entryTable: `${APP}.note`, server: 'server.mjs',
     tables: [{ name: `${APP}.note`, label: 'note', id_pattern: 'prompt', columns: [{ column_name: 'body', column_type: 'Data' }] }],
-    roles: ['Copy Reader'],
+    roles: ['Copy Reader', 'Forecast Loader'],
     permissions: [{ table: `${APP}.note`, role: 'Copy Reader', can_read: true }],
     datasets,
     jobs: [{ name: 'carry_changes', cadence: 'daily', description: 'Carry changes to a new run and say what moved.' }],
@@ -169,8 +170,22 @@ export async function readLines(client: TestClient, stores: string[]): Promise<{
   }
 }
 
-/** Checks a copy as its schedule does, and answers what it did. */
-export const load = (target: string, opts: LoadOptions = {}) => checkCopy(target, { trigger: 'schedule', ...opts })
+/** Checks a copy as its load job does, and answers what it did. */
+export const load = (target: string, opts: LoadOptions = {}) => checkCopy(target, { trigger: 'test', ...opts })
+
+/** Asks for a load as `client` (the Admin's buttons, a script), then runs the
+ *  queued load as the worker does, and answers the request and the run. */
+export async function requestAndRun(client: TestClient, table: string, force = false) {
+  const asked = await client.post<{ queued: boolean; message: string }>('/api/copy_load', { table, ...(force ? { force } : {}) })
+  await sql`update background_job set run_at = now() where method = 'read_only_copy_load' and job_status = 'queued'`
+  const ran = await runOneJob()
+  const [execution] = await sql`select outcome, result, error from job_execution where method = 'read_only_copy_load' order by started_at desc limit 1`
+  return { asked, ran, execution }
+}
+
+/** The copy as its bar in the Admin reads it. */
+export const loadState = (client: TestClient, table: string) =>
+  client.get<Record<string, unknown> | null>(`/api/table/${encodeURIComponent(table)}:copy_load_state`)
 
 /** The copy's rows, as its Table answers them, by key. */
 export async function rows(target: string): Promise<Record<string, unknown>[]> {

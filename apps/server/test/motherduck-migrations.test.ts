@@ -182,9 +182,9 @@ it('upgrades the historical branch ledger without replacing its data', async () 
     // #1022: and the lifecycle column changes its name, keeping its value.
     // #1418: a copy made before modes is an editable one, with no query.
     const held = (snap: Record<string, readonly Record<string, unknown>[]>) => Object.fromEntries(Object.entries(snap).map(([k, rows]) =>
-      [k, rows.map(({ retired_at, retired_by, retired_reason, status, submission_status, mode, query, run_key_query, daily_at, last_run_key, ...row }) => {
+      [k, rows.map(({ retired_at, retired_by, retired_reason, status, submission_status, mode, query, run_key_query, last_run_key, ...row }) => {
         expect([retired_at ?? null, retired_by ?? null, retired_reason ?? null]).toEqual([null, null, null])
-        expect([mode ?? 'editable', query ?? null, run_key_query ?? null, daily_at ?? null, last_run_key ?? null]).toEqual(['editable', null, null, null, null])
+        expect([mode ?? 'editable', query ?? null, run_key_query ?? null, last_run_key ?? null]).toEqual(['editable', null, null, null])
         return { ...row, lifecycle: status ?? submission_status }
       })]))
     expect(held({ ...after, source: [] } as never)).toEqual(held({ ...before, source: [] } as never))

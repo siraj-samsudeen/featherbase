@@ -20,7 +20,7 @@ import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
 import { roleDefaultsDeclaration, validateRoleDefaults } from './app-role-bindings'
 import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './app-datasets'
-import { forgetAppCopies, registerAppCopies, validateAppCopies } from './read-only-copy'
+import { forgetAppCopies, registerAppCopies, syncAppCopies, validateAppCopies } from './read-only-copy'
 import { glossaryDeclaration, syncAppGlossary, validateGlossary } from './glossary'
 import { sql, withTransaction, usingTransaction } from './db'
 import { logActivity } from './audit'
@@ -956,8 +956,8 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
           upgrade_plan = ${planId} where name = ${name}`
         await syncAppGlossary(name, prepared.target.manifest.glossary, actor)
         await applyJobPlan(name, prepared.jobs, prepared.prior.manifest.jobs ?? [], actor)
-        // #1418: its read-only copies follow its declaration; they load once it is activated.
-        await (await import('./copy-refresh')).provisionAppCopies(name, prepared.target.manifest.datasets)
+        // #1418: its read-only copies follow its declaration.
+        await syncAppCopies(name, prepared.target.manifest.datasets)
       }))
     } catch (error) {
       invalidateMeta()
@@ -982,7 +982,6 @@ export function activateAppUpgrade(name: string, version: string) {
     selectPackage(target)
     await sql`update installed_app set activation_pending = false where name = ${name}`
     await loadInstalledApps()
-    await (await import('./copy-refresh')).checkAppCopiesSoon(name)
     return { name, version, enabled: row.enabled, activationPending: false }
   }, true)
 }

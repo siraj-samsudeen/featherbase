@@ -14,9 +14,6 @@ import { FinalJobFailure, enqueue, registerJob, syncScheduledJobs } from './jobs
 import { runAsSystemActor } from './system-actor'
 import { queueEmail } from './email'
 import { recordUndeliveredNotice, systemManagerEmails } from './system-notice'
-import { appCopies, checkCopy, copyTarget, syncAppCopies } from './read-only-copy'
-import type { DatasetDeclaration } from './app-datasets'
-import { assertPermission } from './permissions'
 
 export async function copySchedule(target: string) {
   if (!await copyInfo(target)) throw new AppError('NotFoundError', `${target} is not a copied table`)
@@ -50,63 +47,6 @@ export async function setCopySchedule(user: SessionUser, target: string, args: R
   return row
 }
 
-/** #1418: a read-only copy is checked every 15 minutes, under #840's link,
- *  so a System Manager pauses it where they pause any copy (design D5).
- *  Inside the caller's transaction; the first check is queued at once. */
-export async function scheduleReadOnlyCopy(target: string, title: string): Promise<void> {
-  if (await copySchedule(target)) return
-  const method = `copy_refresh_${randomUUID().replaceAll('-', '')}`
-  await saveDoc('Scheduled Job', {
-    method, cadence: 'every 15 minutes', enabled: true, title: `Load Copy of ${title}`,
-    description: `Check read-only copy ${target} for a new load`,
-  }, 'Administrator', 'insert')
-  await sql`insert into featherbase.copy_refresh_schedule (target_table, scheduled_job) values (${target}, ${method})`
-  registerCopyRefresh(method)
-  await syncScheduledJobs(method)
-}
-
-/** #1418 (design D6): run a copy's check now, for the warehouse after its
- *  build. Whoever may read the copy may ask; it only does sooner what the
- *  schedule does within 15 minutes. Answers when the check will run. */
-export async function checkCopyNow(user: SessionUser, target: string): Promise<{ queued: boolean; message: string }> {
-  const [copy] = await sql`select mode from featherbase.table_copy where target_table = ${target}`
-  if (copy?.mode !== 'read_only') throw new AppError('NotFoundError', `${target} is not a read-only copy`)
-  await assertPermission(user.row_id, target, 'read')
-  const outcome = await runCheckSoon(target)
-  if (!outcome) throw new AppError('ValidationError', `${target}'s check is paused; a System Manager can resume it`)
-  return outcome
-}
-
-/** Null when a System Manager has paused the check: it waits for them. */
-async function runCheckSoon(target: string): Promise<{ queued: boolean; message: string } | null> {
-  const schedule = await copySchedule(target)
-  if (!schedule?.enabled) return null
-  const method = String(schedule.method)
-  const [running] = await sql`select 1 from background_job where method = ${method} and job_status = 'running'`
-  if (running) return { queued: false, message: 'The check is running now' }
-  // Only sooner: the queued run stays the schedule's own, so its recurrence
-  // carries on after it (a run with any other trigger would end it).
-  const moved = await sql`update background_job set run_at = now(), updated_at = now()
-    where method = ${method} and job_status = 'queued' returning row_id`
-  if (!moved.length) await syncScheduledJobs(method)
-  return { queued: true, message: 'The check runs now' }
-}
-
-/** #1418: make an app's read-only copies match its declaration and give
- *  each its check, inside the install or upgrade transaction (design D2). A
- *  copy made or rebuilt empty is checked at once. */
-export async function provisionAppCopies(app: string, datasets: readonly DatasetDeclaration[] = []): Promise<void> {
-  const loadNow = await syncAppCopies(app, datasets)
-  for (const dataset of datasets.filter((d) => d.store === 'table'))
-    await scheduleReadOnlyCopy(copyTarget(app, dataset.name), (await getMeta(copyTarget(app, dataset.name))).label || dataset.name)
-  for (const target of loadNow) await runCheckSoon(target)
-}
-
-/** #1418: an upgrade's copies wait for its activation; then they are checked at once. */
-export async function checkAppCopiesSoon(app: string): Promise<void> {
-  for (const target of await appCopies(app)) await runCheckSoon(target)
-}
-
 function registerCopyRefresh(method: string): void {
   registerJob(method, async (_payload, ctx) => {
     // Never trust a queued payload to choose a table or to restore removed provenance.
@@ -117,18 +57,6 @@ function registerCopyRefresh(method: string): void {
     // it is un-archived or deleted.
     if ((await getMeta(String(link.target_table))).archived_at) {
       ctx.setResult(`Skipped: ${String(link.target_table)} is archived`)
-      return
-    }
-    // #1418: a read-only copy is checked, and loaded whole when it is due.
-    const [copy] = await sql`select mode from featherbase.table_copy where target_table = ${String(link.target_table)}`
-    if (copy?.mode === 'read_only') {
-      const outcome = await checkCopy(String(link.target_table), { trigger: ctx.job.trigger })
-      // A refused load (its shape, its key, a guard) alerts and is not retried:
-      // the next check tries again, and the last good load keeps serving.
-      if (outcome.status === 'refused') return ctx.refuse(`Load refused: ${outcome.reason}`)
-      ctx.setResult(outcome.status === 'loaded'
-        ? `Loaded ${outcome.rows} rows as load ${outcome.snapshot}`
-        : `Nothing loaded: ${outcome.reason}`)
       return
     }
     const actor = `copy-refresh:${method.slice('copy_refresh_'.length)}`

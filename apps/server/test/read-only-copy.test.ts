@@ -9,15 +9,15 @@ import { sql } from '../src/db'
 import { runOneJob } from '../src/jobs'
 import { overrideVariable } from '../src/env'
 import { invalidateSources } from '../src/sources/registry'
-import { registerCopyRefreshJobs } from '../src/copy-refresh'
 import { datasetsDeclaration } from '../src/app-datasets'
 import { duckFamily } from '../src/sources/duckdb-driver'
-import { checkCopy, dailyDue, loadMoves } from '../src/read-only-copy'
+import { checkCopy, loadMoves } from '../src/read-only-copy'
+import { LOAD_JOB } from '../src/read-only-copy-loads'
 import { discoverPackages } from '../src/runtime-packages'
 import { expectRefused } from './fixtures'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
 import {
-  APP, LINES, SALES, Warehouse, dailySales, forecastLines, install, jobCalls, load, readLines, removeFolders, rows, upgrade, writeApp, type Line,
+  APP, LINES, SALES, Warehouse, dailySales, forecastLines, install, jobCalls, load, loadState, readLines, removeFolders, requestAndRun, rows, upgrade, writeApp, type Line,
 } from './read-only-copy-app'
 
 const warehouse = new Warehouse('b4_copy_unit')
@@ -50,7 +50,6 @@ describe('the declaration', () => {
     expect(parse([lines({ rowKey: ['nowhere'] })])).toEqual(["Dataset forecast_line_day's row key nowhere is not one of its columns"])
     expect(parse([lines({ rowKey: ['value'] })])).toEqual(["Dataset forecast_line_day's row key value must be text, integer or date"])
     expect(parse([lines({ name: 'a_dataset_name_that_is_far_too_long' })])).toEqual(['Dataset a_dataset_name_that_is_far_too_long becomes a Table, so its name is at most 31 characters'])
-    expect(parse([lines({ refresh: { dailyAt: '7:30' } })])).toEqual(['A daily time is HH:MM, 00:00 to 23:59'])
     const own = lines({ columns: [...(lines().columns as unknown[]), { name: 'snapshot_id', type: 'text' }, { name: 'created_at', type: 'date' }] })
     expect(parse([own])).toEqual([
       'Dataset forecast_line_day becomes a Table, whose own column snapshot_id it cannot declare',
@@ -61,10 +60,11 @@ describe('the declaration', () => {
   test('a JSON dataset takes none of a copy’s fields or guards', () => {
     expect(parse([lines({ store: 'json', guard: [{ kind: 'source_total', column: 'value' }] })])).toEqual([
       'Dataset forecast_line_day is stored as JSON, so it takes no rowKey',
-      'Dataset forecast_line_day is stored as JSON, so it takes no refresh',
+      'Dataset forecast_line_day is stored as JSON, so it takes no runKey',
+      'Dataset forecast_line_day is stored as JSON, so it takes no loadRoles',
       'Dataset forecast_line_day is stored as JSON, so it cannot check source_total',
     ])
-    expect(parse([lines({ store: 'json', rowKey: undefined, refresh: undefined, onNewLoad: 'carry_changes' })]))
+    expect(parse([lines({ store: 'json', rowKey: undefined, runKey: undefined, loadRoles: undefined, onNewLoad: 'carry_changes' })]))
       .toEqual(['Dataset forecast_line_day is stored as JSON, so it takes no onNewLoad'])
   })
 
@@ -75,16 +75,21 @@ describe('the declaration', () => {
     expect(parse([lines({ guard: [{ kind: 'source_total', column: 'value', value: 5 }] })])).toEqual(['A source_total guard takes no value'])
   })
 
+  test('a copy lets only the app’s own roles load it', async () => {
+    expect(JSON.stringify(await discoverPackages([await writeApp([lines({ loadRoles: ['Somebody Else'] })])])))
+      .toContain("Dataset forecast_line_day lets Somebody Else load it, which is not one of the app's roles")
+  })
+
   test('a new-load job is one the app declares, and a copy is not also one of its Tables', async () => {
     const problems = await discoverPackages([await writeApp([lines({ onNewLoad: 'nobody' })])])
     expect(JSON.stringify(problems)).toContain('Dataset forecast_line_day tells the job nobody about new loads, which the app does not declare in its jobs')
-    const twice = await writeApp([lines({ name: 'note', columns: [{ name: 'body', type: 'text' }], rowKey: ['body'], keys: ['body'], filters: { store: 'body' }, refresh: undefined })])
+    const twice = await writeApp([lines({ name: 'note', columns: [{ name: 'body', type: 'text' }], rowKey: ['body'], keys: ['body'], filters: { store: 'body' }, runKey: undefined })])
     expect(JSON.stringify(await discoverPackages([twice]))).toContain('Dataset note is a read-only copy, so the app cannot also declare a Table copyproof.note')
   })
 })
 
 describe('a copy follows its app', () => {
-  test('a changed type rebuilds it empty and checks it at once; a dropped column goes', async ({ admin }) => {
+  test('a changed type rebuilds it empty until someone loads it; a dropped column goes', async ({ admin }) => {
     const first = await installed(admin)
     expect(await load(LINES)).toMatchObject({ status: 'loaded' })
     const retyped = lines({
@@ -95,7 +100,8 @@ describe('a copy follows its app', () => {
     await upgrade(admin, first, await writeApp([retyped], '1.1.0'), '1.1.0')
     expect(await rows(LINES)).toEqual([])
     expect(await loads()).toEqual([])
-    expect((await sql`select count(*)::int as n from background_job where job_status = 'queued' and method like 'copy_refresh_%'`)[0].n).toBe(1)
+    // Nothing loads on its own (design D5).
+    expect(await sql`select 1 from background_job where job_status = 'queued' and method = ${LOAD_JOB}`).toEqual([])
     expect(await load(LINES)).toMatchObject({ status: 'loaded', previous: null })
     expect(await rows(LINES)).toMatchObject([{ value: '1000.00' }])
     const dropped = { ...retyped, columns: (retyped.columns as { name: string }[]).filter((c) => c.name !== 'run_id') }
@@ -106,7 +112,7 @@ describe('a copy follows its app', () => {
   })
 
   test('a JSON dataset that becomes a copy leaves its snapshots behind', async ({ admin }) => {
-    const first = await installed(admin, [lines({ store: 'json', rowKey: undefined, refresh: undefined, query: `select * from ${warehouse.schema}.forecast_line_day` })])
+    const first = await installed(admin, [lines({ store: 'json', rowKey: undefined, runKey: undefined, loadRoles: undefined, query: `select * from ${warehouse.schema}.forecast_line_day` })])
     await sql`insert into dataset_snapshot (row_id, dataset, state, built_at, activated_at) values ('json-snapshot', ${LINES}, 'active', now(), now())`
     await upgrade(admin, first, await writeApp([lines({ guard: [{ kind: 'keeps_values', column: 'store_code' }] })], '1.1.0'), '1.1.0')
     expect(await loads()).toEqual([])
@@ -233,13 +239,13 @@ describe('a load', () => {
   })
 
   test('without a run check or a daily time loads on every check', async ({ admin }) => {
-    await installed(admin, [lines({ refresh: undefined, query: `select * from ${warehouse.schema}.forecast_line_day` })])
+    await installed(admin, [lines({ runKey: undefined, query: `select * from ${warehouse.schema}.forecast_line_day` })])
     expect(await load(LINES)).toMatchObject({ status: 'loaded' })
     expect(await load(LINES)).toMatchObject({ status: 'loaded' })
   })
 
   test('keeps the active load and the one before; older ones go whole', async ({ admin }) => {
-    await installed(admin, [lines({ refresh: undefined, query: `select * from ${warehouse.schema}.forecast_line_day` })])
+    await installed(admin, [lines({ runKey: undefined, query: `select * from ${warehouse.schema}.forecast_line_day` })])
     for (let i = 0; i < 4; i++) await load(LINES)
     expect(await loads()).toEqual(['superseded', 'active'])
     expect(await parts()).toBe(2)
@@ -251,51 +257,34 @@ describe('a load', () => {
   })
 })
 
-describe('the daily time', () => {
-  test('is the first check after it, once a day, in the instance’s timezone', () => {
-    const india = 'Asia/Kolkata'
-    expect(dailyDue('07:30', null, new Date('2026-12-02T02:00:00Z'), india)).toBe(true)
-    expect(dailyDue('07:30', null, new Date('2026-12-02T01:59:00Z'), india)).toBe(false)
-    expect(dailyDue('07:30', new Date('2026-12-02T02:01:00Z'), new Date('2026-12-02T09:00:00Z'), india)).toBe(false)
-    expect(dailyDue('07:30', new Date('2026-12-02T01:00:00Z'), new Date('2026-12-02T09:00:00Z'), india)).toBe(true)
+describe('asking for a load', () => {
+  test('says what it loaded, or why it loaded nothing, and records who asked', async ({ admin }) => {
+    await installed(admin)
+    const first = await requestAndRun(admin, LINES)
+    expect(first.execution.result).toMatch(/^Loaded 1 rows as load [0-9a-f-]{36}$/)
+    expect((await sql`select triggered_by from dataset_snapshot where dataset = ${LINES} and state = 'active'`)[0].triggered_by).toBe(admin.user)
+    expect(await loadState(admin, LINES)).toMatchObject({ app: APP, source: 'copyproof-warehouse', run_check: true, run: { run_id: 'Dec-1' }, rows: 1, failed: null, pending: null })
   })
-})
 
-describe('the copy’s check', () => {
-  async function scheduled() {
-    await registerCopyRefreshJobs()
-    const [link] = await sql`select scheduled_job from featherbase.copy_refresh_schedule where target_table = ${LINES}`
-    return String(link.scheduled_job)
-  }
-  async function runCheck(method: string) {
-    await sql`delete from background_job where method <> ${method} and job_status = 'queued'`
-    await sql`update background_job set run_at = now(), max_attempts = 1 where method = ${method} and job_status = 'queued'`
+  test('needs a copy named, and is one load at a time', async ({ admin }) => {
+    await installed(admin)
+    await expectRefused(admin.post('/api/copy_load', {}), 417)
+    expect((await admin.fetch('/api/copy_load', { method: 'POST', body: 'not json' })).status).toBe(417)
+    await expectRefused(admin.post('/api/copy_load', { table: `${APP}.note` }), 404)
+    expect(await admin.post('/api/copy_load', { table: LINES })).toEqual({ queued: true, message: 'The check for a new run has started' })
+    expect(await admin.post('/api/copy_load', { table: LINES, force: true })).toEqual({ queued: false, message: 'A load is already waiting to run' })
+    await sql`update background_job set job_status = 'running' where method = ${LOAD_JOB}`
+    expect(await admin.post('/api/copy_load', { table: LINES })).toEqual({ queued: false, message: 'A load is running now' })
+    expect(await loadState(admin, LINES)).toMatchObject({ pending: 'running', loaded_at: null, rows: null, run: null })
+    expect(await loadState(admin, `${APP}.note`)).toBeNull()
+  })
+
+  test('a load job that names no declared copy does nothing', async () => {
+    await sql`insert into background_job (row_id, method, payload, job_status, run_at, max_attempts)
+      values ('forged-load', ${LOAD_JOB}, ${sql.json({ table: 'copyproof.nothing' })}, 'queued', now(), 1)`
     expect(await runOneJob()).toBe(true)
-    return (await sql`select outcome, result from job_execution where method = ${method} order by started_at desc limit 1`)[0]
-  }
-
-  test('says what it loaded, or why it loaded nothing', async ({ admin }) => {
-    await installed(admin)
-    const method = await scheduled()
-    expect((await runCheck(method)).result).toMatch(/^Loaded 1 rows as load [0-9a-f-]{36}$/)
-    expect(await runCheck(method)).toEqual({ outcome: 'success', result: 'Nothing loaded: the run is unchanged ({"run_id":"Dec-1"})' })
-  })
-
-  test('now: only a read-only copy, only for a reader, not while paused, once at a time', async ({ admin, createUser }) => {
-    await installed(admin)
-    const method = await scheduled()
-    await expectRefused(admin.post('/api/copy_check_now', {}), 417)
-    expect((await admin.fetch('/api/copy_check_now', { method: 'POST', body: 'not json' })).status).toBe(417)
-    await expectRefused(admin.post('/api/copy_check_now', { table: `${APP}.note` }), 404)
-    await expectRefused((await createUser({ roles: [] })).post('/api/copy_check_now', { table: LINES }), 403)
-    await sql`delete from background_job where method = ${method}`
-    expect(await admin.post('/api/copy_check_now', { table: LINES })).toEqual({ queued: true, message: 'The check runs now' })
-    // Still the schedule's own run, so its recurrence carries on after it.
-    expect(await sql`select trigger, repeat_every from background_job where method = ${method}`).toEqual([{ trigger: 'schedule', repeat_every: 900 }])
-    await sql`update background_job set job_status = 'running' where method = ${method}`
-    expect(await admin.post('/api/copy_check_now', { table: LINES })).toEqual({ queued: false, message: 'The check is running now' })
-    await sql`update scheduled_job set enabled = false where method = ${method}`
-    await expectRefused(admin.post('/api/copy_check_now', { table: LINES }), 417, `${LINES}'s check is paused; a System Manager can resume it`)
+    expect((await sql`select error from job_execution where method = ${LOAD_JOB} order by started_at desc limit 1`)[0].error)
+      .toContain('copyproof.nothing is not a read-only copy any installed app declares')
   })
 })
 
@@ -363,7 +352,7 @@ describe('a copy from DuckDB', () => {
       `insert into fb_forecast_line_day values ('Dec-1', 'LKS', 'GJ01', '2026-12-01', 1234567890123.45), ('Dec-0', 'LKS', 'GJ01', '2026-12-01', 1)`,
     ])
     const md = lines({ source: 'copyproof-md', query: 'select * from sales.main.fb_forecast_line_day where run_id = {run_id}',
-      refresh: { runKey: "select run_id from sales.main.fb_forecast_run where status = 'official'" }, guard: [{ kind: 'source_total', column: 'value' }] })
+      runKey: "select run_id from sales.main.fb_forecast_run where status = 'official'", guard: [{ kind: 'source_total', column: 'value' }] })
     await install(admin, await writeApp([md]))
     await admin.post('/api/table/Data%20Source:motherduck_connect', { name: 'copyproof-md', databases: ['sales'] })
     expect(await load(LINES)).toMatchObject({ status: 'loaded', rows: 1 })
