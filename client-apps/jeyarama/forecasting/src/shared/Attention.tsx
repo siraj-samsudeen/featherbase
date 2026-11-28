@@ -74,12 +74,10 @@ function show(c: string, f: Finding): string {
     default: return count(Math.round(v))
   }
 }
-/** A figure the eye should catch: the pieces short, a short band's days, a gap's side. */
-function tone(c: string, f: Finding, left: number) {
+/** Colour carries meaning only: the ₹ in its finding's colour, and a gap's side. */
+function tone(c: string, f: Finding) {
   const v = COL[c].value(f)
   if (typeof v !== 'number') return undefined
-  if (c === 'short' || (c === 'pcsOff' && f.colour === 'red')) return 'fr-short'
-  if (c === 'lasts' && f.kind !== 'over' && v < left) return 'fr-short'
   if (c === 'gap') return v < 0 ? 'fr-short' : 'fr-over'
   if (c === 'amt') return f.colour === 'red' ? 'fr-short' : f.colour === 'purple' ? 'fr-over' : undefined
   return undefined
@@ -131,10 +129,9 @@ function Pane({ f, header, place, index, of, onClose, onMove, href, onOpen }: {
   )
 }
 
-function TabTable({ tab, findings, open, onOpen, header }: { tab: Tab; findings: Finding[]; open: Finding | null; onOpen: (f: Finding) => void; header: Header }) {
+function TabTable({ tab, findings, open, onOpen }: { tab: Tab; findings: Finding[]; open: Finding | null; onOpen: (f: Finding) => void }) {
   const [sort, setSort] = useState<Sort>({ col: COLS[tab.key].includes('amt') ? 'amt' : 'soldValue', dir: -1 })
   const cols = open ? KEY_COLS[tab.key] : COLS[tab.key]
-  const left = header.stockAsOf ? daysToEnd(header) : 0
   const groups: [string | null, Finding[], string][] = tab.key === 'transfers'
     ? [['Bring In', findings.filter(f => f.kind === 'xin'), 'of sales you would otherwise lose'], ['Send Out', findings.filter(f => f.kind === 'xout'), 'of your stock another store will sell']]
     : [[null, findings, '']]
@@ -143,7 +140,7 @@ function TabTable({ tab, findings, open, onOpen, header }: { tab: Tab; findings:
     <div className="fr-att-wrap">
       <table className={cx(TABLE_CLASSES, 'fr-att-table')} data-testid="attention-table">
         <thead><tr>{cols.map((c, k) => (
-          <th key={c} className={headCellClasses({ first: k === 0, last: k === cols.length - 1, className: cx('fr-att-th', numeric(c) && 'text-right') })}
+          <th key={c} className={headCellClasses({ first: k === 0, last: k === cols.length - 1, className: cx('fr-att-th whitespace-normal', numeric(c) && 'text-right') })}
             aria-sort={sort.col === c ? (sort.dir < 0 ? 'descending' : 'ascending') : undefined}>
             <button type="button" className="fr-att-sort" onClick={() => pick(c)}>{COL[c].head}{sort.col === c && <span aria-hidden> {sort.dir < 0 ? '↓' : '↑'}</span>}</button>
           </th>))}</tr></thead>
@@ -154,14 +151,13 @@ function TabTable({ tab, findings, open, onOpen, header }: { tab: Tab; findings:
               <tr key={`${f.kind}:${f.title}:${k}`} className={cx('group fr-att-row', `fr-att-${f.colour}`)} aria-selected={open === f} tabIndex={0}
                 onClick={() => onOpen(f)} onKeyDown={e => { if (e.key === 'Enter') onOpen(f) }}>
                 {cols.map((c, j) => <td key={c} className={cellClasses({ first: j === 0, last: j === cols.length - 1,
-                  className: cx(numeric(c) && 'text-right tabular-nums', (c === 'sub' || c === 'item') && 'fr-att-name', tone(c, f, left)) })}>{show(c, f)}</td>)}
+                  className: cx(numeric(c) && 'text-right tabular-nums', j === 0 && 'fr-att-name', tone(c, f)) })}>{show(c, f)}</td>)}
               </tr>))}
           </Fragment>))}</tbody>
       </table>
     </div>
   )
 }
-const daysToEnd = (h: Header) => Math.round((Date.UTC(h.month.year, new Date(`1 ${h.month.name} ${h.month.year}`).getMonth(), h.month.days) - Date.parse(`${h.stockAsOf}T00:00:00Z`)) / 864e5)
 
 /** The answer line, the tab row and the open tab. `tab` and `onTab` keep the open tab in the page's address. */
 export function NeedsAttention({ findings, header, othersAsOf, tab: chosen, onTab, href, onOpen }: {
@@ -204,7 +200,7 @@ export function NeedsAttention({ findings, header, othersAsOf, tab: chosen, onTa
             onClose={() => setOpen(null)} onMove={move} href={href(open)} onOpen={() => onOpen(open)} /> : null}>
             <p className="fr-att-about">{openTab.about(m)}</p>
             {!fs.length ? <p className="fr-att-none">Nothing here for {header.section} today.</p>
-              : <TabTable key={openTab.key} tab={openTab} findings={fs} open={open} onOpen={setOpen} header={header} />}
+              : <TabTable key={openTab.key} tab={openTab} findings={fs} open={open} onOpen={setOpen} />}
             <p className="fr-dim fr-att-note">₹ at selling price (never cost), to {endOf(m)} from the stock on {asOf} at {m.name}'s forecast pace.
               {openTab.key === 'transfers' && ` Other stores' stock as of ${othersAsOf ? day(othersAsOf) : '—'}; same region only; at least ${T.minTransferPcs} pcs, and a store must have sold at least ${T.minSellingTherePcs} in 28 days to be offered stock.`}
               {' '}Click a row for its details; sort by any heading.</p>
