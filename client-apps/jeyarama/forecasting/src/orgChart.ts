@@ -11,7 +11,9 @@ export interface OrgSection { id: string; name: string; floor: string; floorOrde
 export interface OrgSubcategory { section: string | null; buyer: string | null; categoryHead: string | null }
 /** One store's org chart today: its sections (floor, floor order, Team Leaders), its Store Managers, and each
  *  subcategory's section, buyer and category head, by subcategory code. */
-export interface OrgChart { store: string; region: string | null; sections: OrgSection[]; storeManagers: string[]; subcategories: Record<string, OrgSubcategory> }
+export interface OrgChart { store: string; region: string | null; sections: OrgSection[]; storeManagers: string[]; subcategories: Record<string, OrgSubcategory>
+  /** The region's stores, short code → name, for the stores a transfer names. */
+  stores: Record<string, string> }
 
 const day = (v: unknown) => (v == null || v === '' ? null : String(v).slice(0, 10))
 /** Applies on `today`, its Ends On being its last day. */
@@ -25,6 +27,8 @@ const ALL = 20000
 export async function orgChart(base: BaseTables, store: string, today: string): Promise<OrgChart> {
   const [site] = await base.list('Site', { fields: ['row_id', 'operating_region'], filters: [['row_id', '=', store]], limit_page_length: 1 })
   const region = site ? String(site.operating_region ?? '') || null : null
+  const stores = Object.fromEntries((region ? await base.list('Site', { fields: ['row_id', 'name'], filters: [['operating_region', '=', region]], limit_page_length: ALL }) : [])
+    .map(x => [String(x.row_id), String(x.name ?? x.row_id)]))
   const [sections, floors, placed, jobs] = await Promise.all([
     base.list('Section', { fields: ['row_id', 'name', 'floor', 'status'], filters: [['site', '=', store]], limit_page_length: ALL }),
     base.list('Store Floor', { fields: ['row_id', 'name', 'floor_order'], filters: [['site', '=', store]], limit_page_length: ALL }),
@@ -62,5 +66,5 @@ export async function orgChart(base: BaseTables, store: string, today: string): 
   const subcategories: Record<string, OrgSubcategory> = {}
   for (const code of codes) subcategories[code] = { section: latest(bySub.get(code) ?? []) ? String(latest(bySub.get(code)!).section ?? '') || null : null,
     buyer: who(code, 'Buyer'), categoryHead: who(code, 'Category head') }
-  return { store, region, sections: orgSections, storeManagers: todays.filter(j => j.job === 'Store Manager').map(j => nameOf(j.employee)!).filter(Boolean), subcategories }
+  return { store, region, stores, sections: orgSections, storeManagers: todays.filter(j => j.job === 'Store Manager').map(j => nameOf(j.employee)!).filter(Boolean), subcategories }
 }

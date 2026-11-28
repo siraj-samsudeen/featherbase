@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import fixture from '../../fixtures/team-leader-december.json'
 import { byGapToLastYear, combine, day, groupsOf, inr, linesFrom, monthOfRun, pc, type CopiedRows, type Line } from './model'
 
-const lines = linesFrom({ lines: fixture.forecast_line_month, sales: fixture.sales_reference, plans: fixture.annual_plan_line, others: fixture.other_model_line,
-  bands: { mix: fixture.price_band_mix, stock: fixture.stock_band, items: fixture.price_band_top_item } } as unknown as CopiedRows, 'LKS')
+const lines = linesFrom({ lines: fixture.forecast_line_month, sales: fixture.sales_reference, plans: fixture.annual_plan_line, others: fixture.other_model_day,
+  bands: { mix: fixture.price_band_mix, stock: fixture.stock_band, items: fixture.price_band_top_item } } as unknown as CopiedRows, '9001')
 const line = (name: string, category: string, growth: number): Line => ({ ...lines[0], name, category, growth })
 
 describe('the Team Leader model (#1419)', () => {
@@ -78,7 +78,7 @@ describe('the steps after the blend, in two kinds (#1419, 27-Nov-2026)', () => {
   })
   it('counts the whole adjustment as rebalancing when a Run does not carry the two kinds', () => {
     const rows = fixture.forecast_line_month.map(r => ({ ...r, rebalanced_within_category: null, price_and_rounding: null }))
-    const [l] = linesFrom({ lines: rows, sales: [], plans: [], others: [] } as unknown as CopiedRows, 'LKS')
+    const [l] = linesFrom({ lines: rows, sales: [], plans: [], others: [] } as unknown as CopiedRows, '9001')
     expect([l.rebal, l.price]).toEqual([l.adj, 0])
   })
   it('shows a share under half a percent as 0%, never −0%', () => {

@@ -325,15 +325,6 @@ async function prepareQuestion(ctx: Context) {
   if (moved.length) ctx.reject('The asker only marks the answer seen')
 }
 
-/** The read-only copy of the warehouse's Run (data model: people never change it; a change is a forecast_change).
- *  Rows come in only by the copy (an administrator's load; the bulk load writes the table directly), and are never
- *  edited, by anyone. #1418 makes the Admin itself hide New, Save and Delete for such a table. */
-function copiedFromWarehouse(ctx: Context) {
-  if (!ctx.isNew) ctx.reject('This is a copy of the official Run from the warehouse; it is read only. Ask for a change with a forecast change instead.')
-  if (!isAdmin(ctx)) ctx.reject('Only the copy of the official Run adds rows here')
-}
-const COPIES = ['forecast_run', 'forecast_line_month', 'sales_reference', 'annual_plan_line', 'other_model_line', 'price_band_mix', 'stock_band', 'price_band_top_item', 'item_health', 'merchandise_people', 'item_other_stores', 'forecast_line_day', 'actuals_day']
-
 export const platformVersion = '2026-10'
 /** Today in India, YYYY-MM-DD. */
 const todayIST = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
@@ -347,8 +338,7 @@ export const reads = {
   },
 }
 export const validators = { 'forecasting.number': prepareNumber, 'forecasting.decision': prepareDecision, 'forecasting.explanation': prepareExplanation,
-  'forecasting.forecast_change': prepareChange, 'forecasting.forecast_line_review': prepareLineReview, 'forecasting.forecast_question': prepareQuestion, 'forecasting.day_explanation': prepareDayExplanation,
-  ...Object.fromEntries(COPIES.map(t => [`forecasting.${t}`, copiedFromWarehouse])) }
+  'forecasting.forecast_change': prepareChange, 'forecasting.forecast_line_review': prepareLineReview, 'forecasting.forecast_question': prepareQuestion, 'forecasting.day_explanation': prepareDayExplanation }
 export const actions = {}
 /** After a new load of the forecast copy (#1418's onNewLoad): carries changes to the new Run and sends back a
  *  subcategory that moved more than 10%. Waits for its design (owner Table, how the Team Leader is told); for now it

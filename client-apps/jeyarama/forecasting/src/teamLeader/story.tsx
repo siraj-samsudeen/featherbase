@@ -14,8 +14,8 @@ import '../style.css'
 
 paintTheme('light')
 const run = fixture.forecast_run[0]
-const lines = linesFrom({ lines: fixture.forecast_line_month, sales: fixture.sales_reference, plans: fixture.annual_plan_line, others: fixture.other_model_line,
-  bands: { mix: fixture.price_band_mix, stock: fixture.stock_band, items: fixture.price_band_top_item } } as unknown as CopiedRows, 'LKS')
+const lines = linesFrom({ lines: fixture.forecast_line_month, sales: fixture.sales_reference, plans: fixture.annual_plan_line, others: fixture.other_model_day,
+  bands: { mix: fixture.price_band_mix, stock: fixture.stock_band, items: fixture.price_band_top_item } } as unknown as CopiedRows, '9001')
 const header: Header = { store: 'Lakeside', section: 'Girls Bottoms', person: 'Asha', role: 'Team Leader', cutOff: day(run.origin_date), month: monthOfRun(run.horizon_from),
   stockAsOf: stockAsOf(fixture.stock_band as unknown as StockBandRow[]) }
 

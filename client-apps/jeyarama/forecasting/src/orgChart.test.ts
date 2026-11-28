@@ -4,7 +4,7 @@ import { orgChart } from './orgChart'
 type Row = Record<string, unknown>
 // a made-up store, Lakeside (LKS), in the region North
 const TABLES: Record<string, Row[]> = {
-  Site: [{ row_id: 'LKS', operating_region: 'North' }],
+  Site: [{ row_id: 'LKS', name: 'Lakeside', operating_region: 'North' }, { row_id: 'HLT', name: 'Hilltop', operating_region: 'North' }, { row_id: 'FAR', name: 'Faraway', operating_region: 'South' }],
   Section: [
     { row_id: 'LKS-1F-Girls', name: 'Girls', site: 'LKS', floor: 'LKS-1F', status: 'Active' },
     { row_id: 'LKS-GF-Saree', name: 'Saree', site: 'LKS', floor: 'LKS-GF', status: 'Active' },
@@ -51,6 +51,7 @@ describe('the live org chart (#1419)', () => {
     const org = await orgChart(base, 'LKS', '2026-11-28')
     expect(org.sections.map(s => [s.name, s.floor, s.floorOrder, s.teamLeaders])).toEqual([['Girls', 'First Floor', 1, ['Asha']], ['Saree', 'Ground Floor', 0, []]])
     expect(org.storeManagers).toEqual(['Omar'])
+    expect(org.stores).toEqual({ LKS: 'Lakeside', HLT: 'Hilltop' })
     expect((await orgChart(base, 'LKS', '2026-11-27')).sections[0].teamLeaders).toEqual(['Asha', 'Bina'])
   })
 

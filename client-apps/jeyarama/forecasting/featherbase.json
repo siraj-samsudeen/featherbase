@@ -3759,6 +3759,7 @@
   "baseTables": {
     "read": {
       "Site": [
+        "name",
         "operating_region"
       ],
       "Section": [

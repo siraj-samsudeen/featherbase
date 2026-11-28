@@ -6,7 +6,7 @@
 type Num = number | string | null | undefined
 const n = (v: Num) => (v == null || v === '' ? 0 : Number(v))
 
-interface BandKey { store_code: string; subcategory_name: string; price_band: string; price_band_order: Num }
+interface BandKey { store_code: string; subcategory_code: string; price_band: string; price_band_order: Num }
 export interface BandMixRow extends BandKey {
   sales_value_before_tax: Num; sales_qty: Num; items_sold: Num; value_share: Num; qty_share: Num; items_to_50_pct: Num; items_to_70_pct: Num
 }
@@ -14,9 +14,9 @@ export interface StockBandRow extends BandKey { stock_qty: Num; items_in_stock: 
 export interface TopItemRow extends BandKey { item_rank: Num; item_code: string; item_name: string | null; sales_qty: Num; sales_value_before_tax: Num; stock_qty: Num }
 export interface BandRows { mix: BandMixRow[]; stock: StockBandRow[]; items: TopItemRow[] }
 
-export const MIX_FIELDS = ['store_code', 'subcategory_name', 'price_band', 'price_band_order', 'sales_value_before_tax', 'sales_qty', 'items_sold', 'value_share', 'qty_share', 'items_to_50_pct', 'items_to_70_pct']
-export const STOCK_FIELDS = ['store_code', 'subcategory_name', 'price_band', 'price_band_order', 'stock_qty', 'items_in_stock', 'stock_as_of']
-export const ITEM_FIELDS = ['store_code', 'subcategory_name', 'price_band', 'price_band_order', 'item_rank', 'item_code', 'item_name', 'sales_qty', 'sales_value_before_tax', 'stock_qty']
+export const MIX_FIELDS = ['store_code', 'subcategory_code', 'price_band', 'price_band_order', 'sales_value_before_tax', 'sales_qty', 'items_sold', 'value_share', 'qty_share', 'items_to_50_pct', 'items_to_70_pct']
+export const STOCK_FIELDS = ['store_code', 'subcategory_code', 'price_band', 'price_band_order', 'stock_qty', 'items_in_stock', 'stock_as_of']
+export const ITEM_FIELDS = ['store_code', 'subcategory_code', 'price_band', 'price_band_order', 'item_rank', 'item_code', 'item_name', 'sales_qty', 'sales_value_before_tax', 'stock_qty']
 
 export interface TopItem { code: string; name: string; qty: number; value: number; stock: number }
 export interface Band {
@@ -40,8 +40,8 @@ export const NO_BAND = 'No band'
 
 /** A subcategory's bands at a store, cheapest first: the forecast (fc, fq) split by each band's share of the 28 days.
  *  A band with stock but no sales is still listed, with no forecast; a band in neither is not. */
-export function bandsOf(rows: BandRows, store: string, sub: string, fc: number, fq: number): Band[] {
-  const mine = <T extends BandKey>(r: T[]) => r.filter(x => x.store_code === store && x.subcategory_name === sub)
+export function bandsOf(rows: BandRows, store: string, code: string, fc: number, fq: number): Band[] {
+  const mine = <T extends BandKey>(r: T[]) => r.filter(x => x.store_code === store && x.subcategory_code === code)
   const mix = mine(rows.mix), stock = mine(rows.stock), items = mine(rows.items)
   const names = [...new Set([...mix, ...stock].map(r => r.price_band))]
   const bands = names.map((name): Band => {

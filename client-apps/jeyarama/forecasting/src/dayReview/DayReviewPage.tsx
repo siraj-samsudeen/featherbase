@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Card, EmptyState, PageHeader, RecordPagesProvider, Skeleton } from '@featherbase/shop-floor'
 import { listWhere, saveRow } from '../api'
-import { officialRuns, type Viewer } from '../teamLeader/live'
+import { NO_SECTION, officialRuns, orgOf, type Viewer } from '../teamLeader/live'
 import { day as dayText, monthOfRun, type RunRow } from '../shared/model'
 import { ACTUALS_DAY_FIELDS, DAY_EXPLANATION_FIELDS, FORECAST_DAY_FIELDS, explanationOf, loadedTo, subDaysFrom,
   type ActualsDayRow, type DayExplanation, type DayExplanationRow, type ForecastDayRow, type SubDays } from '../shared/days'
@@ -24,11 +24,14 @@ async function loadDays(viewer: Viewer): Promise<Days | null> {
   const today = todayIST()
   const run = (await officialRuns()).find(r => r.horizon_from.slice(0, 10) <= today)
   if (!run) return null
-  const lines = await listWhere<{ row_id: string; store_code: string; category_name: string; subcategory_name: string }>('forecasting.forecast_line_month',
-    ['store_code', 'category_name', 'subcategory_name'], [['run_id', '=', run.run_id], ['store_name', '=', store], ['section_name', '=', section]])
+  // the section's subcategories today, from the live org chart
+  const org = await orgOf(store), at0 = org.sections.find(s => s.name === section)
+  const inSection = (code: string) => (section === NO_SECTION ? !org.sections.some(s => s.id === org.subcategories[code]?.section) : !!at0 && org.subcategories[code]?.section === at0.id)
+  const lines = (await listWhere<{ row_id: string; store_code: string; category_name: string; subcategory_name: string; subcategory_code: string }>('forecasting.forecast_line_month',
+    ['store_code', 'category_name', 'subcategory_name', 'subcategory_code'], [['run_id', '=', run.run_id], ['store_short_code', '=', store]])).filter(l => inSection(l.subcategory_code))
   if (!lines.length) return null
-  const storeCode = lines[0].store_code, subs = lines.map(l => l.subcategory_name)
-  const at = [['run_id', '=', run.run_id], ['store_code', '=', storeCode], ['subcategory_name', 'in', subs]] as [string, string, unknown][]
+  const storeCode = lines[0].store_code, codes = lines.map(l => l.subcategory_code)
+  const at = [['run_id', '=', run.run_id], ['store_code', '=', storeCode], ['subcategory_code', 'in', codes]] as [string, string, unknown][]
   const [fc, sold, said] = await Promise.all([
     listWhere<ForecastDayRow>('forecasting.forecast_line_day', FORECAST_DAY_FIELDS, at),
     listWhere<ActualsDayRow>('forecasting.actuals_day', ACTUALS_DAY_FIELDS, at),
@@ -38,7 +41,7 @@ async function loadDays(viewer: Viewer): Promise<Days | null> {
   const upTo = loadedTo(sold, run.horizon_from)
   const asOf = sold.reduce<string | null>((a, r) => (r.actuals_as_of_date && (!a || r.actuals_as_of_date > a) ? r.actuals_as_of_date.slice(0, 10) : a), null)
   return { run, storeCode, store, section, month,
-    subs: subDaysFrom(lines.map(l => ({ name: l.subcategory_name, category: l.category_name, section })), fc, sold, storeCode, month.days, upTo)
+    subs: subDaysFrom(lines.map(l => ({ name: l.subcategory_name, code: l.subcategory_code, category: l.category_name, section })), fc, sold, storeCode, month.days, upTo)
       .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name)),
     rowIds: new Map(lines.map(l => [l.subcategory_name, l.row_id])), explanations: said.map(explanationOf), salesTo: asOf }
 }

@@ -40,34 +40,37 @@ export interface Group extends Omit<Line, 'rowId' | 'bases' | 'step'> { index: n
 // ---- the copied warehouse rows the screen reads ---------------------------------------------------------
 type Num = number | string | null | undefined
 export interface RunRow { run_id: string; purpose: string; origin_date: string; horizon_from: string; horizon_to: string }
+/** One subcategory's month in the Run: the copy of the warehouse's fb_forecast_explanation_month (data-warehouse #4980). */
 export interface LineMonthRow {
-  row_id: string; run_id: string; store_code: string; store_name: string; division_name?: string; subdivision_name?: string; category_name: string; subcategory_name: string; section_name: string
-  /** The subcategory's SAP code, when the copy carries it (0.14.0). */
-  material_group_code?: string | null
-  /** For a subcategory in no section: a suggested section (Section row id), why, and the row ids already taken. */
-  suggested_section?: string | null; suggested_section_note?: string | null; section_row_ids?: string | null
+  row_id: string; run_id: string; store_code: string; store_short_code: string; division_name?: string; subdivision_name?: string; category_name: string; subcategory_name: string
+  /** The subcategory's SAP code (material group): the key the copies join on, and the org chart's link. */
+  subcategory_code: string
   forecast_value_before_tax: Num; forecast_qty: Num; seasonal_factor: Num; growth_factor: Num
-  from_recent_selling: Num; december_step_on_top: Num; from_last_year: Num; adjustments: Num
+  from_recent_selling: Num; seasonal_step_on_top: Num; from_last_year: Num; adjustments: Num
   rebalanced_within_category?: Num; price_and_rounding?: Num
   own_value_b1: Num; own_value_b2: Num; own_value_b3: Num; own_value_b4: Num; own_value_b5: Num; own_value_b6: Num
   adds_value_b1: Num; adds_value_b2: Num; adds_value_b3: Num; adds_value_b4: Num; adds_value_b5: Num; adds_value_b6: Num
 }
-export interface SalesRow { store_code: string; subcategory_name: string; window_name: string; sales_value_before_tax: Num; sales_qty: Num }
-export interface PlanRow { store_code: string; subcategory_name: string; plan_value_before_tax: Num; plan_qty: Num }
-export interface OtherModelRow { model: string; store_code: string; subcategory_name: string; forecast_value_before_tax: Num }
+/** The copies the screen reads beside the Run's lines, keyed by store and subcategory code. */
+interface ByLine { store_code: string; subcategory_code: string }
+export interface SalesRow extends ByLine { window_name: string; sales_value_before_tax: Num; sales_qty: Num }
+export interface PlanRow extends ByLine { plan_month: string; plan_value_before_tax: Num; plan_qty: Num }
+/** One day of another model's forecast (fb_other_models), summed per subcategory for the month. */
+export interface OtherModelRow extends ByLine { model: string; forecast_value_before_tax: Num }
 export interface CopiedRows { lines: LineMonthRow[]; sales: SalesRow[]; plans: PlanRow[]; others: OtherModelRow[]; bands?: BandRows }
 
 const n = (v: Num) => (v == null || v === '' ? 0 : Number(v))
 
 /** The section's lines for one store, built exactly as the prototype's data was (team_leader_tables.py build). */
 export function linesFrom({ lines, sales, plans, others, bands }: CopiedRows, store: string): Line[] {
-  const at = <T extends { store_code: string; subcategory_name: string }>(rows: T[], sub: string) => rows.filter(r => r.store_code === store && r.subcategory_name === sub)
+  const at = <T extends ByLine>(rows: T[], code: string) => rows.filter(r => r.store_code === store && r.subcategory_code === code)
   return lines.filter(l => l.store_code === store).map(l => {
-    const sub = l.subcategory_name
-    const win = Object.fromEntries(at(sales, sub).map(s => [s.window_name, s]))
+    const sub = l.subcategory_name, code = l.subcategory_code
+    const win = Object.fromEntries(at(sales, code).map(s => [s.window_name, s]))
     const v = (w: string) => n(win[w]?.sales_value_before_tax), q = (w: string) => n(win[w]?.sales_qty)
-    const plan = at(plans, sub)[0]
-    const model = (m: string) => n(at(others, sub).find(o => o.model === m)?.forecast_value_before_tax)
+    const plan = at(plans, code)[0]
+    // another model's month: its days summed; a model with no row for the subcategory has no figure
+    const model = (m: string) => at(others, code).filter(o => o.model === m).reduce((t, o) => t + n(o.forecast_value_before_tax), 0)
     const row = l as unknown as Record<string, Num>
     const bases = BASIS_CODES.map((code, i): Base => {
       const own = row[`own_value_b${i + 1}`], adds = n(row[`adds_value_b${i + 1}`])
@@ -77,18 +80,16 @@ export function linesFrom({ lines, sales, plans, others, bands }: CopiedRows, st
     })
     const l28 = v('last_28_days'), l28q = q('last_28_days')
     return {
-      rowId: l.row_id, name: sub, category: l.category_name, path: [l.division_name, l.subdivision_name, l.category_name].filter(Boolean).join(' › '), code: l.material_group_code || undefined,
-      suggestedSection: l.suggested_section || undefined, suggestedSectionNote: l.suggested_section_note || undefined,
-      sectionRowIds: l.section_row_ids ? l.section_row_ids.split('\n').filter(Boolean) : undefined,
+      rowId: l.row_id, name: sub, category: l.category_name, path: [l.division_name, l.subdivision_name, l.category_name].filter(Boolean).join(' › '), code,
       fc: n(l.forecast_value_before_tax), fq: n(l.forecast_qty), growth: Math.round(n(l.growth_factor) * 100) / 100, step: Math.round(n(l.seasonal_factor) * 100) / 100,
-      fromRecent: n(l.from_recent_selling), lift: n(l.december_step_on_top), lyg: n(l.from_last_year), adj: n(l.adjustments), bases,
+      fromRecent: n(l.from_recent_selling), lift: n(l.seasonal_step_on_top), lyg: n(l.from_last_year), adj: n(l.adjustments), bases,
       // a Run without the two kinds counts all of its adjustment as rebalancing
       rebal: l.rebalanced_within_category == null || l.rebalanced_within_category === '' ? n(l.adjustments) : n(l.rebalanced_within_category), price: n(l.price_and_rounding),
-      l28, l28q, ly28: v('same_28_days_last_year'), ly28q: q('same_28_days_last_year'), ly: v('last_december'), lyq: q('last_december'),
+      l28, l28q, ly28: v('same_28_days_last_year'), ly28q: q('same_28_days_last_year'), ly: v('same_month_last_year'), lyq: q('same_month_last_year'),
       n91: v('last_91_days'), y91: v('same_91_days_last_year'),
       aop: n(plan?.plan_value_before_tax), aq: n(plan?.plan_qty), xgb: model('XGBoost'), lgbm: model('LightGBM'),
       r31: l28 * 31 / 28, r31q: l28q * 31 / 28,
-      ...(bands ? { bands: bandsOf(bands, store, sub, n(l.forecast_value_before_tax), n(l.forecast_qty)) } : {}),
+      ...(bands ? { bands: bandsOf(bands, store, code, n(l.forecast_value_before_tax), n(l.forecast_qty)) } : {}),
     }
   })
 }

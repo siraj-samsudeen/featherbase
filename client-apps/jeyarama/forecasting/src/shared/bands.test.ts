@@ -3,8 +3,8 @@ import fixture from '../../fixtures/team-leader-december.json'
 import { linesFrom, monthOfRun, type CopiedRows } from './model'
 import { GAP_POINTS, NO_BAND, bandsOf, coverOf, gapOf, gapTone, sells, daysLeft, isShort, notSelling, shortBands, stockAsOf, type Band, type BandRows, type StockBandRow } from './bands'
 
-const lines = linesFrom({ lines: fixture.forecast_line_month, sales: fixture.sales_reference, plans: fixture.annual_plan_line, others: fixture.other_model_line,
-  bands: { mix: fixture.price_band_mix, stock: fixture.stock_band, items: fixture.price_band_top_item } } as unknown as CopiedRows, 'LKS')
+const lines = linesFrom({ lines: fixture.forecast_line_month, sales: fixture.sales_reference, plans: fixture.annual_plan_line, others: fixture.other_model_day,
+  bands: { mix: fixture.price_band_mix, stock: fixture.stock_band, items: fixture.price_band_top_item } } as unknown as CopiedRows, '9001')
 const december = monthOfRun('2026-12-01')
 const band = (over: Partial<Band>): Band => ({ name: '₹500–600', order: 1, fc: 0, fq: 0, share: 0, stock: 0, q28: 0, v28: 0, shareSales: null, shareStock: null, sold: 0, n50: null, n70: null, items: [], ...over })
 
@@ -19,7 +19,7 @@ describe('By Price Band (#1419, 28-Nov-2026)', () => {
 
   it('splits pieces by the piece share and value by the value share', () => {
     const rows: BandRows = {
-      mix: [{ store_code: 'S', subcategory_name: 'X', price_band: 'cheap', price_band_order: 1, sales_value_before_tax: 100, sales_qty: 30, items_sold: 3, value_share: 0.25, qty_share: 0.6, items_to_50_pct: 1, items_to_70_pct: 2 }],
+      mix: [{ store_code: 'S', subcategory_code: 'X', price_band: 'cheap', price_band_order: 1, sales_value_before_tax: 100, sales_qty: 30, items_sold: 3, value_share: 0.25, qty_share: 0.6, items_to_50_pct: 1, items_to_70_pct: 2 }],
       stock: [], items: [],
     }
     expect(bandsOf(rows, 'S', 'X', 1000, 50)[0]).toMatchObject({ fc: 250, fq: 30 })
@@ -56,9 +56,9 @@ describe('By Price Band (#1419, 28-Nov-2026)', () => {
   })
 
   it('gives shares of sales and of stock in pieces, over the bands that sell only', () => {
-    const row = (price_band: string, sales_qty: number) => ({ store_code: 'S', subcategory_name: 'X', price_band, price_band_order: 1, sales_value_before_tax: sales_qty * 10, sales_qty,
+    const row = (price_band: string, sales_qty: number) => ({ store_code: 'S', subcategory_code: 'X', price_band, price_band_order: 1, sales_value_before_tax: sales_qty * 10, sales_qty,
       items_sold: 1, value_share: 0, qty_share: 0, items_to_50_pct: 1, items_to_70_pct: 1 })
-    const stock = (price_band: string, stock_qty: number) => ({ store_code: 'S', subcategory_name: 'X', price_band, price_band_order: 1, stock_qty, items_in_stock: 1, stock_as_of: '2026-11-27' })
+    const stock = (price_band: string, stock_qty: number) => ({ store_code: 'S', subcategory_code: 'X', price_band, price_band_order: 1, stock_qty, items_in_stock: 1, stock_as_of: '2026-11-27' })
     const bands = bandsOf({ mix: [row('cheap', 30), row('dear', 70), row(NO_BAND, 50)],
       stock: [stock('cheap', 10), stock('dear', 90), stock('Never sold (90 d)', 400), stock(NO_BAND, 5)], items: [] }, 'S', 'X', 1000, 100)
     const by = (name: string) => bands.find(b => b.name === name)!

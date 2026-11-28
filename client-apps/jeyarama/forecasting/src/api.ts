@@ -15,6 +15,11 @@ async function request<T>(path: string, method = 'GET', body?: unknown): Promise
   return result as T
 }
 
+/** One of the app's read operations (server.ts reads), as the signed-in person. */
+export async function readOp<T>(name: string, payload: Record<string, unknown> = {}): Promise<T> {
+  return (await request<{ result: T }>(`/api/app_reads/forecasting/${encodeURIComponent(name)}`, 'POST', { payload })).result
+}
+
 /** Every row of a Table, page by page. */
 export async function listAll<T>(table: string, fields: string[]): Promise<T[]> {
   const page = (start: number) => request<{ data: T[]; total: number }>(`/api/table/${encodeURIComponent(table)}?${new URLSearchParams({
