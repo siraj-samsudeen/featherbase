@@ -27,12 +27,17 @@ const packages = () => import('./runtime-packages')
 export async function rowRuleOf(meta: TableMeta): Promise<RowRule | null> {
   if (meta.kind === 'view' && meta.view_of) return rowRuleOf(await getMeta(meta.view_of))
   if (meta.kind === 'sub_table') return { kind: 'all' }
-  if (meta.row_rule != null) {
-    const stored = rowRuleSchema.safeParse(meta.row_rule)
+  return declaredRule(meta)
+}
+
+/** A Table's own rule (not a view's or a Sub-table's): the instance's, else its loaded app's. */
+async function declaredRule(table: { name: string; owner_app?: string | null; row_rule?: unknown }): Promise<RowRule | null> {
+  if (table.row_rule != null) {
+    const stored = rowRuleSchema.safeParse(table.row_rule)
     // a stored rule this version cannot read closes the Table, rather than opening it
     return stored.success ? stored.data : null
   }
-  return meta.owner_app ? (await packages()).appRowRule(meta.owner_app, meta.name) : null
+  return table.owner_app ? (await packages()).appRowRule(table.owner_app, table.name) : null
 }
 
 /** The rule as it applies to `user`: `all` for a role the rule reads every row for. */
@@ -179,14 +184,16 @@ export async function rowRuleReport(): Promise<RowRuleLine[]> {
   const everyone = new Set(['All', ...(await everyoneRoles(sql))])
   const tables = await sql`
     select d.name, d.owner_app, d.row_rule,
+      (d.owner_app is null or exists (select 1 from installed_app a
+        where a.name = d.owner_app and a.enabled and not a.activation_pending)) as available,
       coalesce((select array_agg(distinct p.role order by p.role) from permission p
         where p.ref_table = d.name and p.operation = 'read' and p.scope_mode = 'all' and p.parent_permission is null), '{}') as readers
     from table_def d where d.kind in ('table', 'settings') order by d.owner_app nulls first, d.name`
   const lines: RowRuleLine[] = []
   for (const row of tables) {
-    // a Table of an app that is not available now cannot be loaded; it is listed with no rule, as it is read
-    const meta = await getMeta(String(row.name)).catch(() => null)
-    const rule = meta ? await rowRuleOf(meta) : null
+    // a Table of an app that is turned off is listed with no rule, as it is read. The rule is taken from the Table's
+    // definition, not through getMeta: that asks the caller's page for its app's version, which the Admin has none of
+    const rule = row.available ? await declaredRule({ name: String(row.name), owner_app: row.owner_app as string | null, row_rule: row.row_rule }) : null
     const readers = row.readers as string[]
     lines.push({
       table: String(row.name), app: (row.owner_app as string | null) ?? null, rule,

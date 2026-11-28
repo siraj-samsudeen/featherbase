@@ -409,6 +409,15 @@ describe('#1459 an app declares its Tables\' rules', () => {
     expect(lines.find((l) => l.table === LOG.name)).toMatchObject({ rule: null, from: 'none' })
   })
 
+  // seen on a local Dash instance: the Admin's page carries no version of an upgraded app, and its Tables read "none"
+  test('the report gives an app\'s rule to a page that carries an older version of the app', async ({ admin }) => {
+    expect(await install(admin, { [NOTE.name]: { kind: 'own' }, [LOG.name]: { kind: 'all' } })).toEqual([])
+    await sql`update installed_app set migration_ledger = '[{"id": "one_step"}]' where name = ${APP}`
+    const answer = await admin.fetch('/api/row_rules', { headers: { 'X-Featherbase-App-Version': `${APP}@0.0.1` } })
+    const lines = (await answer.json() as { data: { table: string; rule: unknown; from: string }[] }).data
+    expect(lines.find((l) => l.table === NOTE.name)).toMatchObject({ rule: { kind: 'own' }, from: 'app' })
+  })
+
   test('the declaration names the app\'s own Tables and columns the rule can use', async ({ admin }) => {
     const problems = async (rowRules: Record<string, unknown>) => JSON.stringify(await install(admin, rowRules))
     expect(await problems({ 'Rr Elsewhere': { kind: 'all' } })).toContain('not one of the app')
