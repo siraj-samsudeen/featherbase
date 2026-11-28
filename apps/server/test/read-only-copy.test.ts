@@ -16,7 +16,7 @@ import { duckFamily } from '../src/sources/duckdb-driver'
 import { checkCopy, loadMoves } from '../src/read-only-copy'
 import { LOAD_JOB } from '../src/read-only-copy-loads'
 import { discoverPackages } from '../src/runtime-packages'
-import { expectRefused } from './fixtures'
+import { expectRefused, makeTable } from './fixtures'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
 import {
   APP, LINES, SALES, Warehouse, dailySales, forecastLines, install, jobCalls, load, loadState, readLines, removeFolders, requestAndRun, rows, upgrade, writeApp, type Line,
@@ -367,6 +367,19 @@ describe('after a new load', () => {
 describe('reading a copy', () => {
   const asApp = (client: Parameters<typeof install>[0], path: string, body: unknown) => client.fetch(path, { method: 'POST', body: JSON.stringify(body),
     headers: { 'content-type': 'application/json', 'X-Featherbase-App-Version': `${APP}@1.0.0` } })
+
+  // #1428: a validator reads the instance Tables the app reads, declared columns only.
+  test('a validator reads the declared columns of the app’s base Tables, and nothing else', async ({ admin }) => {
+    await makeTable(admin, { name: 'Shop Store', columns: ['code', 'manager', 'secret'] })
+    await admin.post('/api/save_row', { table: 'Shop Store', row: { code: 'LKS', manager: 'Omar', secret: 'not for apps' } })
+    await install(admin, await writeApp([lines()], '1.0.0', {
+      settings: [{ name: 'linked_tables', required: false }], baseTables: { read: { 'Shop Store': ['code', 'manager'] } } }))
+    await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: `${APP}.linked_tables`, value: JSON.stringify(['Shop Store']) } })
+    expect(await admin.post('/api/save_row', { table: `${APP}.note`, row: { row_id: 'n1', body: 'store:LKS' } })).toMatchObject({ row_id: 'n1' })
+    await expectRefused(admin.post('/api/save_row', { table: `${APP}.note`, row: { row_id: 'n2', body: 'store:ZZZ' } }), 417, 'No store ZZZ')
+    await expectRefused(admin.post('/api/save_row', { table: `${APP}.note`, row: { row_id: 'n3', body: 'peek:secret' } }), 417,
+      'The app has not declared column secret of Table Shop Store')
+  })
 
   test('the app’s own code reads its copy, the current load, and never writes it', async ({ admin }) => {
     await installed(admin, [lines()], [LKS, RVR])

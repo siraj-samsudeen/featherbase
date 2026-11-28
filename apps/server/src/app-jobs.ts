@@ -20,7 +20,8 @@ import { logAccess, logActivity } from './audit'
 import { queueEmail } from './email'
 import { recordUndeliveredNotice, systemManagerEmails } from './system-notice'
 import { runAsSystemActor } from './system-actor'
-import { callerDocuments } from './runtime-actions'
+import { callerDocuments, linkedTables } from './runtime-actions'
+import { baseTablesReader, type BaseTablesDeclaration } from './change-proposals'
 import { admittedToTable } from './mandatory-access'
 import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
@@ -126,22 +127,24 @@ interface BindRequest {
   handlers: Map<string, RuntimeJobHandler>
   setup: () => Promise<AppSetup>
   datasets: readonly DatasetDeclaration[]
+  /** #1428: the instance Tables and columns the app reads. */
+  baseTables?: BaseTablesDeclaration
 }
 
 /** The app's jobs as scheduler events: each handler wrapped so it runs as
  *  its own system actor, with only the capabilities its grants name. */
-export function bindAppJobs({ app, jobs, handlers, setup, datasets }: BindRequest) {
+export function bindAppJobs({ app, jobs, handlers, setup, datasets, baseTables }: BindRequest) {
   return jobs.map((job) => ({
     method: appJobMethod(app, job.name),
     title: declaredJobTitle(job),
     cadence: job.cadence,
     description: job.description,
-    handler: runAppJob(app, job, handlers.get(job.name)!, setup, datasets.filter((d) => job.datasets?.includes(d.name))),
+    handler: runAppJob(app, job, handlers.get(job.name)!, setup, datasets.filter((d) => job.datasets?.includes(d.name)), baseTables),
   }))
 }
 
 function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler, setup: () => Promise<AppSetup>,
-  datasets: readonly DatasetDeclaration[]): JobHandler {
+  datasets: readonly DatasetDeclaration[], baseTables?: BaseTablesDeclaration): JobHandler {
   const actor = appJobMethod(app, job.name)
   const grants = jobGrants(job)
   return async (payload, ctx) => {
@@ -251,6 +254,8 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
     }
     const newLoad = await newLoadFor(app, job.name, payload)
     const timeZone = (await getSystemSettings()).time_zone
+    // #1428: the instance Tables the app reads, declared columns only, read-only.
+    const base = baseTablesReader(app, baseTables, linkedTables(ready.settings))
     const context: RuntimeJobContext = Object.freeze({
       now: new Date().toISOString(), timeZone,
       documents: Object.freeze({
@@ -265,6 +270,7 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
       settings: ready.settings,
       secrets: ready.secrets,
       newLoad,
+      baseTables: base.helper,
       datasets: Object.freeze({
         active: (name: string, filters?: Parameters<typeof readable.active>[1]) => dataset(name, () => readable.active(name, filters)),
         live: (name: string, filters?: Parameters<typeof readable.live>[1]) => dataset(name, () => readable.live(name, filters)),
@@ -305,6 +311,7 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
       const run = async () => {
         try { await withSecretsKept(ready.kept, async () => { await handler(context) }) }
         finally {
+          await base.close()
           documentScopeOpen = false
           if (pendingOwners) {
             await pendingOwners.catch(() => {})

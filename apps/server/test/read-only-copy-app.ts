@@ -112,9 +112,17 @@ export const actions = {
   },
 }
 export const validators = {
-  // A note names a forecast line, which must be in the current load.
-  async 'copyproof.note'({ row, documents, reject }) {
+  // A note names a forecast line, which must be in the current load; or
+  // (#1428) a store, by its code, from the instance's stores.
+  async 'copyproof.note'({ row, documents, baseTables, reject }) {
     if (!row.body) return
+    if (row.body.startsWith('store:')) {
+      const code = row.body.slice(6)
+      const [store] = await baseTables.list('Shop Store', { fields: ['row_id', 'manager'], filters: [['code', '=', code]] })
+      if (!store) reject('No store ' + code)
+      return
+    }
+    if (row.body.startsWith('peek:')) { await baseTables.list('Shop Store', { fields: [row.body.slice(5)] }); return }
     const lines = await documents.list('copyproof.forecast_line_day', { filters: [['row_id', '=', row.body]] })
     if (!lines.length) reject('No forecast line ' + row.body + ' in the current run')
   },
@@ -133,7 +141,7 @@ export async function removeFolders(): Promise<void> {
 
 /** Writes `copyproof` at `version` declaring `datasets`; a later version
  *  carries one version step per earlier one, changing no Table. */
-export async function writeApp(datasets: Dataset[], version = '1.0.0'): Promise<string> {
+export async function writeApp(datasets: Dataset[], version = '1.0.0', extra: Record<string, unknown> = {}): Promise<string> {
   const dir = await mkdtemp(resolve('test/.copy-proof-'))
   folders.push(dir)
   const [, minor] = version.split('.').map(Number)
@@ -155,6 +163,7 @@ export async function writeApp(datasets: Dataset[], version = '1.0.0'): Promise<
       rewrite: { policy: { kind: 'table' }, authorization: { kind: 'generic' } },
     } },
     migrations,
+    ...extra,
   }))
   return dir
 }

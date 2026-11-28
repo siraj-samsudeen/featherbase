@@ -290,6 +290,8 @@ export interface RuntimeJobContext {
   readonly secrets: Readonly<Record<string, string>>
   /** The datasets the job declares, every row (a job has no places). */
   readonly datasets: RuntimeReadContext['datasets']
+  /** #1428: the instance Tables the app reads (`baseTables.read`), only the declared columns, read-only. */
+  readonly baseTables: BaseTablesHelper
   /** #1418: set when this run follows a new load of a read-only copy whose
    *  dataset names this job as `onNewLoad`; null on any other run. */
   readonly newLoad: NewLoad | null
