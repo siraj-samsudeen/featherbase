@@ -1,6 +1,6 @@
 import { createRoot } from 'react-dom/client'
 import { APP_THEME_ATTRIBUTE, THEME_CHANGE_EVENT, paintTheme } from '@featherbase/shop-floor/theme'
-import { listAll, listCopy, refusedAccess } from './api'
+import { listAll, listCopy, readOp, refusedAccess } from './api'
 import { datasetFrom, setCopiesOnly, setDataset, type ReachRow, type RunLineRow } from './dataset'
 import { hostedStart } from './startup'
 import './style.css'
@@ -38,8 +38,8 @@ async function start() {
     // The made-up data is for a local instance only: a hosted one with no Run loaded says so instead.
     if (!dataset && !LOCAL) {
       // a hosted instance on the read-only copies (#1418): open the pages built on them once an official Run is loaded
-      // through the scoped read (#1454), so the same rule that filters the rows decides who opens the app
-      const how = await hostedStart(() => listCopy<{ run_id: string }>('forecasting.forecast_run', ['run_id'], []))
+      // someone the org chart gives no place has no access (#1454); everyone else opens on the Runs loaded
+      const how = await hostedStart(async () => { await readOp('my_places'); return listCopy<{ run_id: string }>('forecasting.forecast_run', ['run_id'], []) })
       if (how === 'no-access') { root.render(<NoAccess />); return }
       if (how === 'no-run') { root.render(<NoRun />); return }
       setCopiesOnly(true)

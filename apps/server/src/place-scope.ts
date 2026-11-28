@@ -5,7 +5,7 @@
 // Tables by `scopedTables`. A place adds rows only when the Table maps every filter it names, and no place adds
 // none (fail closed, as a dataset read). A row the person wrote is always theirs. A System Manager is not narrowed,
 // as Data Scope does not narrow them.
-import type { PersonScope } from 'shared'
+import { placeGroups, rowWithinPlaces, type PersonScope } from 'shared'
 import { sql } from './db'
 import { readOnce } from './permission-reads'
 import { NoPersonScope, resolvePersonScope } from './person-scope'
@@ -34,21 +34,12 @@ export function placesOf(user: string): Promise<PersonScope> {
   })
 }
 
-/** The groups a row may match: one per place the Table can apply, each a list of column → allowed values. */
-function groups(mapping: Readonly<Record<string, string>>, places: PersonScope): { column: string; values: string[] }[][] {
-  return places.flatMap((place) => {
-    const keys = Object.keys(place.filters)
-    if (!keys.length || keys.some((key) => !Object.hasOwn(mapping, key))) return []
-    return [keys.map((key) => ({ column: mapping[key], values: [...place.filters[key]] }))]
-  })
-}
-
 /** The SQL condition a list adds for `user` on a place-scoped Table (`tbl` its relation), boxed (a fragment is a
  *  thenable: awaiting it would run it), or null when the Table is not scoped. Values compare as text, as a dataset read's. */
 export async function placeCondition(table: string, user: string, tbl: string): Promise<{ frag: ReturnType<typeof sql> } | null> {
   const mapping = await placeScopeOf(table)
   if (!mapping) return null
-  const any: ReturnType<typeof sql>[] = groups(mapping, await placesOf(user)).map((group) => group
+  const any: ReturnType<typeof sql>[] = placeGroups(mapping, await placesOf(user)).map((group) => group
     .map(({ column, values }): ReturnType<typeof sql> => sql`${sql(tbl)}.${sql(column)}::text in ${sql(values)}`)
     .reduce((all, condition) => sql`${all} and ${condition}`))
   const own: ReturnType<typeof sql> = sql`${sql(tbl)}.created_by = ${user}`
@@ -60,6 +51,5 @@ export async function rowInPlaces(table: string, user: string, row: Record<strin
   const mapping = await placeScopeOf(table)
   if (!mapping) return true
   if (row.created_by != null && row.created_by === user) return true
-  return groups(mapping, await placesOf(user)).some((group) =>
-    group.every(({ column, values }) => row[column] != null && values.includes(String(row[column]))))
+  return rowWithinPlaces(mapping, await placesOf(user), row)
 }

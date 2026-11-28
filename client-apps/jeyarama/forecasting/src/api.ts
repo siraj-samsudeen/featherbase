@@ -69,48 +69,13 @@ export async function listWhereAll<T>(table: string, fields: string[], filters: 
 /** Whether a read was refused because the person may not read Forecasting's data at all. */
 export const refusedAccess = (e: unknown) => (e as { status?: number } | null)?.status === 403 || (e instanceof Error && e.message.includes(NO_PLACES))
 
-/** The filters as the scoped reads take them, each column one value or a list, all of which must hold; null when a
- *  list is empty, so nothing can match. Only = and in. */
-function keyed(filters: Filter[]): Record<string, string[]> | null {
-  const out: Record<string, string[]> = {}
-  for (const [column, op, value] of filters) {
-    if (op !== '=' && op !== 'in') throw new Error(`The scoped reads filter by = or in, not ${op}`)
-    const values = (Array.isArray(value) ? value : [value]).map(String)
-    out[column] = out[column] ? out[column].filter(v => values.includes(v)) : values
-    if (!out[column].length) return null
-  }
-  return out
-}
-/** A read-only copy's rows that the signed-in person may see (their places on the org chart), matching `filters`. */
-export async function listCopy<T>(table: string, fields: string[], filters: Filter[]): Promise<T[]> {
-  const where = keyed(filters)
-  if (!where) return []
-  return (await readOp<{ at: string | null; rows: T[] }>('copy', { dataset: table.replace(/^forecasting\./, ''), filters: where, fields })).rows
-}
-/** A review Table's rows (answers, changes, questions, day explanations) that the person may see: those within their
- *  places on the org chart, and whatever their own grants on the Table allow, which for a member is the rows they wrote
- *  (the forecast team at head office reads them all). */
-export async function listReview<T>(table: string, fields: string[], filters: Filter[], orderBy = 'row_id asc',
-  /** Sub-table columns the scoped read brings with each row (a plain Table read does not). */
-  subTables: string[] = []): Promise<T[]> {
-  const where = keyed(filters)
-  if (!where) return []
-  const [column, direction] = orderBy.split(/\s+/)
-  // the person's own rows, always (their own-rows grant): a row whose line is merged from several subcategories, or a
-  // section's day, carries no code a section place can match, but its writer still sees it
-  const own = listWhere<Record<string, unknown>>(table, [...new Set([...fields, column])], filters, orderBy).catch(() => [] as Record<string, unknown>[])
-  let scoped: Record<string, unknown>[]
-  try {
-    scoped = await readOp<Record<string, unknown>[]>('review', { table, filters: where, fields: [...new Set([...fields, ...subTables, column])] })
-  } catch (e) {
-    if (!refusedAccess(e)) throw e
-    scoped = []
-  }
-  const byId = new Map<string, Record<string, unknown>>((await own).map(r => [String(r.row_id), r]))
-  for (const r of scoped) byId.set(String(r.row_id), r) // the scoped row, which carries any Sub-table asked for
-  const sign = direction === 'desc' ? -1 : 1
-  return [...byId.values()].sort((a, b) => (String(a[column] ?? '') < String(b[column] ?? '') ? -sign : String(a[column] ?? '') > String(b[column] ?? '') ? sign : 0)) as T[]
-}
+/** A read-only copy's rows that the person may see, matching `filters`: the platform keeps them to the person's
+ *  places on the org chart (#1454), on this ordinary Table read. */
+export const listCopy = <T>(table: string, fields: string[], filters: Filter[]): Promise<T[]> => listWhereAll<T>(table, fields, filters)
+/** A review Table's rows (answers, changes, questions, day explanations) the person may see: within their places,
+ *  and the rows they wrote (#1454). `_subTables` is kept for the callers; a Sub-table's rows are read by the parent. */
+export const listReview = <T>(table: string, fields: string[], filters: Filter[], orderBy = 'row_id asc', _subTables: string[] = []): Promise<T[]> =>
+  listWhere<T>(table, fields, filters, orderBy)
 
 /** One row, with its sub-table rows. */
 export async function getRow<T>(table: string, rowId: string): Promise<T> {

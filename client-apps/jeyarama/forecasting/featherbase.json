@@ -2491,96 +2491,8 @@
       "can_create": true
     },
     {
-      "table": "forecasting.day_explanation",
-      "role": "Forecasting Member",
-      "can_write": true,
-      "can_create": true
-    },
-    {
-      "table": "forecasting.day_explanation",
-      "role": "Forecasting Member",
-      "can_read": true,
-      "own_rows_only": true
-    },
-    {
-      "table": "forecasting.day_explanation",
-      "role": "Forecast Creator",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.day_explanation",
-      "role": "Forecast Reviewer",
-      "can_read": true
-    },
-    {
       "table": "forecasting.change_reason",
       "role": "Forecasting Member",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.forecast_change",
-      "role": "Forecasting Member",
-      "can_write": true,
-      "can_create": true
-    },
-    {
-      "table": "forecasting.forecast_change",
-      "role": "Forecasting Member",
-      "can_read": true,
-      "own_rows_only": true
-    },
-    {
-      "table": "forecasting.forecast_change",
-      "role": "Forecast Creator",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.forecast_change",
-      "role": "Forecast Reviewer",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.forecast_line_review",
-      "role": "Forecasting Member",
-      "can_write": true,
-      "can_create": true
-    },
-    {
-      "table": "forecasting.forecast_line_review",
-      "role": "Forecasting Member",
-      "can_read": true,
-      "own_rows_only": true
-    },
-    {
-      "table": "forecasting.forecast_line_review",
-      "role": "Forecast Creator",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.forecast_line_review",
-      "role": "Forecast Reviewer",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.forecast_question",
-      "role": "Forecasting Member",
-      "can_write": true,
-      "can_create": true
-    },
-    {
-      "table": "forecasting.forecast_question",
-      "role": "Forecasting Member",
-      "can_read": true,
-      "own_rows_only": true
-    },
-    {
-      "table": "forecasting.forecast_question",
-      "role": "Forecast Creator",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.forecast_question",
-      "role": "Forecast Reviewer",
       "can_read": true
     },
     {
@@ -2589,6 +2501,99 @@
       "can_read": true,
       "can_write": true,
       "can_create": true
+    },
+    {
+      "table": "forecasting.forecast_change",
+      "role": "Forecasting Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.forecast_line_review",
+      "role": "Forecasting Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.forecast_question",
+      "role": "Forecasting Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.day_explanation",
+      "role": "Forecasting Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.forecast_run",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.forecast_line_month",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.forecast_line_day",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.sales_reference",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.annual_plan_line",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.other_model_day",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.other_model_month",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.actuals_day",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.price_band_mix",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.stock_band",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.price_band_top_item",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.item_health",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.item_stock",
+      "role": "Forecasting Member",
+      "can_read": true
     }
   ],
   "roles": [
@@ -4177,19 +4182,7 @@
           "kind": "generic"
         }
       },
-      "copy": {
-        "policy": {
-          "kind": "person_scope",
-          "readRoles": [
-            "Forecasting Member"
-          ],
-          "actionRoles": []
-        },
-        "authorization": {
-          "kind": "generic"
-        }
-      },
-      "review": {
+      "my_places": {
         "policy": {
           "kind": "person_scope",
           "readRoles": [

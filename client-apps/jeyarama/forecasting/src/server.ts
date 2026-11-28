@@ -18,7 +18,7 @@ import { causesProblem, linesOf } from './causes'
 import { orgChart } from './orgChart'
 import { noticesFor } from './notices'
 import { livePerson, signedIn } from './signedIn'
-import { readCopy, readReview, type ScopedReadContext } from './scoped'
+import { myPlaces } from './scoped'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -464,10 +464,8 @@ export const reads = {
   /** Who the signed-in person is on the org chart (#1438): their Employee rows and Chief Executive jobs, so each
    *  manager's page opens for them; an administrator also gets every Chief Executive, to view RB Review as one. */
   signed_in: (ctx: { user: string; roles?: string[]; baseTables?: Context['baseTables'] }) => signedIn(ctx.baseTables, ctx.user, ctx.roles ?? [], todayIST()),
-  /** #1454: one read-only copy's rows, and the review Tables' rows, inside the reader's places on the org chart, for
-   *  Team Leaders and above (scoped.ts). */
-  copy: (ctx: ScopedReadContext) => readCopy(ctx),
-  review: (ctx: ScopedReadContext) => readReview(ctx),
+  /** #1454: whether the person has any place on the org chart (the platform narrows every Table by them, scoped.ts). */
+  my_places: (ctx: Parameters<typeof myPlaces>[0]) => myPlaces(ctx),
 }
 export const validators = { 'forecasting.number': prepareNumber, 'forecasting.decision': prepareDecision, 'forecasting.explanation': prepareExplanation,
   'forecasting.forecast_change': prepareChange, 'forecasting.forecast_line_review': prepareLineReview, 'forecasting.forecast_question': prepareQuestion, 'forecasting.day_explanation': prepareDayExplanation }

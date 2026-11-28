@@ -49,3 +49,20 @@ export interface ScopePlace {
   readonly confirmation?: Readonly<Record<string, Readonly<Record<string, ScopeConfirmation>>>>
 }
 export type PersonScope = readonly ScopePlace[]
+
+/** #1454: the groups a row of a place-scoped Table may match, one per place the Table can apply (it maps every filter
+ *  the place names; a place naming any other adds nothing, so the scope fails closed), each a list of column →
+ *  allowed values. `mapping` is the Table's scope filter → column. */
+export function placeGroups(mapping: Readonly<Record<string, string>>, places: PersonScope): { column: string; values: string[] }[][] {
+  return places.flatMap((place) => {
+    const keys = Object.keys(place.filters)
+    if (!keys.length || keys.some((key) => !Object.hasOwn(mapping, key))) return []
+    return [keys.map((key) => ({ column: mapping[key], values: [...place.filters[key]] }))]
+  })
+}
+
+/** #1454: whether a row is within the places, by the Table's mapping; values compare as text. */
+export function rowWithinPlaces(mapping: Readonly<Record<string, string>>, places: PersonScope, row: Readonly<Record<string, unknown>>): boolean {
+  return placeGroups(mapping, places).some((group) =>
+    group.every(({ column, values }) => row[column] != null && values.includes(String(row[column]))))
+}
