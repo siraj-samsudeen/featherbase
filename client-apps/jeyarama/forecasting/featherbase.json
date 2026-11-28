@@ -1888,6 +1888,264 @@
         {
           "kind": "addTable",
           "table": {
+            "name": "forecasting.forecast_line_day",
+            "label": "Forecast Line Day",
+            "module": "Forecasting",
+            "description": "Feather Forecast for one line on one day of the Run's month, before tax: what the day review compares each day's sales with. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+            "columns": [
+              {
+                "column_name": "run_id",
+                "label": "Run",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The Feather Forecast run this row belongs to: the official run for the month.",
+                "read_only": true
+              },
+              {
+                "column_name": "store_code",
+                "label": "Store Code",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The store, by its SAP code.",
+                "read_only": true
+              },
+              {
+                "column_name": "division_name",
+                "label": "Division",
+                "column_type": "Data",
+                "read_only": true
+              },
+              {
+                "column_name": "subdivision_name",
+                "label": "Subdivision",
+                "column_type": "Data",
+                "read_only": true
+              },
+              {
+                "column_name": "category_name",
+                "label": "Category",
+                "column_type": "Data",
+                "reqd": true,
+                "read_only": true
+              },
+              {
+                "column_name": "subcategory_name",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "read_only": true
+              },
+              {
+                "column_name": "forecast_date",
+                "label": "Day",
+                "column_type": "Date",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The day.",
+                "read_only": true
+              },
+              {
+                "column_name": "forecast_value_before_tax",
+                "label": "Feather Forecast",
+                "column_type": "Currency",
+                "in_list_view": true,
+                "description": "Feather Forecast for the day, before tax.",
+                "read_only": true
+              },
+              {
+                "column_name": "forecast_qty",
+                "label": "Feather Forecast Quantity",
+                "column_type": "Float",
+                "description": "Feather Forecast for the day, in pieces.",
+                "read_only": true
+              }
+            ],
+            "title_column": "subcategory_name"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.actuals_day",
+            "label": "Actuals Day",
+            "module": "Forecasting",
+            "description": "What one line sold on one day of the Run's month so far, before tax, to the warehouse's last complete day. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+            "columns": [
+              {
+                "column_name": "run_id",
+                "label": "Run",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The official Run whose month these sales are read against.",
+                "read_only": true
+              },
+              {
+                "column_name": "store_code",
+                "label": "Store Code",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The store, by its SAP code.",
+                "read_only": true
+              },
+              {
+                "column_name": "division_name",
+                "label": "Division",
+                "column_type": "Data",
+                "read_only": true
+              },
+              {
+                "column_name": "subdivision_name",
+                "label": "Subdivision",
+                "column_type": "Data",
+                "read_only": true
+              },
+              {
+                "column_name": "category_name",
+                "label": "Category",
+                "column_type": "Data",
+                "reqd": true,
+                "read_only": true
+              },
+              {
+                "column_name": "subcategory_name",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "read_only": true
+              },
+              {
+                "column_name": "sales_date",
+                "label": "Day",
+                "column_type": "Date",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The day.",
+                "read_only": true
+              },
+              {
+                "column_name": "sales_value_before_tax",
+                "label": "Sold",
+                "column_type": "Currency",
+                "in_list_view": true,
+                "description": "What it sold that day, before tax.",
+                "read_only": true
+              },
+              {
+                "column_name": "sales_qty",
+                "label": "Pieces Sold",
+                "column_type": "Float",
+                "description": "Pieces sold that day.",
+                "read_only": true
+              },
+              {
+                "column_name": "actuals_as_of_date",
+                "label": "Sales Up To",
+                "column_type": "Date",
+                "description": "The last complete day of sales the warehouse had.",
+                "read_only": true
+              }
+            ],
+            "title_column": "subcategory_name"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.day_explanation",
+            "label": "Day Explanation",
+            "module": "Forecasting",
+            "description": "Why a day went more than 10% off Feather Forecast, as the person who reviews it says: for a section's day, or one subcategory's day. A later explanation of the same day replaces the earlier one.",
+            "columns": [
+              {
+                "column_name": "run_id",
+                "label": "Run",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The official Run whose month the day is in."
+              },
+              {
+                "column_name": "store_code",
+                "label": "Store Code",
+                "column_type": "Data",
+                "reqd": true,
+                "description": "The store, by its SAP code."
+              },
+              {
+                "column_name": "store_name",
+                "label": "Store",
+                "column_type": "Data",
+                "description": "The store, by its short code."
+              },
+              {
+                "column_name": "section_name",
+                "label": "Section",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The section the day belongs to."
+              },
+              {
+                "column_name": "subcategory_name",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "in_list_view": true,
+                "description": "The subcategory, for one subcategory's day; blank for the section's day."
+              },
+              {
+                "column_name": "explained_date",
+                "label": "Day",
+                "column_type": "Date",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The day explained."
+              },
+              {
+                "column_name": "causes",
+                "label": "Causes",
+                "column_type": "Text",
+                "reqd": true,
+                "description": "One or more of: Target too high or badly phased; Forecast missed the demand; Stock not available; Weak store execution; Sales data incomplete. One a line."
+              },
+              {
+                "column_name": "tags",
+                "label": "Tags",
+                "column_type": "Text",
+                "description": "The detail under each cause, one a line, as Cause › Tag."
+              },
+              {
+                "column_name": "note",
+                "label": "What Happened",
+                "column_type": "Long Text",
+                "description": "What happened, and whether it carries into the coming days."
+              },
+              {
+                "column_name": "explained_by",
+                "label": "Explained By",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "Who explained it."
+              },
+              {
+                "column_name": "explained_by_role",
+                "label": "Role",
+                "column_type": "Data",
+                "description": "Their role when they explained it."
+              }
+            ],
+            "title_column": "section_name"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
             "name": "forecasting.change_reason",
             "label": "Change Reason",
             "module": "Forecasting",
@@ -4318,6 +4576,255 @@
       "title_column": "item_code"
     },
     {
+      "name": "forecasting.forecast_line_day",
+      "label": "Forecast Line Day",
+      "module": "Forecasting",
+      "description": "Feather Forecast for one line on one day of the Run's month, before tax: what the day review compares each day's sales with. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+      "columns": [
+        {
+          "column_name": "run_id",
+          "label": "Run",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The Feather Forecast run this row belongs to: the official run for the month.",
+          "read_only": true
+        },
+        {
+          "column_name": "store_code",
+          "label": "Store Code",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The store, by its SAP code.",
+          "read_only": true
+        },
+        {
+          "column_name": "division_name",
+          "label": "Division",
+          "column_type": "Data",
+          "read_only": true
+        },
+        {
+          "column_name": "subdivision_name",
+          "label": "Subdivision",
+          "column_type": "Data",
+          "read_only": true
+        },
+        {
+          "column_name": "category_name",
+          "label": "Category",
+          "column_type": "Data",
+          "reqd": true,
+          "read_only": true
+        },
+        {
+          "column_name": "subcategory_name",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "read_only": true
+        },
+        {
+          "column_name": "forecast_date",
+          "label": "Day",
+          "column_type": "Date",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The day.",
+          "read_only": true
+        },
+        {
+          "column_name": "forecast_value_before_tax",
+          "label": "Feather Forecast",
+          "column_type": "Currency",
+          "in_list_view": true,
+          "description": "Feather Forecast for the day, before tax.",
+          "read_only": true
+        },
+        {
+          "column_name": "forecast_qty",
+          "label": "Feather Forecast Quantity",
+          "column_type": "Float",
+          "description": "Feather Forecast for the day, in pieces.",
+          "read_only": true
+        }
+      ],
+      "title_column": "subcategory_name"
+    },
+    {
+      "name": "forecasting.actuals_day",
+      "label": "Actuals Day",
+      "module": "Forecasting",
+      "description": "What one line sold on one day of the Run's month so far, before tax, to the warehouse's last complete day. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+      "columns": [
+        {
+          "column_name": "run_id",
+          "label": "Run",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The official Run whose month these sales are read against.",
+          "read_only": true
+        },
+        {
+          "column_name": "store_code",
+          "label": "Store Code",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The store, by its SAP code.",
+          "read_only": true
+        },
+        {
+          "column_name": "division_name",
+          "label": "Division",
+          "column_type": "Data",
+          "read_only": true
+        },
+        {
+          "column_name": "subdivision_name",
+          "label": "Subdivision",
+          "column_type": "Data",
+          "read_only": true
+        },
+        {
+          "column_name": "category_name",
+          "label": "Category",
+          "column_type": "Data",
+          "reqd": true,
+          "read_only": true
+        },
+        {
+          "column_name": "subcategory_name",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "read_only": true
+        },
+        {
+          "column_name": "sales_date",
+          "label": "Day",
+          "column_type": "Date",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The day.",
+          "read_only": true
+        },
+        {
+          "column_name": "sales_value_before_tax",
+          "label": "Sold",
+          "column_type": "Currency",
+          "in_list_view": true,
+          "description": "What it sold that day, before tax.",
+          "read_only": true
+        },
+        {
+          "column_name": "sales_qty",
+          "label": "Pieces Sold",
+          "column_type": "Float",
+          "description": "Pieces sold that day.",
+          "read_only": true
+        },
+        {
+          "column_name": "actuals_as_of_date",
+          "label": "Sales Up To",
+          "column_type": "Date",
+          "description": "The last complete day of sales the warehouse had.",
+          "read_only": true
+        }
+      ],
+      "title_column": "subcategory_name"
+    },
+    {
+      "name": "forecasting.day_explanation",
+      "label": "Day Explanation",
+      "module": "Forecasting",
+      "description": "Why a day went more than 10% off Feather Forecast, as the person who reviews it says: for a section's day, or one subcategory's day. A later explanation of the same day replaces the earlier one.",
+      "columns": [
+        {
+          "column_name": "run_id",
+          "label": "Run",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The official Run whose month the day is in."
+        },
+        {
+          "column_name": "store_code",
+          "label": "Store Code",
+          "column_type": "Data",
+          "reqd": true,
+          "description": "The store, by its SAP code."
+        },
+        {
+          "column_name": "store_name",
+          "label": "Store",
+          "column_type": "Data",
+          "description": "The store, by its short code."
+        },
+        {
+          "column_name": "section_name",
+          "label": "Section",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The section the day belongs to."
+        },
+        {
+          "column_name": "subcategory_name",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "in_list_view": true,
+          "description": "The subcategory, for one subcategory's day; blank for the section's day."
+        },
+        {
+          "column_name": "explained_date",
+          "label": "Day",
+          "column_type": "Date",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The day explained."
+        },
+        {
+          "column_name": "causes",
+          "label": "Causes",
+          "column_type": "Text",
+          "reqd": true,
+          "description": "One or more of: Target too high or badly phased; Forecast missed the demand; Stock not available; Weak store execution; Sales data incomplete. One a line."
+        },
+        {
+          "column_name": "tags",
+          "label": "Tags",
+          "column_type": "Text",
+          "description": "The detail under each cause, one a line, as Cause › Tag."
+        },
+        {
+          "column_name": "note",
+          "label": "What Happened",
+          "column_type": "Long Text",
+          "description": "What happened, and whether it carries into the coming days."
+        },
+        {
+          "column_name": "explained_by",
+          "label": "Explained By",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "Who explained it."
+        },
+        {
+          "column_name": "explained_by_role",
+          "label": "Role",
+          "column_type": "Data",
+          "description": "Their role when they explained it."
+        }
+      ],
+      "title_column": "section_name"
+    },
+    {
       "name": "forecasting.change_reason",
       "label": "Change Reason",
       "module": "Forecasting",
@@ -4837,6 +5344,23 @@
       "table": "forecasting.item_other_stores",
       "role": "All",
       "can_read": true
+    },
+    {
+      "table": "forecasting.forecast_line_day",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.actuals_day",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.day_explanation",
+      "role": "All",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
     },
     {
       "table": "forecasting.change_reason",

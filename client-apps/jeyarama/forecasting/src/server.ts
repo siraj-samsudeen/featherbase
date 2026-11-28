@@ -13,6 +13,7 @@
 // through the members of forecasting.forecaster (holders of the Forecasting Member role).
 import { areaText, covers, personNamed } from './areas'
 import { person as madeUpPerson } from './madeUp'
+import { causesProblem, linesOf } from './causes'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -281,6 +282,24 @@ async function prepareLineReview(ctx: Context) {
   if (!row.forecast_change) ctx.reject('A proposed change names the change you sent on this line', { forecast_change: 'Required' })
 }
 
+/** Why a day went off (#1425): explained by whoever reviews that section, or that subcategory's section, in the Run;
+ *  the causes and tags from the agreed list. The section and store come from the Run, whatever the page sent. */
+async function prepareDayExplanation(ctx: Context) {
+  const { row, old } = ctx
+  if (!ctx.isNew && String(old?.explained_by) !== String(row.explained_by) && !isAdmin(ctx)) ctx.reject("An explanation is its writer's own")
+  const filters: [string, string, unknown][] = [['run_id', '=', row.run_id], ['store_code', '=', row.store_code],
+    ...(row.subcategory_name ? [['subcategory_name', '=', row.subcategory_name] as [string, string, unknown]] : [['section_name', '=', row.section_name] as [string, string, unknown]])]
+  const [line] = await ctx.documents.list!('forecasting.forecast_line_month', { fields: ['store_name', 'section_name', 'subcategory_name'], filters, limit_page_length: 1 })
+  if (!line) ctx.reject(`${String(row.subcategory_name || row.section_name || 'That section')} is not in Run ${String(row.run_id || '')}`)
+  row.section_name = line.section_name
+  row.store_name = line.store_name
+  const p = await reviewer(ctx, row.explained_by, line)
+  row.explained_by_role = p.role
+  if (!row.explained_date) ctx.reject('Say which day', { explained_date: 'Required' })
+  const problem = causesProblem(linesOf(row.causes), linesOf(row.tags))
+  if (problem) ctx.reject(problem, { causes: problem })
+}
+
 const ANSWERS = ['Forecast Creator', 'Forecast Reviewer']
 /** A question on a line: asked by its reviewer; answered (status, who, when) by the Forecast Creator or Reviewer
  *  roles, whose answer is a Comment on it; the asker only marks the answer seen. */
@@ -311,11 +330,11 @@ function copiedFromWarehouse(ctx: Context) {
   if (!ctx.isNew) ctx.reject('This is a copy of the official Run from the warehouse; it is read only. Ask for a change with a forecast change instead.')
   if (!isAdmin(ctx)) ctx.reject('Only the copy of the official Run adds rows here')
 }
-const COPIES = ['forecast_run', 'forecast_line_month', 'sales_reference', 'annual_plan_line', 'other_model_line', 'price_band_mix', 'stock_band', 'price_band_top_item', 'item_health', 'merchandise_people', 'item_other_stores']
+const COPIES = ['forecast_run', 'forecast_line_month', 'sales_reference', 'annual_plan_line', 'other_model_line', 'price_band_mix', 'stock_band', 'price_band_top_item', 'item_health', 'merchandise_people', 'item_other_stores', 'forecast_line_day', 'actuals_day']
 
 export const platformVersion = '2026-10'
 export const validators = { 'forecasting.number': prepareNumber, 'forecasting.decision': prepareDecision, 'forecasting.explanation': prepareExplanation,
-  'forecasting.forecast_change': prepareChange, 'forecasting.forecast_line_review': prepareLineReview, 'forecasting.forecast_question': prepareQuestion,
+  'forecasting.forecast_change': prepareChange, 'forecasting.forecast_line_review': prepareLineReview, 'forecasting.forecast_question': prepareQuestion, 'forecasting.day_explanation': prepareDayExplanation,
   ...Object.fromEntries(COPIES.map(t => [`forecasting.${t}`, copiedFromWarehouse])) }
 export const actions = {}
 export const jobs = {}
