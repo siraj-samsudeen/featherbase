@@ -23,7 +23,7 @@ Each load is written into its own partition of a load table in a platform schema
 *Rejected:* rename-swapping two tables (whatever depends on the old table follows it, and constraint names drift); delete-and-insert in one transaction (millions of row writes inside the swap, and bloat); one table with a load-id column that every reader filters (an app query that forgets the filter reads two runs at once).
 
 ### D2. The copy's Table comes from the declaration, not from migration steps
-Installing or upgrading an app makes its Read-only copies match its `datasets[]`: a new dataset gets its Table, an added column is added (empty until the next load fills it), a removed one is dropped, a changed type or key rebuilds the copy empty and loads it at once, a dataset no longer declared is removed. A copy holds nothing a person made, so nothing is lost that a load does not bring back.
+Installing or upgrading an app makes its Read-only copies match its `datasets[]`: a new dataset gets its Table, an added column is added (empty until the next load fills it), a removed one is dropped, a changed type or key rebuilds the copy empty until someone loads it (D5), a dataset no longer declared is removed. A copy holds nothing a person made, so nothing is lost that a load does not bring back.
 *Rejected:* declaring the copy as an app Table with migration steps. Every feed change would need a step, and the version ledger would guard data that is thrown away each run.
 
 ### D3. Types and keys

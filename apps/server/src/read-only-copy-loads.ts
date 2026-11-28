@@ -25,9 +25,22 @@ async function mayLoad(user: string, loadRoles: readonly string[]): Promise<bool
 }
 
 async function pendingLoad(target: string): Promise<string | null> {
-  const [pending] = await sql`select job_status from background_job where method = ${LOAD_JOB}
+  const [pending] = await sql`select row_id, job_status from background_job where method = ${LOAD_JOB}
     and job_status in ('queued', 'running') and payload->>'table' = ${target} order by job_status limit 1`
-  return pending ? String(pending.job_status) : null
+  if (!pending) return null
+  if (pending.job_status === 'running' && !(await loadHeld(target))) {
+    // A load the server stopped during (a deploy, a crash) holds no lock: it
+    // is over, so it ends as failed and the copy can be loaded again (review, 28-Nov).
+    await sql`update background_job set job_status = 'failed', error = 'interrupted: the server stopped during the load', updated_at = now()
+      where row_id = ${String(pending.row_id)} and job_status = 'running'`
+    return null
+  }
+  return String(pending.job_status)
+}
+
+/** Whether a load of `target` holds its lock now (checkCopy takes it for the whole load). */
+async function loadHeld(target: string): Promise<boolean> {
+  return sql.begin(async (tx) => !(await tx`select pg_try_advisory_xact_lock(hashtext('read-only-copy:' || ${target})) as free`)[0].free) as Promise<boolean>
 }
 
 /** Queue one load of `target`; a request while one waits or runs is that load. */
