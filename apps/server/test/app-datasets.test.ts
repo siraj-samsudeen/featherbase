@@ -911,7 +911,7 @@ describe('an outbound declaration', () => {
 
 describe('the shaping function', () => {
   const dataset = (columns: DatasetDeclaration['columns']): DatasetDeclaration =>
-    ({ name: 'probe', source: 's', query: 'select 1', columns, keys: [], filters: { store: columns[0].name } })
+    ({ name: 'probe', source: 's', query: 'select 1', columns, keys: [], filters: { store: columns[0].name }, store: 'json' })
 
   test('integer scope keys keep exact digits and reject numbers already outside the safe range', () => {
     const probe = dataset([{ name: 'account', type: 'integer' }])

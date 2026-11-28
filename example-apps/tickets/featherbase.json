@@ -52,7 +52,8 @@
       {"column_name": "kind", "label": "Type", "column_type": "Data", "default_value": "generic", "in_list_view": true},
       {"column_name": "ticket_state", "label": "State", "column_type": "Data", "default_value": "New", "in_list_view": true},
       {"column_name": "assigned_to", "label": "Assigned to", "column_type": "Data"},
-      {"column_name": "public_update", "label": "Public update", "column_type": "Text"}
+      {"column_name": "public_update", "label": "Public update", "column_type": "Text"},
+      {"column_name": "parent_ticket", "label": "Part of", "column_type": "Reference", "reference_table": "tickets.ticket"}
     ]},
     {"name": "tickets.request", "label": "Private request", "module": "Tickets", "columns": [
       {"column_name": "original", "label": "Original request", "column_type": "Text", "reqd": true},
@@ -152,7 +153,9 @@
     {"id": "sidebar_icon_rail", "fromVersion": "0.2.18", "toVersion": "0.2.19", "operations": []},
     {"id": "records_to_fix_words", "fromVersion": "0.2.19", "toVersion": "0.2.20", "operations": []},
     {"id": "live_person_names", "fromVersion": "0.2.20", "toVersion": "0.2.21", "operations": [{"kind": "relabelTable", "table": "tickets.member", "from": "Tickets member", "to": "Person in Tickets"}]},
-    {"id": "no_refused_person_reads", "fromVersion": "0.2.21", "toVersion": "0.2.22", "operations": []}
+    {"id": "no_refused_person_reads", "fromVersion": "0.2.21", "toVersion": "0.2.22", "operations": []},
+    {"id": "sub_tickets", "fromVersion": "0.2.22", "toVersion": "0.2.23", "operations": [{"kind": "addColumn", "table": "tickets.ticket", "column": {"column_name": "parent_ticket", "label": "Part of", "column_type": "Reference", "reference_table": "tickets.ticket"}}]},
+    {"id": "open_link", "fromVersion": "0.2.23", "toVersion": "0.2.24", "operations": []}
   ],
   "baseTables": {"read": {"Data Quality Row": ["ticket", "affected_table", "affected_row", "fixed_on", "note"]}},
   "permissions": [

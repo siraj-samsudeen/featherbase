@@ -19,6 +19,7 @@ import { ReportFeedbackFacts } from './report-feedback-facts'
 import { StatePill } from './ticket-state'
 import { RulesCard, type Rule } from './rules'
 import { CoveredRowsCard, coveredFact, type Covered } from './covered-rows'
+import { SubTicketsCard, TicketLink, subTicketsFact } from './sub-tickets'
 import { RecordLink } from '@featherbase/shop-floor'
 import { useOpenablePeople } from './record-link'
 
@@ -386,11 +387,14 @@ export function CaseFile({
   session,
   mutate,
   busy,
+  open,
 }: {
   detail: Detail
   session: Session
   mutate: Mutate
   busy: boolean
+  /** Opens another ticket in place (#1397: a parent or a sub-ticket). */
+  open: (id: string) => void
 }) {
   const [tab, setTab] = useState('Request'),
     [editing, setEditing] = useState(false)
@@ -433,6 +437,11 @@ export function CaseFile({
   // #1230: the requester and assignee link to their Person record for a viewer who may open it.
   const openPeople = useOpenablePeople([ticket.owner, ticket.assigned_to])
   const covered = detail.coveredRows as Covered | undefined
+  const link = (detail.details as RecordData | undefined)?.open as { label?: unknown; href?: unknown } | undefined
+  const openLink = link && typeof link.label === 'string' && typeof link.href === 'string' && link.href.startsWith('/') && !link.href.startsWith('//')
+    ? { label: link.label, href: link.href } : null
+  const parent = detail.parent as Ticket | undefined,
+    children = (detail.children as Ticket[] | undefined) ?? []
   useEffect(() => setPicked(current), [current, ticket.updated_at, ticket.row_id])
   // #1233: the assignee reads as a name; support opens the picker with Change.
   const [changing, setChanging] = useState(false)
@@ -517,6 +526,22 @@ export function CaseFile({
             <dt>Updated</dt>
             <dd>{time(ticket.updated_at)}</dd>
           </div>
+          {parent && (
+            <div>
+              <dt>Part Of</dt>
+              <dd><TicketLink ticket={parent} open={open} /></dd>
+            </div>
+          )}
+          {children.length > 0 && (
+            <div>
+              <dt>Sub-tickets</dt>
+              <dd>
+                <button type="button" className="link-button" onClick={() => { setTab('Request'); setFocus({ target: 'sub-tickets', at: Date.now() }) }}>
+                  {subTicketsFact(children)}
+                </button>
+              </dd>
+            </div>
+          )}
           {covered && covered.total > 0 && (
             <div>
               <dt>Records To Fix</dt>
@@ -553,6 +578,10 @@ export function CaseFile({
               Cancel
             </button>
           </div>
+        )}
+        {/* #1463: where this ticket's work is done, as its details give it (a path on this site; the server checks it). */}
+        {openLink && (
+          <a className="open-link" href={openLink.href} target="_blank" rel="noreferrer">{openLink.label} →</a>
         )}
         <TicketActions
           actions={actions}
@@ -631,7 +660,8 @@ export function CaseFile({
                         )
                       : Object.fromEntries(
                           Object.entries(structured ?? {}).filter(
-                            ([key]) => key !== 'original',
+                            // #1463: the open link is drawn as its button in the header, not as a detail.
+                            ([key]) => key !== 'original' && key !== 'open',
                           ),
                         )
                   }
@@ -725,6 +755,7 @@ export function CaseFile({
                 </p>
               </div>
             )}
+            <SubTicketsCard children={children} open={open} />
             <CoveredRowsCard covered={detail.coveredRows as Covered | undefined} setup={detail.coveredRowsSetup as string | undefined} />
             {/* Rules are added on configured types (such as a data quality issue), not on built-in requests. */}
             <RulesCard rules={rules} tables={configured ? (detail.ruleTables as string[] | undefined) : undefined} owners={people}

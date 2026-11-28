@@ -560,7 +560,7 @@ export function ListView({
           <Link
             to="/featherbase/admin/table/$table/new"
             params={{ table }}
-            search={{ prefill: newRowPrefill ? JSON.stringify(newRowPrefill) : undefined }}
+            search={{ prefill: newRowPrefill }}
             className={buttonClasses({ variant: 'primary' })}
             data-testid="list-empty-new"
           >
@@ -800,7 +800,7 @@ export function ListView({
             <Link
               to="/featherbase/admin/table/$table/new"
               params={{ table }}
-              search={{ prefill: newRowPrefill ? JSON.stringify(newRowPrefill) : undefined }}
+              search={{ prefill: newRowPrefill }}
               className={buttonClasses({ variant: 'primary' })}
               data-testid="list-new"
             >

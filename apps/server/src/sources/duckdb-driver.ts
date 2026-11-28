@@ -9,7 +9,9 @@ import type {
   SourceConfig,
   SourceDriver,
   SourceFilter,
+  SourceColumnShape,
   SourceRow,
+  SourceTypeFamily,
 } from './types'
 import { orderClause } from './order'
 
@@ -153,13 +155,13 @@ export async function run(cfg: SourceConfig, text: string, params: unknown[]): P
 
 /** One source observation, fetched in native chunks instead of materializing
  * the whole warehouse in JavaScript. Closing also handles an aborted caller. */
-export async function* stream(cfg: SourceConfig, text: string): AsyncGenerator<SourceRow[]> {
+export async function* stream(cfg: SourceConfig, text: string, values: unknown[] = []): AsyncGenerator<SourceRow[]> {
   let lease: Awaited<ReturnType<typeof instanceFor>> | undefined
   try {
     lease = await instanceFor(cfg)
     const conn = await lease.instance.connect()
     try {
-      const result = await conn.stream(text)
+      const result = await conn.stream(text, values as never[])
       try {
         const names = result.columnNames()
         const { JsonDuckDBValueConverter } = await loadDuckdb()
@@ -170,6 +172,37 @@ export async function* stream(cfg: SourceConfig, text: string): AsyncGenerator<S
     } finally { conn.closeSync() }
   } catch (err) { wrapError(cfg, err, lease?.secret) }
   finally { lease?.release() }
+}
+
+/** #1418: what a query returns, by name and type, reading no row. */
+export async function describe(cfg: SourceConfig, text: string, values: unknown[]): Promise<SourceColumnShape[]> {
+  let lease: Awaited<ReturnType<typeof instanceFor>> | undefined
+  try {
+    lease = await instanceFor(cfg)
+    const conn = await lease.instance.connect()
+    try {
+      const reader = await conn.runAndReadAll(`select * from (${text}) as described limit 0`, values as never[])
+      const types = reader.columnTypes().map(t => t.toString())
+      return reader.columnNames().map((name, i) => ({ name, type: types[i], family: duckFamily(types[i]) }))
+    } finally {
+      conn.closeSync()
+    }
+  } catch (err) {
+    return wrapError(cfg, err, lease?.secret)
+  } finally { lease?.release() }
+}
+
+/** #1418: a DuckDB type's family, as a declared column is compared with it. */
+export function duckFamily(dataType: string): SourceTypeFamily {
+  const t = dataType.toUpperCase()
+  if (t.startsWith('DECIMAL')) return 'decimal'
+  if (t === 'FLOAT' || t === 'DOUBLE' || t === 'REAL') return 'float'
+  if (mapDuckType(t) === 'Int') return 'integer'
+  if (t === 'VARCHAR') return 'text'
+  if (t === 'DATE') return 'date'
+  if (t.startsWith('TIMESTAMP')) return 'timestamp'
+  if (t === 'BOOLEAN') return 'boolean'
+  return 'other'
 }
 
 function quoteIdent(name: string): string {
@@ -259,6 +292,9 @@ export const duckdbDriver: SourceDriver = {
       { placeholder: () => '?', asText: (column) => `cast(${column} as varchar)`, asDay: (column) => `cast(cast(${column} as date) as varchar)` })
     return run(cfg, text, values)
   },
+
+  describe,
+  stream,
 
   async test(cfg) {
     await run(cfg, 'select 1', [])

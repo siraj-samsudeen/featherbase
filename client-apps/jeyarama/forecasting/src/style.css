@@ -8,7 +8,7 @@
 
 #root { height: auto; }
 * { box-sizing: border-box; }
-html, body { max-width: 100%; overflow-x: hidden; }
+html, body { max-width: 100%; overflow-x: clip; }
 body { margin: 0; background: var(--color-canvas); color: var(--color-ink); font: var(--text-control)/1.45 var(--font-sans); }
 @layer base { a { color: var(--color-action); } }
 a:focus-visible, button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }

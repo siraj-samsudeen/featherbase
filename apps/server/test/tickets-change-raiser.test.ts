@@ -299,8 +299,8 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
       await loadInstalledApps()
       const plan = await admin.post<any>('/api/preview_app_upgrade', { name: 'tickets', version })
       expect(plan).toMatchObject({ currentVersion: step.fromVersion, targetVersion: version, codeOnly: false, destructive: false,
-        // #1256: tickets.member is only relabelled.
-        tables: ['tickets.data_quality_rule', 'tickets.member'],
+        // #1256: tickets.member is only relabelled; #1397: tickets.ticket gains its parent column.
+        tables: ['tickets.data_quality_rule', 'tickets.member', 'tickets.ticket'],
         permissions: [{ grant: { table: RULES, role: 'All' } }] })
       await admin.post('/api/upgrade_app', { name: 'tickets', version, planId: plan.planId })
       await admin.post('/api/activate_app_upgrade', { name: 'tickets', version })

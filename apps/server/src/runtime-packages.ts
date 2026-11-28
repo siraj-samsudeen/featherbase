@@ -13,13 +13,15 @@ import { tableAccessPolicy } from './mandatory-access'
 import { AppError, errorMessage } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { WHY_DEFAULT_LABEL, WHY_LABEL, APP_ACCENTS, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
-import { callerDocuments, callerRoles, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
-import { approvalTypesDeclaration, baseTablesDeclaration } from './change-proposals'
+import { callerDocuments, callerRoles, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations, linkedTables } from './runtime-actions'
+import { approvalTypesDeclaration, baseTablesDeclaration, baseTablesReader } from './change-proposals'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
 import { roleDefaultsDeclaration, validateRoleDefaults } from './app-role-bindings'
 import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './app-datasets'
+import { scopedTablesDeclaration, validateScopedTables } from './app-scoped-tables'
+import { appCopyTables, forgetAppCopies, registerAppCopies, syncAppCopies, validateAppCopies } from './read-only-copy'
 import { glossaryDeclaration, syncAppGlossary, validateGlossary } from './glossary'
 import { sql, withTransaction, usingTransaction } from './db'
 import { logActivity } from './audit'
@@ -37,6 +39,8 @@ interface PackageHookContext {
   readonly roles: readonly string[]
   isNew: boolean
   documents: Pick<import('shared').RuntimeActionContext['documents'], 'get' | 'list' | 'members'>
+  /** #1428: the instance Tables the app reads (`baseTables.read`), only the declared columns, read-only. */
+  readonly baseTables: import('shared').BaseTablesHelper
   reject(message: string, fields?: Record<string, string>): never
 }
 type Validator = (context: PackageHookContext) => void | Promise<void>
@@ -184,6 +188,10 @@ const manifestSchema = z.object({
   roleDefaults: roleDefaultsDeclaration.optional(),
   // #625 (E3): the cached datasets the app reads, built by the platform.
   datasets: datasetsDeclaration.optional(),
+  // #1454: the app's own Tables its person_scope reads list within the reader's places.
+  scopedTables: scopedTablesDeclaration.optional(),
+  // #1453: the app's roles everyone the org chart gives a place holds, once the instance turns it on.
+  orgChartRoles: z.array(z.string().min(1)).refine((roles) => new Set(roles).size === roles.length, 'Each org chart role is named once').optional(),
   // #642 (E4): the outside sites the app's own pages may frame.
   frameOrigins: z.array(frameOrigin).optional(),
   // #642 (E8): the app's controls in the shared top bar.
@@ -302,6 +310,7 @@ function selectPackage(pkg: RuntimePackage) {
   registerApp(pkg.app)
   packages.set(pkg.name, pkg)
   registerAppDatasets(pkg.name, pkg.manifest.datasets)
+  registerAppCopies(pkg.name, pkg.manifest.datasets)
 }
 
 /** #703: whether an installed app still is the folder on the app path; if only
@@ -382,6 +391,22 @@ async function assertOnlyScopeProvider(pkg: RuntimePackage) {
     `Only one enabled app may provide people's scope; ${others.map(r => String(r.name)).join(', ')} already does`)
 }
 
+/** #1454: whether an app's files are loaded and serving now (its Tables' place scope can be read). */
+export function isAppLoaded(app: string): boolean {
+  return packages.has(app)
+}
+
+/** #1454: how an active app's Table is narrowed by places (scope filter → column), or null. A read-only copy maps
+ *  its dataset's filters (an unscoped one is read whole); one of the app's own Tables its `scopedTables` entry. */
+export function tablePlaceScope(table: string): Readonly<Record<string, string>> | null {
+  const app = table.includes('.') ? packages.get(table.slice(0, table.indexOf('.'))) : undefined
+  if (!app) return null
+  const name = table.slice(table.indexOf('.') + 1)
+  const copy = app.manifest.datasets?.find((d) => d.name === name && d.store !== 'json')
+  if (copy) return copy.unscoped || !Object.keys(copy.filters).length ? null : copy.filters
+  return app.manifest.scopedTables?.find((t) => t.table === table)?.filters ?? null
+}
+
 // #559: the instance's one scope provider: the enabled, active app whose
 // installed manifest declares it, running its exact installed artifact. None,
 // or more than one, is no provider at all.
@@ -460,6 +485,8 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   let providers = new Map<string, AppScopeProvider>()
   let jobHandlers = new Map<string, RuntimeJobHandler>()
   const provider = manifest.scopeProvider
+  // #1453: the app that says who has a place cannot also take a role from having one (it would keep itself in)
+  if (manifest.orgChartRoles?.length && provider) throw new Error("The app that provides people's scope cannot declare orgChartRoles")
   if (provider) {
     if (!manifest.server) throw new Error('A scope provider requires a server module')
     // An owned Table the provider reads must carry the mark; another
@@ -554,6 +581,11 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
         if (!declaredSecrets.has(secret)) throw new Error(`The ${kind} ${operation} needs the secret ${secret}, which the app does not declare in its secrets`)
   for (const operation of allOperations) validateOperationFacts(operation, manifest.tables)
   validateAppJobs(manifest.name, manifest, declaredSecrets)
+  validateAppCopies(manifest.name, manifest)
+  validateScopedTables(manifest.name, manifest.tables, manifest.scopedTables)
+  for (const role of manifest.orgChartRoles ?? [])
+    if (!(manifest.roles ?? []).includes(role) || PLATFORM_ROLES.includes(role))
+      throw new Error(`orgChartRoles names ${role}, which is not one of the app's own roles`)
   for (const declaration of [manifest.actions, manifest.reads]) {
     if (!declaration) continue
     if (!manifest.server) throw new Error('Declared operations require a server module')
@@ -578,15 +610,19 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
       if (!names.has(table) || typeof validator !== 'function')
         throw new Error('Validators must target owned Tables')
       doc_events[table] = { before_validate: (ctx) => usingTransaction(ctx.tx, async () => {
-        const access = callerDocuments(manifest.name, [...names], ctx.user)
+        // #1418: a validator reads the app's read-only copies too (the current load), never writes them.
+        const access = callerDocuments(manifest.name, [...names], ctx.user, appCopyTables(manifest.name))
+        // #1428: the same base Table reads as the app's reads and actions, declared columns only.
+        const base = baseTablesReader(manifest.name, manifest.baseTables, linkedTables((await loadAppSetup(manifest.name, manifest)).settings))
         try {
           await (validator as Validator)({
+            baseTables: base.helper,
             row: ctx.row, old: ctx.old, user: ctx.user, roles: await callerRoles(ctx.user), isNew: ctx.isNew,
             now: new Date().toISOString(), timeZone: (await getSystemSettings()).time_zone,
             documents: Object.freeze({ get: access.documents.get, list: access.documents.list, members: access.documents.members }),
             reject(message, fields) { throw new AppError('ValidationError', message, fields) },
           })
-        } finally { await access.close() }
+        } finally { await access.close(); await base.close() }
       }) }
     }
     // Destructive operations do not run save validation. Opt in separately
@@ -609,7 +645,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   const setup = () => loadAppSetup(manifest.name, manifest)
   const app: AppManifest = { name: manifest.name, tables: manifest.tables,
     roles: manifest.roles, permissions: manifest.permissions, doc_events, runtime_package: true,
-    scheduler_events: bindAppJobs({ app: manifest.name, jobs: manifest.jobs ?? [], handlers: jobHandlers, setup, datasets: manifest.datasets ?? [] }),
+    scheduler_events: bindAppJobs({ app: manifest.name, jobs: manifest.jobs ?? [], handlers: jobHandlers, setup, datasets: manifest.datasets ?? [], baseTables: manifest.baseTables }),
     runtime_identity: { version: pkg.version, digest, ledger: migrationLedger(manifest.migrations) },
     runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
   return { name: manifest.name, title: manifest.title,
@@ -702,6 +738,7 @@ export function discoverPackages(paths: string[]) {
   return appOperation(async () => {
     forgetRuntimePackages()
     forgetAppDatasets()
+    forgetAppCopies()
     packages.clear()
     artifacts.clear()
     packageFailures.length = 0
@@ -850,6 +887,11 @@ async function upgradePlan(name: string, version: string, preview = true) {
     migrations: pending.map(m => ({ id: m.id, checksum: checksum(m), operations: m.operations })),
     tables: [...new Set(operations.flatMap(op => op.kind === 'renameTable' ? [op.from, op.to] : [typeof op.table === 'string' ? op.table : op.table.name]))],
     roles: newRoles.map(role => ({ create: role })),
+    // #1453: roles the org chart may give: listed so an upgrade never adds one unseen (each still needs its rule)
+    orgChartRoles: {
+      added: (target.manifest.orgChartRoles ?? []).filter(role => !(prior.manifest.orgChartRoles ?? []).includes(role)),
+      removed: (prior.manifest.orgChartRoles ?? []).filter(role => !(target.manifest.orgChartRoles ?? []).includes(role)),
+    },
     permissions: [...withdrawn.map((p) => ({ withdraw: p })), ...granted.map((p) => ({ grant: p }))], jobs, indexes: [], destructive,
     dataEffects: destructive ? 'Destructive: the steps under losses remove data; every other row is unchanged' : 'Existing rows unchanged; added columns are NULL unless backfilled',
     codeOnly: operations.length === 0 }
@@ -934,6 +976,8 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
             await logActivity(actor, `app_grant_withdrawn ${name}@${version}: ${p.role} on ${p.table} (${gone.length} contributions)`.slice(0, 140))
         }
         const losses = await applyMigrations(prepared.pending, name, actor, { ownsClient: typeof prepared.target.manifest.client === 'string', featherbase: Object.keys(prepared.target.manifest.records ?? {}) })
+        // #1418: its read-only copies follow its declaration, before its grants, so a grant may name one.
+        await syncAppCopies(name, prepared.target.manifest.datasets)
         // Counts only, never values: what each destructive step removed.
         for (const loss of losses)
           await logActivity(actor, `app_data_removed ${name}@${version}: ${describeLoss(loss)}`.slice(0, 140))
@@ -945,6 +989,9 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
           for (const p of prepared.granted)
             await logActivity(actor, `app_grant_added ${name}@${version}: ${grantWords(p)}`.slice(0, 140))
         }
+        // #1453: roles this version first declares the org chart gives are turned on (ships on), as its preview said
+        if (prepared.plan.orgChartRoles.added.length)
+          await (await import('./org-chart-roles')).seedOrgChartRules(name, prepared.plan.orgChartRoles.added, actor, version)
         await sql`update installed_app set package_version = ${version}, artifact_digest = ${prepared.target.digest},
           manifest = ${sql.json(prepared.target.app.runtime_manifest as never)},
           migration_ledger = ${sql.json(prepared.ledger)}, activation_pending = true,
@@ -1042,6 +1089,11 @@ export async function installedAppDatasets(name: string) {
 }
 
 /** A discovered app package's title, for an address that opens it (#488). */
+/** #1418: the selected package's declared datasets, parsed. */
+export function selectedDatasets(name: string) {
+  return packages.get(name)?.manifest.datasets ?? []
+}
+
 export function packageTitle(name: string): string | undefined {
   return packages.get(name)?.title
 }

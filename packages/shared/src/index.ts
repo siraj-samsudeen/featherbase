@@ -18,7 +18,7 @@ export { MAX_RELATED_DEPTH, parseFilters, RELATED_OPS, type ListFilter } from '.
 export type { WebFormColumn, WebFormConfig } from './webform'
 export { INSTANCE_SETTINGS_TABLES, INSTANCE_SETTINGS_FILE, MANAGED_FIELD_HINT, SETUP_MAX_PEOPLE } from './instance-settings'
 export { SIGN_IN_METHOD_KINDS, NEW_PERSON_RULES, SYSTEM_ACTOR_LABELS, signInActor, type SignInMethodKind, type NewPersonRule } from './sign-in'
-export type { ApprovalMode, ApproverRequest, BaseTablesHelper, ChangeProposal, ChangeProposalsHelper, ChangeProposalsReader, ChangeProposalState, DecisionApproval, DecisionNote, ProposalFilter, ProposalRequest, ReviewConfirmation, ReviewUndo, RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler, ActionRow, ActionListArgs, DatasetAnswer, DatasetFilters, DatasetRow, AppJobGrant, AppJobPerson, RuntimeJobContext, RuntimeJobHandler } from './runtime-actions'
+export type { ApprovalMode, ApproverRequest, BaseTablesHelper, ChangeProposal, ChangeProposalsHelper, ChangeProposalsReader, ChangeProposalState, DecisionApproval, DecisionNote, ProposalFilter, ProposalRequest, ReviewConfirmation, ReviewUndo, RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler, ActionRow, ActionListArgs, DatasetAnswer, DatasetFilters, DatasetRow, LoadMove, NewLoad, AppJobGrant, AppJobPerson, RuntimeJobContext, RuntimeJobHandler } from './runtime-actions'
 export { APP_JOB_GRANTS } from './runtime-actions'
 export type { AppAccessPolicy, AppFactDeclaration, AppScopeSource, AppProductAuthorization, AppOperationDeclaration, AppScopeFacts, AppScopeResolutionContext, ResolvedAppScope, AppScopeResolver, AppAuthorizationContext, AppProductAuthorizationContext, AppProductAuthorizer, RuntimeActionAuthorization, AppScopeProvider, AppScopeProviderContext } from './app-access'
 export {
@@ -57,7 +57,7 @@ export {
   type TableMatchQuality,
 } from './import'
 export { REALTIME_MAX_FRAME_BYTES, realtimeFrames } from './realtime'
-export { personScopeSchema, scopePlaceSchema, SCOPE_CONFIRMATIONS, type ScopePlace, type PersonScope, type ScopeConfirmation } from './person-scope'
+export { personScopeSchema, scopePlaceSchema, SCOPE_CONFIRMATIONS, placeGroups, rowWithinPlaces, type ScopePlace, type PersonScope, type ScopeConfirmation } from './person-scope'
 export { APP_ACCENTS, DEFAULT_APP_ACCENT, type AppAccent } from './app-accents'
 export { WHY_DEFAULT_LABEL, WHY_LABEL, WHY_LIMITS, whyAnswerSchema, whyBoxSchema, type WhyAnswer, type WhyBox, type WhyExplained, type WhyOffer } from './why'
 export { RECORD_FACTS_LIMITS, RECORD_FACT_TONES, actionDoneSchema, actionPreviewSchema, recordActionSchema, recordFactSchema, recordFactsSchema, recordGroupSchema, recordLineSchema, sentencePartSchema, type ActionDone, type ActionPreview, type ActionPreviewAnswer, type RecordAction, type RecordFact, type RecordFacts, type RecordFactsAnswer, type RecordGroup, type RecordLine } from './record-facts'

@@ -7,8 +7,8 @@ import { DATASET } from './dataset'
 export type Code = 'B1' | 'B2' | 'B3' | 'B4' | 'B5' | 'B6'
 export const BASES: { code: Code; name: string }[] = [
   { code: 'B6', name: 'Seasonal step: last 28 days × month-to-month index from past years' },
-  { code: 'B1', name: 'Same date last year, × growth' },
-  { code: 'B2', name: 'Same festival position last year, × growth' },
+  { code: 'B1', name: 'Same date last year' },
+  { code: 'B2', name: 'Same festival position last year' },
   { code: 'B3', name: "Last 28 days' run rate" },
   { code: 'B4', name: 'Last four same weekdays' },
   { code: 'B5', name: 'Same date last month' },
