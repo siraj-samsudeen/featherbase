@@ -156,19 +156,67 @@ async function linkByEmail(actor: string): Promise<number> {
 }
 
 /** One candidate as the reviewer reads it: name (id) · code · job at place. */
-export function candidateLine(name: string, person: string, s: Standing | undefined): string {
+/** Who a person is to the organisation, as a reviewer reads it: name · code · job at place. */
+export function personWords(name: string, s: Standing | undefined): string {
   const jobs = (s?.jobs ?? []).map((j) => [j.job, j.site?.name].filter(Boolean).join(' at ')).join('; ')
-  return [`- ${name} (${person})`, s?.code, jobs].filter(Boolean).join(' · ')
+  return [name, s?.code, jobs].filter(Boolean).join(' · ')
 }
 
-/** People whose name the username reads as, for the reviewer to choose from. */
-async function candidates(username: string): Promise<string[]> {
-  const key = username.replace(/^ea_/i, '').toLowerCase().replace(/[^a-z]/g, '')
+/** One candidate as the reviewer reads it in a ticket: name (id) · code · job at place. */
+export function candidateLine(name: string, person: string, s: Standing | undefined): string {
+  return `- ${personWords(`${name} (${person})`, s)}`
+}
+
+/** A person whose name a username reads as, with who they are to the organisation. */
+export interface SuggestedPerson { person: string; name: string; standing: Standing | undefined }
+
+/** The key a username is matched on: its letters, without the `ea_` prefix. */
+const nameKey = (username: string) => username.replace(/^ea_/i, '').toLowerCase().replace(/[^a-z]/g, '')
+
+/** People whose name each username reads as, for the reviewer to choose from. */
+export async function suggestedPeople(usernames: string[]): Promise<Map<string, SuggestedPerson[]>> {
+  const keys = [...new Set(usernames.map(nameKey))]
   // Three letters at least: a shorter key reads as everyone.
-  const rows = await sql`select row_id, full_name from person where replaced_by is null and full_name is not null
-    and length(${key}) >= 3 and regexp_replace(lower(full_name), '[^a-z]', '', 'g') like ${key + '%'} order by full_name, row_id limit 6`
+  const rows = keys.length ? await sql`select k.key, p.row_id, p.full_name from unnest(${keys}::text[]) as k(key)
+    cross join lateral (select row_id, full_name from person where replaced_by is null and full_name is not null
+      and length(k.key) >= 3 and regexp_replace(lower(full_name), '[^a-z]', '', 'g') like k.key || '%'
+      order by lower(full_name) collate "C", row_id limit 6) p order by k.key, lower(p.full_name) collate "C", p.row_id` : []
   const standing = await describePeople(rows.map((r) => String(r.row_id)))
-  return rows.map((r) => candidateLine(String(r.full_name), String(r.row_id), standing.get(String(r.row_id))))
+  const byKey = new Map<string, SuggestedPerson[]>()
+  for (const r of rows)
+    byKey.set(String(r.key), [...(byKey.get(String(r.key)) ?? []),
+      { person: String(r.row_id), name: String(r.full_name), standing: standing.get(String(r.row_id)) }])
+  return new Map(usernames.map((u) => [u, byKey.get(nameKey(u)) ?? []]))
+}
+
+/** #1396: one account as the Link to people screen shows it. */
+export interface LinkingAccount {
+  row_id: string; username: string; full_name: string | null; email: string | null
+  account_status: string; service_account: boolean; review_ticket: string | null; updated_at: string
+  person: { id: string; name: string } | null
+  /** Only for an account a person uses and that has no Person yet. */
+  suggestions: { person: string; name: string; label: string }[]
+}
+
+/** Every account, with its person and, for one still to link, the people its username reads as. */
+export async function linkingAccounts(): Promise<LinkingAccount[]> {
+  const rows = await sql`select a.row_id, a.username, a.full_name, a.email, a.account_status, a.service_account, a.review_ticket,
+    a.updated_at, a.person, p.full_name as person_name
+    from motherduck_account a left join person p on p.row_id = a.person order by lower(a.username), a.row_id`
+  const open = rows.filter((r) => !r.person && !r.service_account).map((r) => String(r.username))
+  const suggested = await suggestedPeople(open)
+  return rows.map((r) => ({
+    row_id: String(r.row_id), username: String(r.username), full_name: r.full_name ?? null, email: r.email ?? null,
+    account_status: String(r.account_status), service_account: Boolean(r.service_account),
+    review_ticket: r.review_ticket ?? null, updated_at: iso(r.updated_at),
+    person: r.person ? { id: String(r.person), name: String(r.person_name ?? r.person) } : null,
+    suggestions: (suggested.get(String(r.username)) ?? [])
+      .map((s) => ({ person: s.person, name: s.name, label: personWords(s.name, s.standing) })),
+  }))
+}
+
+async function candidates(username: string): Promise<string[]> {
+  return ((await suggestedPeople([username])).get(username) ?? []).map((p) => candidateLine(p.name, p.person, p.standing))
 }
 
 async function ticketAction<T>(actor: string, operation: string, payload: Record<string, unknown>, key: string): Promise<T> {

@@ -7,7 +7,7 @@
 // each one a narrow platform operation, and an undeclared one is refused and
 // recorded in the Access Log.
 import { z } from 'zod'
-import { APP_JOB_GRANTS, type AppJobGrant, type AppJobPerson, type RuntimeJobContext, type RuntimeJobHandler, type PersonScope } from 'shared'
+import { APP_JOB_GRANTS, type ActionRow, type AppJobGrant, type AppJobPerson, type NewLoad, type RuntimeJobContext, type RuntimeJobHandler, type PersonScope } from 'shared'
 import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
@@ -20,11 +20,16 @@ import { logAccess, logActivity } from './audit'
 import { queueEmail } from './email'
 import { recordUndeliveredNotice, systemManagerEmails } from './system-notice'
 import { runAsSystemActor } from './system-actor'
-import { callerDocuments } from './runtime-actions'
+import { callerDocuments, linkedTables } from './runtime-actions'
+import { baseTablesReader, type BaseTablesDeclaration } from './change-proposals'
 import { admittedToTable } from './mandatory-access'
 import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
 import { getSystemSettings } from './settings'
+import { randomBytes } from 'node:crypto'
+import { publishUserEvent } from './realtime'
+import { send as sendToPerson } from './runtime-mail'
+import { NEW_LOAD_PAYLOAD, copyTarget, declaredCopy, loadMoves } from './read-only-copy'
 
 const distinct = (values: string[]) => new Set(values).size === values.length
 const identifier = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
@@ -42,6 +47,9 @@ const jobSchema = z.object({
   identifiers: z.array(z.string().regex(IDENTIFIER_SYSTEM_KEY)).refine(distinct).optional(),
   // The app's own datasets the job reads.
   datasets: z.array(identifier).refine(distinct).optional(),
+  // #1428 (Siraj, 28-Nov-2026): the app's own Tables (or read-only copies)
+  // the job reads every row of, past their row privacy, read-only.
+  readsAllRows: z.array(z.string().min(1)).refine(distinct, 'A job names each Table it reads once').optional(),
   documents: z.object({ owner_table: z.string(), tables: z.array(z.string()).min(1).refine(distinct) }).strict().optional(),
   // The app's optional secrets the job uses (#666).
   needs: z.array(secretName).refine(distinct).optional(),
@@ -76,7 +84,14 @@ export function validateAppJobs(app: string, manifest: {
   if (!jobs.length) return
   if (!manifest.server) throw new Error('Declared jobs require a server module')
   const datasets = new Set((manifest.datasets ?? []).map((d) => d.name))
+  // A job reads every row only of its own app's stored Tables and read-only copies.
+  const ownRows = new Set([
+    ...(manifest.tables ?? []).filter((t) => t.name.startsWith(`${app}.`) && !t.system && !t.data_source && (!t.kind || t.kind === 'table')).map((t) => t.name),
+    ...(manifest.datasets ?? []).filter((d) => (d as { store?: string }).store !== 'json').map((d) => `${app}.${d.name}`),
+  ])
   for (const job of jobs) {
+    for (const table of job.readsAllRows ?? [])
+      if (!ownRows.has(table)) throw new Error(`The job ${job.name} may read every row only of its own app's Tables, not ${table}`)
     if (job.identifiers?.length && !jobGrants(job).has('read_people'))
       throw new Error(`The job ${job.name} names identifier systems, which only a job granted read_people reads`)
     for (const dataset of job.datasets ?? [])
@@ -112,25 +127,27 @@ interface BindRequest {
   handlers: Map<string, RuntimeJobHandler>
   setup: () => Promise<AppSetup>
   datasets: readonly DatasetDeclaration[]
+  /** #1428: the instance Tables and columns the app reads. */
+  baseTables?: BaseTablesDeclaration
 }
 
 /** The app's jobs as scheduler events: each handler wrapped so it runs as
  *  its own system actor, with only the capabilities its grants name. */
-export function bindAppJobs({ app, jobs, handlers, setup, datasets }: BindRequest) {
+export function bindAppJobs({ app, jobs, handlers, setup, datasets, baseTables }: BindRequest) {
   return jobs.map((job) => ({
     method: appJobMethod(app, job.name),
     title: declaredJobTitle(job),
     cadence: job.cadence,
     description: job.description,
-    handler: runAppJob(app, job, handlers.get(job.name)!, setup, datasets.filter((d) => job.datasets?.includes(d.name))),
+    handler: runAppJob(app, job, handlers.get(job.name)!, setup, datasets.filter((d) => job.datasets?.includes(d.name)), baseTables),
   }))
 }
 
 function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler, setup: () => Promise<AppSetup>,
-  datasets: readonly DatasetDeclaration[]): JobHandler {
+  datasets: readonly DatasetDeclaration[], baseTables?: BaseTablesDeclaration): JobHandler {
   const actor = appJobMethod(app, job.name)
   const grants = jobGrants(job)
-  return async (_payload, ctx) => {
+  return async (payload, ctx) => {
     const [installed] = await sql`select enabled, activation_pending from installed_app where name = ${app}`
     if (!installed?.enabled || installed.activation_pending || !activeApps.has(app))
       throw new FinalJobFailure(`The app ${app} is disabled or unavailable, so its job ${job.name} did not run`)
@@ -188,6 +205,12 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
     let documentScopeOpen = true
     let pendingOwners: Promise<void> | undefined
     let documentFailure: unknown
+    // #1428: every row of a Table the job declares, read-only; anything else refused and recorded.
+    const allRowsOf = new Set(job.readsAllRows ?? [])
+    const ownTable = async (table: unknown): Promise<string> => {
+      if (typeof table !== 'string' || !allRowsOf.has(table)) await refuseAccess('the Table it asked to read', 'reads_all_rows')
+      return table as string
+    }
     const forEachOwner: RuntimeJobContext['documents']['forEachOwner'] = callback => {
       if (!job.documents) {
         const refused = refuseAccess('document access', 'documents')
@@ -229,13 +252,25 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
       void work.catch(() => {})
       return work
     }
+    const newLoad = await newLoadFor(app, job.name, payload)
     const timeZone = (await getSystemSettings()).time_zone
+    // #1428: the instance Tables the app reads, declared columns only, read-only.
+    const base = baseTablesReader(app, baseTables, linkedTables(ready.settings))
     const context: RuntimeJobContext = Object.freeze({
       now: new Date().toISOString(), timeZone,
-      documents: Object.freeze({ forEachOwner }),
+      documents: Object.freeze({
+        forEachOwner,
+        list: async (table: string, args?: unknown) => everyRow(await ownTable(table), args),
+        get: async (table: string, rowId: string) => {
+          if (typeof rowId !== 'string' || !rowId) throw new AppError('ValidationError', 'get needs a row id')
+          return (await everyRow(await ownTable(table), { filters: [['row_id', '=', rowId]], limit: 1 }))[0] ?? null
+        },
+      }),
       job: Object.freeze({ name: actor, run: ctx.job.row_id, trigger: ctx.job.trigger }),
       settings: ready.settings,
       secrets: ready.secrets,
+      newLoad,
+      baseTables: base.helper,
       datasets: Object.freeze({
         active: (name: string, filters?: Parameters<typeof readable.active>[1]) => dataset(name, () => readable.active(name, filters)),
         live: (name: string, filters?: Parameters<typeof readable.live>[1]) => dataset(name, () => readable.live(name, filters)),
@@ -246,6 +281,15 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
           assertNoSecret(ready.kept, reason)
           return disablePerson(actor, person, reason)
         }),
+        notify: (person: string, message: unknown) => {
+          // Read once, as an email is: what is checked is what is sent.
+          const note = snapshotNote(message)
+          return need('notify_people', () => {
+            const checked = validNote(app, note)
+            assertNoSecret(ready.kept, checked)
+            return notifyPerson(app, actor, person, checked)
+          })
+        },
       }),
       email: Object.freeze({
         systemManagers: (message: { subject: string; body: string }) => {
@@ -272,6 +316,8 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
             await pendingOwners.catch(() => {})
             documentFailure ??= new AppError('ValidationError', 'Job returned without awaiting its document owner scope')
           }
+          // Last: it rethrows a base Table refusal the app caught, which must not skip the cleanup above (review, 28-Nov).
+          await base.close()
         }
         if (documentFailure) throw documentFailure
         if (refusedGrant) throw new FinalJobFailure(refusedGrant)
@@ -292,6 +338,51 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
     // A handler that caught the refusal and carried on still fails, for good.
     if (refusedGrant) throw new FinalJobFailure(refusedGrant)
   }
+}
+
+const JOB_ROWS_DEFAULT = 10_000
+const JOB_ROWS_MOST = 50_000
+
+/** #1428: a job's read of every row of one of its app's own Tables, as the
+ *  storage holds it, so no row privacy applies; filters on its own columns. */
+async function everyRow(table: string, args: unknown): Promise<ActionRow[]> {
+  const { filters = [], limit = JOB_ROWS_DEFAULT } = (args ?? {}) as { filters?: unknown; limit?: unknown }
+  if (!Array.isArray(filters)) throw new AppError('ValidationError', 'A job list takes filters as [column, operator, value] lists')
+  if (!Number.isInteger(limit) || (limit as number) < 1 || (limit as number) > JOB_ROWS_MOST)
+    throw new AppError('ValidationError', `A job list reads 1 to ${JOB_ROWS_MOST} rows at a time`)
+  const meta = await getMeta(table)
+  const columns = new Set(['row_id', 'created_by', 'created_at', 'updated_at', 'updated_by', ...meta.columns.map((c) => c.column_name)])
+  const where = filters.map((filter: unknown) => {
+    const [column, operator, value] = Array.isArray(filter) ? filter : []
+    if (typeof column !== 'string' || !columns.has(column)) throw new AppError('ValidationError', `${table} has no column ${String(column)} to filter on`)
+    if (operator === '=') return sql`${sql(column)} = ${value as string}`
+    if (operator === 'in' && Array.isArray(value) && value.length) return sql`${sql(column)} in ${sql(value as string[])}`
+    throw new AppError('ValidationError', "A job list's filter is [column, '=', value] or [column, 'in', [values]]")
+  })
+  const rows = await sql`select * from ${sql(await tableRelation(table))}
+    where ${where.reduce((all, one) => sql`${all} and ${one}`, sql`true`)} order by row_id limit ${limit as number}`
+  return JSON.parse(JSON.stringify(rows)) as ActionRow[]
+}
+
+/** #1418: the new load a queued run names, checked against the registry: a
+ *  payload never chooses a copy or a load the platform did not make. */
+async function newLoadFor(app: string, job: string, payload: Record<string, unknown>): Promise<NewLoad | null> {
+  const given = payload?.[NEW_LOAD_PAYLOAD] as { dataset?: unknown; previous?: unknown; current?: unknown } | undefined
+  if (given === undefined) return null
+  const target = copyTarget(app, String(given?.dataset))
+  const entry = declaredCopy(target)
+  const loads = typeof given?.current === 'string' ? await sql`select row_id from dataset_snapshot
+    where dataset = ${target} and state in ('active', 'superseded') and row_id in ${sql([given.current, ...(typeof given.previous === 'string' ? [given.previous] : [])])}` : []
+  const expected = typeof given?.previous === 'string' && given.previous !== given.current ? 2 : 1
+  if (!entry || entry.dataset.onNewLoad !== job || (given.previous !== null && typeof given.previous !== 'string') || loads.length !== expected)
+    throw new FinalJobFailure(`The job ${appJobMethod(app, job)} was queued for a new load it was not told of`)
+  const previous = (given.previous as string | null)
+  const current = given.current as string
+  return Object.freeze({
+    dataset: String(given.dataset), previous, current,
+    moves: async (options: { by: string[]; measure: string; threshold?: number }) =>
+      previous ? loadMoves(target, previous, current, options) : [],
+  })
 }
 
 // ------------------------------------------------------------- capabilities
@@ -356,6 +447,47 @@ export async function disablePerson(actor: string, person: string, reason: strin
   })
 }
 
+type Note = { subject: string; body: string; email?: boolean; path?: string; ref_table?: string; reference_name?: string }
+const NOTE_FIELDS = ['subject', 'body', 'email', 'path', 'ref_table', 'reference_name'] as const
+
+/** A notice's fields, each read exactly once at the call. */
+function snapshotNote(message: unknown): Readonly<Record<string, unknown>> {
+  if (!message || typeof message !== 'object') return Object.freeze({})
+  return Object.freeze(Object.fromEntries(NOTE_FIELDS.map((field) => [field, (message as Record<string, unknown>)[field]])))
+}
+
+/** The snapshot as the platform's own strings, or a refusal. A link names one of the app's own Tables. */
+function validNote(app: string, note: Readonly<Record<string, unknown>>): Readonly<Note> {
+  const { subject, body, email, path, ref_table, reference_name } = note
+  if (typeof subject !== 'string' || !subject.trim() || typeof body !== 'string')
+    throw new AppError('ValidationError', 'A notice needs a subject and a body')
+  if (email !== undefined && typeof email !== 'boolean') throw new AppError('ValidationError', 'A notice\'s email is true or false')
+  if (path !== undefined && (typeof path !== 'string' || !path.startsWith('/'))) throw new AppError('ValidationError', 'A notice\'s path starts with /')
+  if ((ref_table === undefined) !== (reference_name === undefined) || (ref_table !== undefined &&
+      (typeof ref_table !== 'string' || !ref_table.startsWith(`${app}.`) || typeof reference_name !== 'string' || !reference_name)))
+    throw new AppError('ValidationError', 'A notice links to a row of one of the app\'s own Tables, by ref_table and reference_name together')
+  return Object.freeze({ subject: subject.replace(/\s+/g, ' ').trim(), body, email: email as boolean | undefined, path: path as string | undefined,
+    ref_table: ref_table as string | undefined, reference_name: reference_name as string | undefined })
+}
+
+/** #1418 `notify_people`: one bell entry, and an email when asked; recorded
+ *  in the Activity Log under the job. Never for someone turned off or built in. */
+export async function notifyPerson(app: string, actor: string, person: string, note: Readonly<Note>): Promise<boolean> {
+  if (typeof person !== 'string' || !person.trim()) throw new AppError('ValidationError', 'notify needs a person')
+  const [row] = await sql`select row_id, enabled, built_in from person
+    where row_id = ${person} or (${person.includes('@')} and lower(email) = lower(${person.trim()})) order by row_id = ${person} desc limit 1`
+  if (!row || !row.enabled || row.built_in) return false
+  const id = String(row.row_id)
+  await sql`insert into notification_log ${sql({
+    row_id: randomBytes(5).toString('hex'), created_by: actor, updated_by: actor, for_user: id,
+    subject: note.subject.slice(0, 140), ref_table: note.ref_table ?? null, ref_name: note.reference_name ?? null, read: false,
+  } as unknown as Record<string, never>)}`
+  publishUserEvent(id, 'notification', { subject: note.subject.slice(0, 140) })
+  if (note.email) await sendToPerson(app, id, note)
+  await logActivity(actor, `notified ${id}: ${note.subject}`.slice(0, 140))
+  return true
+}
+
 /** `email_system_managers`: one message to each System Manager with an address. */
 /** An app's email, each property read exactly once at the call. Checked
  *  only once the job is known to hold the grant. */
@@ -384,7 +516,7 @@ async function emailSystemManagers(actor: string, message: Readonly<{ subject: s
 // ------------------------------------------------------------- upgrades
 
 export type JobPlanStep =
-  | { add: { name: string; title?: string; cadence: string; description: string; grants: AppJobGrant[]; documents?: JobDeclaration['documents'] } }
+  | { add: { name: string; title?: string; cadence: string; description: string; grants: AppJobGrant[]; documents?: JobDeclaration['documents']; readsAllRows?: string[] } }
   | { change: { name: string; title?: string; cadence?: string; description?: string; grants?: AppJobGrant[]; documents?: JobDeclaration['documents'] | null } }
   | { remove: { name: string } }
 type JobPlanChange = Extract<JobPlanStep, { change: unknown }>['change']
@@ -398,7 +530,7 @@ export function planJobChanges(app: string, prior: JobDeclaration[], target: Job
   for (const job of target) {
     const before = prior.find((p) => p.name === job.name)
     if (!before) {
-      steps.push({ add: { name: job.name, ...(job.title ? { title: job.title } : {}), cadence: job.cadence, description: job.description, grants: [...jobGrants(job)], ...(job.documents ? { documents: job.documents } : {}) } })
+      steps.push({ add: { name: job.name, ...(job.title ? { title: job.title } : {}), cadence: job.cadence, description: job.description, grants: [...jobGrants(job)], ...(job.documents ? { documents: job.documents } : {}), ...(job.readsAllRows ? { readsAllRows: job.readsAllRows } : {}) } })
       continue
     }
     // Grants, identifier systems, datasets and optional secrets are all
@@ -411,6 +543,7 @@ export function planJobChanges(app: string, prior: JobDeclaration[], target: Job
       ...gained(job.datasets, before.datasets).map((d) => `the dataset ${d}`),
       ...gained(job.needs, before.needs).map((n) => `the secret ${n}`),
       ...gained(job.documents?.tables, before.documents?.tables).map(name => `the Table ${name}`),
+      ...gained(job.readsAllRows, before.readsAllRows).map(name => `every row of ${name}`),
       ...(job.documents && job.documents.owner_table !== before.documents?.owner_table ? ['a different document owner Table'] : []),
     ]
     if (wider.length)

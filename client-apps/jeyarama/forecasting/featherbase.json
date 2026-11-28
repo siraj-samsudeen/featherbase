@@ -1,0 +1,4268 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "forecasting",
+  "title": "Forecasting",
+  "summary": "Forecasts, the numbers people put on them, and how each did",
+  "icon": "report",
+  "accent": "blue",
+  "server": "dist/server.mjs",
+  "client": "dist/client",
+  "entryTable": "forecasting.number",
+  "migrations": [
+    {
+      "id": "month_picker_and_daily_sales",
+      "fromVersion": "0.1.0",
+      "toVersion": "0.2.0",
+      "operations": []
+    },
+    {
+      "id": "month_picker_beside_viewing_as",
+      "fromVersion": "0.2.0",
+      "toVersion": "0.3.0",
+      "operations": []
+    },
+    {
+      "id": "own_area",
+      "fromVersion": "0.3.0",
+      "toVersion": "0.4.0",
+      "operations": [
+        {
+          "kind": "addColumn",
+          "table": "forecasting.number",
+          "column": {
+            "column_name": "changed_by",
+            "label": "Last changed by",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.decision",
+          "column": {
+            "column_name": "scope_level",
+            "label": "Level",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.decision",
+          "column": {
+            "column_name": "weeks",
+            "label": "Weeks (blank = the whole month)",
+            "column_type": "Data"
+          }
+        }
+      ]
+    },
+    {
+      "id": "promote_with_a_reason",
+      "fromVersion": "0.4.0",
+      "toVersion": "0.5.0",
+      "operations": [
+        {
+          "kind": "alterColumn",
+          "table": "forecasting.decision",
+          "column": "decision",
+          "from": {
+            "choices": "Sent for approval\nSent up\nApproved and applied\nKept as reference\nNot approved\nComment\nThis is wrong"
+          },
+          "to": {
+            "choices": "Sent for approval\nSent up\nApproved and applied\nMade the applied number\nKept as reference\nNot approved\nComment\nThis is wrong"
+          }
+        }
+      ]
+    },
+    {
+      "id": "my_numbers_withdraw_and_change",
+      "fromVersion": "0.5.0",
+      "toVersion": "0.6.0",
+      "operations": [
+        {
+          "kind": "alterColumn",
+          "table": "forecasting.number",
+          "column": "status",
+          "from": {
+            "choices": "Waiting\nApplied\nReference\nNot approved"
+          },
+          "to": {
+            "choices": "Waiting\nApplied\nReference\nNot approved\nWithdrawn"
+          }
+        },
+        {
+          "kind": "alterColumn",
+          "table": "forecasting.decision",
+          "column": "decision",
+          "from": {
+            "choices": "Sent for approval\nSent up\nApproved and applied\nMade the applied number\nKept as reference\nNot approved\nComment\nThis is wrong"
+          },
+          "to": {
+            "choices": "Sent for approval\nSent up\nApproved and applied\nMade the applied number\nKept as reference\nNot approved\nWithdrawn\nEdited\nComment\nThis is wrong"
+          }
+        }
+      ]
+    },
+    {
+      "id": "idea_register_editing",
+      "fromVersion": "0.6.0",
+      "toVersion": "0.7.0",
+      "operations": [
+        {
+          "kind": "alterColumn",
+          "table": "forecasting.idea",
+          "column": "verdict",
+          "from": {
+            "choices": "Waiting\nKept\nRejected\nAlready in the model\nNot tested"
+          },
+          "to": {
+            "choices": "Raised\nBeing tested\nKept\nRejected\nWaiting\nAlready in the model\nNot tested"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.idea",
+          "column": {
+            "column_name": "decided_by",
+            "label": "Decided by",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.idea",
+          "column": {
+            "column_name": "reason",
+            "label": "Why that verdict",
+            "column_type": "Text"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.idea",
+          "column": {
+            "column_name": "revisit_on",
+            "label": "Look again on",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.idea",
+          "column": {
+            "column_name": "related",
+            "label": "Related ideas",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.idea",
+          "column": {
+            "column_name": "question_ref",
+            "label": "Review question",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.idea_history",
+            "label": "Idea history",
+            "module": "Forecasting",
+            "id_pattern": "FH-.######",
+            "columns": [
+              {
+                "column_name": "idea",
+                "label": "Idea",
+                "column_type": "Reference",
+                "reference_table": "forecasting.idea",
+                "in_list_view": true
+              },
+              {
+                "column_name": "changed_by",
+                "label": "By",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "changed_on",
+                "label": "On",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "change",
+                "label": "What changed",
+                "column_type": "Text",
+                "in_list_view": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "review_threads_and_outcomes",
+      "fromVersion": "0.7.0",
+      "toVersion": "0.8.0",
+      "operations": [
+        {
+          "kind": "addColumn",
+          "table": "forecasting.review_question",
+          "column": {
+            "column_name": "follow_up_on",
+            "label": "Follow up on",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.review_note",
+            "label": "Review thread",
+            "module": "Forecasting",
+            "id_pattern": "FR-.######",
+            "columns": [
+              {
+                "column_name": "question",
+                "label": "Question",
+                "column_type": "Reference",
+                "reference_table": "forecasting.review_question",
+                "in_list_view": true
+              },
+              {
+                "column_name": "kind",
+                "label": "What",
+                "column_type": "Choice",
+                "choices": "Reply\nAnswer\nOutcome changed\nFollow-up",
+                "in_list_view": true
+              },
+              {
+                "column_name": "by",
+                "label": "By",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "on",
+                "label": "On",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "text",
+                "label": "Text",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "from_outcome",
+                "label": "Outcome before",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "to_outcome",
+                "label": "Outcome after",
+                "column_type": "Data"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "percent_kept_as_a_percent",
+      "fromVersion": "0.8.0",
+      "toVersion": "0.9.0",
+      "operations": [
+        {
+          "kind": "addColumn",
+          "table": "forecasting.number",
+          "column": {
+            "column_name": "percent",
+            "label": "Percent (a percent change or a closure)",
+            "column_type": "Float"
+          }
+        }
+      ]
+    },
+    {
+      "id": "forecaster_members",
+      "fromVersion": "0.9.0",
+      "toVersion": "0.10.0",
+      "operations": [
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.forecaster",
+            "label": "Forecaster",
+            "module": "Forecasting",
+            "access_policy": {
+              "version": 1,
+              "roles": [
+                "Forecasting Member"
+              ]
+            },
+            "columns": [
+              {
+                "column_name": "note",
+                "label": "Note",
+                "column_type": "Data"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "review_month_tables",
+      "fromVersion": "0.10.0",
+      "toVersion": "0.11.0",
+      "operations": [
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.run_line",
+            "label": "Run line",
+            "module": "Forecasting",
+            "description": "One store × subcategory of a month's engine Run under review: the forecast, the AOP, its days and what each basis adds. Loaded in bulk (psql COPY) from the engine's output; people only read it.",
+            "title_column": "subcategory",
+            "columns": [
+              {
+                "column_name": "run",
+                "label": "Run",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "month",
+                "label": "Month",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "store",
+                "label": "Store",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "region",
+                "label": "Region",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "division",
+                "label": "Division",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "subdivision",
+                "label": "Sub-division",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "category",
+                "label": "Category",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "section",
+                "label": "Section",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "subcategory",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "code",
+                "label": "SAP subcategory code",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "forecast",
+                "label": "Forecast, after GST (₹)",
+                "column_type": "Float",
+                "in_list_view": true
+              },
+              {
+                "column_name": "aop",
+                "label": "AOP, after GST (₹)",
+                "column_type": "Float",
+                "in_list_view": true
+              },
+              {
+                "column_name": "band",
+                "label": "Band against the AOP",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "days_json",
+                "label": "The forecast for each day (₹, JSON list)",
+                "column_type": "Long Text"
+              },
+              {
+                "column_name": "parts_json",
+                "label": "Each basis: its share and value (JSON)",
+                "column_type": "Long Text"
+              },
+              {
+                "column_name": "other",
+                "label": "Other steps (₹)",
+                "column_type": "Float"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.reach",
+            "label": "Reach",
+            "module": "Forecasting",
+            "description": "Who reviews what: each person's job, manager and the stores and subcategories they cover, worked out from the org chart and merchandise assignments as Dash's reach is. Loaded in bulk; people only read it.",
+            "title_column": "full_name",
+            "columns": [
+              {
+                "column_name": "full_name",
+                "label": "Name",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "code",
+                "label": "Employee code",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "role",
+                "label": "Job",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "place",
+                "label": "Place",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "reports_to",
+                "label": "Reports to",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "places_json",
+                "label": "Stores and subcategories covered (JSON)",
+                "column_type": "Long Text"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.explanation",
+            "label": "Explanation",
+            "module": "Forecasting",
+            "id_pattern": "FX-.######",
+            "description": "Why a day sold more or less than its forecast: the causes picked and a note, for a store (or every store) and a level of the hierarchy.",
+            "title_column": "scope_name",
+            "columns": [
+              {
+                "column_name": "month",
+                "label": "Month",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "store",
+                "label": "Store",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "scope_level",
+                "label": "Level",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "scope_name",
+                "label": "For",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "day",
+                "label": "Day of the month",
+                "column_type": "Int",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "causes",
+                "label": "Causes (one a line, Cause › Detail)",
+                "column_type": "Text",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "note",
+                "label": "Note",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "explained_by",
+                "label": "By",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "explained_by_role",
+                "label": "Their job",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "explained_on",
+                "label": "On",
+                "column_type": "Data"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "run_line_quantity",
+      "fromVersion": "0.11.0",
+      "toVersion": "0.12.0",
+      "operations": [
+        {
+          "kind": "addColumn",
+          "table": "forecasting.run_line",
+          "column": {
+            "column_name": "qty",
+            "label": "Forecast quantity (the item's own unit)",
+            "column_type": "Float",
+            "in_list_view": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.run_line",
+          "column": {
+            "column_name": "aop_qty",
+            "label": "AOP quantity (the item's own unit)",
+            "column_type": "Float",
+            "in_list_view": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "team_leader_review",
+      "fromVersion": "0.12.0",
+      "toVersion": "0.13.0",
+      "operations": [
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.day_explanation",
+            "label": "Day Explanation",
+            "module": "Forecasting",
+            "description": "Why a day went more than 10% below or above Feather Forecast, as the person who reviews it says: for a section's day, or one subcategory's day. A later explanation of the same day replaces the earlier one.",
+            "columns": [
+              {
+                "column_name": "run_id",
+                "label": "Run",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The official Run whose month the day is in."
+              },
+              {
+                "column_name": "store_code",
+                "label": "Store Code",
+                "column_type": "Data",
+                "reqd": true,
+                "description": "The store, by its SAP code."
+              },
+              {
+                "column_name": "store_name",
+                "label": "Store",
+                "column_type": "Data",
+                "description": "The store, by its short code."
+              },
+              {
+                "column_name": "section_name",
+                "label": "Section",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The section the day belongs to."
+              },
+              {
+                "column_name": "subcategory_name",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "in_list_view": true,
+                "description": "The subcategory, for one subcategory's day; blank for the section's day."
+              },
+              {
+                "column_name": "explained_date",
+                "label": "Day",
+                "column_type": "Date",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The day explained."
+              },
+              {
+                "column_name": "direction",
+                "label": "Direction",
+                "column_type": "Choice",
+                "choices": "below\nabove",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "Whether the day went below or above Feather Forecast: each has its own causes, and the warehouse tells them apart by this."
+              },
+              {
+                "column_name": "causes",
+                "label": "Causes",
+                "column_type": "Text",
+                "reqd": true,
+                "description": "One or more of the causes for the day's direction, one a line (src/causes.ts)."
+              },
+              {
+                "column_name": "tags",
+                "label": "Tags",
+                "column_type": "Text",
+                "description": "The detail under each cause, one a line, as Cause › Tag."
+              },
+              {
+                "column_name": "note",
+                "label": "What Happened",
+                "column_type": "Long Text",
+                "description": "What happened, and whether it carries into the coming days."
+              },
+              {
+                "column_name": "explained_by",
+                "label": "Explained By",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "Who explained it."
+              },
+              {
+                "column_name": "explained_by_role",
+                "label": "Role",
+                "column_type": "Data",
+                "description": "Their role when they explained it."
+              }
+            ],
+            "title_column": "section_name"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.change_reason",
+            "label": "Change Reason",
+            "module": "Forecasting",
+            "description": "Why a forecast change is asked for: the closed list a Team Leader or Store Manager picks from.",
+            "columns": [
+              {
+                "column_name": "reason_code",
+                "label": "Code",
+                "column_type": "Data",
+                "reqd": true,
+                "unique": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "label",
+                "label": "Reason",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "applies_to",
+                "label": "Applies To",
+                "column_type": "Choice",
+                "choices": "both\nmonth\nday",
+                "description": "A month change, a day change, or both."
+              },
+              {
+                "column_name": "sort_order",
+                "label": "Order",
+                "column_type": "Int"
+              }
+            ],
+            "title_column": "label"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.forecast_change_reason",
+            "label": "Forecast Change Reason",
+            "module": "Forecasting",
+            "description": "One reason given for a forecast change.",
+            "columns": [
+              {
+                "column_name": "reason_code",
+                "label": "Reason",
+                "column_type": "Reference",
+                "reference_table": "forecasting.change_reason",
+                "reqd": true,
+                "in_list_view": true
+              }
+            ],
+            "kind": "sub_table"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.forecast_change",
+            "label": "Forecast Change",
+            "module": "Forecasting",
+            "description": "A change someone asked for on a line's forecast: the whole month or one day, by a percent or to a value, with why. Immutable once sent; a revision is a new row that replaces it.",
+            "columns": [
+              {
+                "column_name": "run_id",
+                "label": "Run",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The Feather Forecast run this row belongs to: the official run for the month."
+              },
+              {
+                "column_name": "store_code",
+                "label": "Store Code",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The store, by its SAP code."
+              },
+              {
+                "column_name": "division_name",
+                "label": "Division",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "subdivision_name",
+                "label": "Subdivision",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "category_name",
+                "label": "Category",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "subcategory_name",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "change_scope",
+                "label": "Scope",
+                "column_type": "Choice",
+                "choices": "month\nday",
+                "reqd": true,
+                "description": "The whole month, or one day."
+              },
+              {
+                "column_name": "forecast_date",
+                "label": "Day",
+                "column_type": "Date",
+                "description": "The day changed, for a day change."
+              },
+              {
+                "column_name": "change_method",
+                "label": "Method",
+                "column_type": "Choice",
+                "choices": "percent\nset_value",
+                "reqd": true,
+                "description": "By a percent, or to a value."
+              },
+              {
+                "column_name": "change_percent",
+                "label": "Percent",
+                "column_type": "Float"
+              },
+              {
+                "column_name": "set_value_before_tax",
+                "label": "Value Asked For (Before Tax)",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "engine_value_before_tax",
+                "label": "Feather Forecast (Before Tax)",
+                "column_type": "Currency",
+                "read_only": true,
+                "description": "Feather Forecast for the scope when the change was sent."
+              },
+              {
+                "column_name": "engine_qty",
+                "label": "Feather Forecast Quantity",
+                "column_type": "Float",
+                "read_only": true
+              },
+              {
+                "column_name": "changed_value_before_tax",
+                "label": "Changed Value (Before Tax)",
+                "column_type": "Currency",
+                "read_only": true,
+                "in_list_view": true,
+                "description": "What the scope becomes with this change."
+              },
+              {
+                "column_name": "changed_qty",
+                "label": "Changed Quantity",
+                "column_type": "Float",
+                "read_only": true,
+                "description": "Pieces move with the value, at Feather Forecast's selling price."
+              },
+              {
+                "column_name": "explanation",
+                "label": "Explanation",
+                "column_type": "Text",
+                "reqd": true,
+                "description": "Why the forecast should change: what Feather Forecast cannot know."
+              },
+              {
+                "column_name": "reasons",
+                "label": "Reasons",
+                "column_type": "Sub-table",
+                "row_table": "forecasting.forecast_change_reason"
+              },
+              {
+                "column_name": "replaces_change",
+                "label": "Replaces",
+                "column_type": "Reference",
+                "reference_table": "forecasting.forecast_change",
+                "description": "The change this one replaces."
+              },
+              {
+                "column_name": "change_batch",
+                "label": "Batch",
+                "column_type": "Data",
+                "description": "Day changes entered together share a batch and are approved as one."
+              },
+              {
+                "column_name": "change_status",
+                "label": "Status",
+                "column_type": "Choice",
+                "choices": "draft\nsent\napproved\nrejected\nreplaced\nwithdrawn",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "proposed_by",
+                "label": "Proposed By",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "proposed_by_role",
+                "label": "Proposed As",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "decided_by",
+                "label": "Decided By",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "decided_at",
+                "label": "Decided At",
+                "column_type": "Datetime"
+              },
+              {
+                "column_name": "decision_note",
+                "label": "Decision Note",
+                "column_type": "Text"
+              }
+            ],
+            "title_column": "subcategory_name"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.forecast_line_review",
+            "label": "Forecast Line Review",
+            "module": "Forecasting",
+            "description": "One person's answer on one line of a Run: accepted, or a change proposed. A later answer replaces the earlier one.",
+            "columns": [
+              {
+                "column_name": "run_id",
+                "label": "Run",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The Feather Forecast run this row belongs to: the official run for the month."
+              },
+              {
+                "column_name": "store_code",
+                "label": "Store Code",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The store, by its SAP code."
+              },
+              {
+                "column_name": "division_name",
+                "label": "Division",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "subdivision_name",
+                "label": "Subdivision",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "category_name",
+                "label": "Category",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "subcategory_name",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "reviewer",
+                "label": "Reviewer",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "reviewer_role",
+                "label": "Reviewer Role",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "answer",
+                "label": "Answer",
+                "column_type": "Choice",
+                "choices": "accepted\nchange_proposed",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "Accepted, or a change proposed."
+              },
+              {
+                "column_name": "forecast_change",
+                "label": "Change",
+                "column_type": "Reference",
+                "reference_table": "forecasting.forecast_change",
+                "description": "The change proposed with this answer."
+              },
+              {
+                "column_name": "forecast_month",
+                "label": "Month",
+                "column_type": "Date",
+                "read_only": true,
+                "description": "The month of the Run the answer was given on, so a later official Run of the same month can carry it."
+              },
+              {
+                "column_name": "engine_value_before_tax",
+                "label": "Feather Forecast (Before Tax)",
+                "column_type": "Currency",
+                "read_only": true,
+                "description": "Feather Forecast for the subcategory when the answer was given. A later Run that moves it by more than 10% asks for the answer again."
+              }
+            ],
+            "title_column": "subcategory_name"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.forecast_question",
+            "label": "Forecast Question",
+            "module": "Forecasting",
+            "description": "A question asked on a line, pinned to its place. Anyone in the Forecast Creator or Forecast Reviewer role answers it in a Comment; the asker is told on the screen.",
+            "columns": [
+              {
+                "column_name": "run_id",
+                "label": "Run",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The Feather Forecast run this row belongs to: the official run for the month."
+              },
+              {
+                "column_name": "store_code",
+                "label": "Store Code",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The store, by its SAP code."
+              },
+              {
+                "column_name": "division_name",
+                "label": "Division",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "subdivision_name",
+                "label": "Subdivision",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "category_name",
+                "label": "Category",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "subcategory_name",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "forecast_date",
+                "label": "Day",
+                "column_type": "Date"
+              },
+              {
+                "column_name": "about",
+                "label": "About",
+                "column_type": "Choice",
+                "choices": "line\nfrom_recent_selling\ndecember_step\nfrom_last_year\nadjustments\nchecks\nother_models",
+                "description": "The part of the forecast the question is about."
+              },
+              {
+                "column_name": "question_text",
+                "label": "Question",
+                "column_type": "Text",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "asked_by",
+                "label": "Asked By",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "question_status",
+                "label": "Status",
+                "column_type": "Choice",
+                "choices": "open\nanswered\nclosed",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "answered_by",
+                "label": "Answered By",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "answered_by_role",
+                "label": "Answered As",
+                "column_type": "Choice",
+                "choices": "Forecast Creator\nForecast Reviewer"
+              },
+              {
+                "column_name": "answered_at",
+                "label": "Answered At",
+                "column_type": "Datetime"
+              },
+              {
+                "column_name": "answer_seen_at",
+                "label": "Asker Saw The Answer At",
+                "column_type": "Datetime"
+              }
+            ],
+            "title_column": "question_text"
+          }
+        }
+      ]
+    },
+    {
+      "id": "managers_writes_and_signed_in",
+      "fromVersion": "0.13.0",
+      "toVersion": "0.13.1",
+      "operations": []
+    },
+    {
+      "id": "scoped_reads",
+      "fromVersion": "0.13.1",
+      "toVersion": "0.14.0",
+      "operations": [
+        {
+          "kind": "addColumn",
+          "table": "forecasting.forecast_change",
+          "column": {
+            "column_name": "subcategory_code",
+            "label": "Subcategory code",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.forecast_line_review",
+          "column": {
+            "column_name": "subcategory_code",
+            "label": "Subcategory code",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.forecast_question",
+          "column": {
+            "column_name": "subcategory_code",
+            "label": "Subcategory code",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.day_explanation",
+          "column": {
+            "column_name": "subcategory_code",
+            "label": "Subcategory code",
+            "column_type": "Data"
+          }
+        }
+      ]
+    },
+    {
+      "id": "roles_from_org_chart",
+      "fromVersion": "0.14.0",
+      "toVersion": "0.15.0",
+      "operations": []
+    }
+  ],
+  "tables": [
+    {
+      "name": "forecasting.number",
+      "label": "Forecast number",
+      "module": "Forecasting",
+      "id_pattern": "FN-.#####",
+      "title_column": "scope_name",
+      "columns": [
+        {
+          "column_name": "month",
+          "label": "Month",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "run",
+          "label": "Engine Run",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "section",
+          "label": "Section",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "scope_level",
+          "label": "Level",
+          "column_type": "Choice",
+          "choices": "Store\nDivision\nCategory\nSubcategory",
+          "reqd": true
+        },
+        {
+          "column_name": "weeks",
+          "label": "Weeks (1–5; blank = the whole month)",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "scope_name",
+          "label": "For",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "kind",
+          "label": "How",
+          "column_type": "Choice",
+          "choices": "Engine\nSet a total\nChange by a percent\nClosure or event\nChange the weights",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "value",
+          "label": "Figure, before tax",
+          "column_type": "Currency",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "weights_json",
+          "label": "Weights (%, by basis)",
+          "column_type": "Long Text"
+        },
+        {
+          "column_name": "entered_by",
+          "label": "Entered by",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "entered_by_role",
+          "label": "Their job",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "entered_on",
+          "label": "Entered on",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "reason",
+          "label": "Why",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "status",
+          "label": "Status",
+          "column_type": "Choice",
+          "choices": "Waiting\nApplied\nReference\nNot approved\nWithdrawn",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "waiting_on",
+          "label": "Waiting on",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "changed_by",
+          "label": "Last changed by",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "percent",
+          "label": "Percent (a percent change or a closure)",
+          "column_type": "Float"
+        }
+      ]
+    },
+    {
+      "name": "forecasting.decision",
+      "label": "Number history",
+      "module": "Forecasting",
+      "id_pattern": "FD-.######",
+      "columns": [
+        {
+          "column_name": "number",
+          "label": "Number",
+          "column_type": "Reference",
+          "reference_table": "forecasting.number",
+          "in_list_view": true
+        },
+        {
+          "column_name": "month",
+          "label": "Month",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "scope_name",
+          "label": "For",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "decision",
+          "label": "What happened",
+          "column_type": "Choice",
+          "choices": "Sent for approval\nSent up\nApproved and applied\nMade the applied number\nKept as reference\nNot approved\nWithdrawn\nEdited\nComment\nThis is wrong",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "decided_by",
+          "label": "By",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "decided_by_role",
+          "label": "Their job",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "note",
+          "label": "Note",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "decided_on",
+          "label": "On",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "scope_level",
+          "label": "Level",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "weeks",
+          "label": "Weeks (blank = the whole month)",
+          "column_type": "Data"
+        }
+      ]
+    },
+    {
+      "name": "forecasting.review_question",
+      "label": "Review question",
+      "module": "Forecasting",
+      "id_pattern": "FQ-.####",
+      "title_column": "question",
+      "columns": [
+        {
+          "column_name": "ref",
+          "label": "Ref",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "month",
+          "label": "Month reviewed",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "scope",
+          "label": "About",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "question",
+          "label": "Question",
+          "column_type": "Text",
+          "reqd": true
+        },
+        {
+          "column_name": "detail",
+          "label": "What they saw",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "asked_by",
+          "label": "Asked by",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "asked_on",
+          "label": "Asked on",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "answer",
+          "label": "Answer",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "answered_by",
+          "label": "Answered by",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "answered_on",
+          "label": "Answered on",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "outcome",
+          "label": "Outcome",
+          "column_type": "Choice",
+          "choices": "Open\nBeing worked on\nForecast changed\nNo change\nWaiting on the asker\nParked",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "impact",
+          "label": "Effect on the forecast",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "follow_up",
+          "label": "Follow-up",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "idea_ref",
+          "label": "Idea",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "follow_up_on",
+          "label": "Follow up on",
+          "column_type": "Data"
+        }
+      ]
+    },
+    {
+      "name": "forecasting.idea",
+      "label": "Idea",
+      "module": "Forecasting",
+      "id_pattern": "FI-.####",
+      "title_column": "title",
+      "columns": [
+        {
+          "column_name": "ref",
+          "label": "Ref",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "label",
+          "label": "Short name",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "title",
+          "label": "Idea",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "kind",
+          "label": "Came from",
+          "column_type": "Choice",
+          "choices": "Engine trial\nBusiness suggestion\nModel comparison\nMonth check",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "raised_by",
+          "label": "Raised by",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "raised_on",
+          "label": "Raised on",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "why",
+          "label": "Why it came up",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "tried",
+          "label": "What we tried",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "found",
+          "label": "What we found",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "verdict",
+          "label": "Verdict",
+          "column_type": "Choice",
+          "choices": "Raised\nBeing tested\nKept\nRejected\nWaiting\nAlready in the model\nNot tested",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "outcome",
+          "label": "In a few words",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "status_note",
+          "label": "Where it stands",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "decided_on",
+          "label": "Decided on",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "revisit",
+          "label": "Look again when",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "areas",
+          "label": "Areas",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "evidence",
+          "label": "Evidence",
+          "column_type": "Long Text"
+        },
+        {
+          "column_name": "decided_by",
+          "label": "Decided by",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "reason",
+          "label": "Why that verdict",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "revisit_on",
+          "label": "Look again on",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "related",
+          "label": "Related ideas",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "question_ref",
+          "label": "Review question",
+          "column_type": "Data"
+        }
+      ]
+    },
+    {
+      "name": "forecasting.idea_history",
+      "label": "Idea history",
+      "module": "Forecasting",
+      "id_pattern": "FH-.######",
+      "columns": [
+        {
+          "column_name": "idea",
+          "label": "Idea",
+          "column_type": "Reference",
+          "reference_table": "forecasting.idea",
+          "in_list_view": true
+        },
+        {
+          "column_name": "changed_by",
+          "label": "By",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "changed_on",
+          "label": "On",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "change",
+          "label": "What changed",
+          "column_type": "Text",
+          "in_list_view": true
+        }
+      ]
+    },
+    {
+      "name": "forecasting.review_note",
+      "label": "Review thread",
+      "module": "Forecasting",
+      "id_pattern": "FR-.######",
+      "columns": [
+        {
+          "column_name": "question",
+          "label": "Question",
+          "column_type": "Reference",
+          "reference_table": "forecasting.review_question",
+          "in_list_view": true
+        },
+        {
+          "column_name": "kind",
+          "label": "What",
+          "column_type": "Choice",
+          "choices": "Reply\nAnswer\nOutcome changed\nFollow-up",
+          "in_list_view": true
+        },
+        {
+          "column_name": "by",
+          "label": "By",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "on",
+          "label": "On",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "text",
+          "label": "Text",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "from_outcome",
+          "label": "Outcome before",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "to_outcome",
+          "label": "Outcome after",
+          "column_type": "Data"
+        }
+      ]
+    },
+    {
+      "name": "forecasting.forecaster",
+      "label": "Forecaster",
+      "module": "Forecasting",
+      "access_policy": {
+        "version": 1,
+        "roles": [
+          "Forecasting Member"
+        ]
+      },
+      "columns": [
+        {
+          "column_name": "note",
+          "label": "Note",
+          "column_type": "Data"
+        }
+      ]
+    },
+    {
+      "name": "forecasting.run_line",
+      "label": "Run line",
+      "module": "Forecasting",
+      "description": "One store × subcategory of a month's engine Run under review: the forecast, the AOP, its days and what each basis adds. Loaded in bulk (psql COPY) from the engine's output; people only read it.",
+      "title_column": "subcategory",
+      "columns": [
+        {
+          "column_name": "run",
+          "label": "Run",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "month",
+          "label": "Month",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "region",
+          "label": "Region",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "division",
+          "label": "Division",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "subdivision",
+          "label": "Sub-division",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "category",
+          "label": "Category",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "section",
+          "label": "Section",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "subcategory",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "code",
+          "label": "SAP subcategory code",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "forecast",
+          "label": "Forecast, after GST (₹)",
+          "column_type": "Float",
+          "in_list_view": true
+        },
+        {
+          "column_name": "aop",
+          "label": "AOP, after GST (₹)",
+          "column_type": "Float",
+          "in_list_view": true
+        },
+        {
+          "column_name": "band",
+          "label": "Band against the AOP",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "days_json",
+          "label": "The forecast for each day (₹, JSON list)",
+          "column_type": "Long Text"
+        },
+        {
+          "column_name": "parts_json",
+          "label": "Each basis: its share and value (JSON)",
+          "column_type": "Long Text"
+        },
+        {
+          "column_name": "other",
+          "label": "Other steps (₹)",
+          "column_type": "Float"
+        },
+        {
+          "column_name": "qty",
+          "label": "Forecast quantity (the item's own unit)",
+          "column_type": "Float",
+          "in_list_view": true
+        },
+        {
+          "column_name": "aop_qty",
+          "label": "AOP quantity (the item's own unit)",
+          "column_type": "Float",
+          "in_list_view": true
+        }
+      ]
+    },
+    {
+      "name": "forecasting.reach",
+      "label": "Reach",
+      "module": "Forecasting",
+      "description": "Who reviews what: each person's job, manager and the stores and subcategories they cover, worked out from the org chart and merchandise assignments as Dash's reach is. Loaded in bulk; people only read it.",
+      "title_column": "full_name",
+      "columns": [
+        {
+          "column_name": "full_name",
+          "label": "Name",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "code",
+          "label": "Employee code",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "role",
+          "label": "Job",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "place",
+          "label": "Place",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "reports_to",
+          "label": "Reports to",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "places_json",
+          "label": "Stores and subcategories covered (JSON)",
+          "column_type": "Long Text"
+        }
+      ]
+    },
+    {
+      "name": "forecasting.explanation",
+      "label": "Explanation",
+      "module": "Forecasting",
+      "id_pattern": "FX-.######",
+      "description": "Why a day sold more or less than its forecast: the causes picked and a note, for a store (or every store) and a level of the hierarchy.",
+      "title_column": "scope_name",
+      "columns": [
+        {
+          "column_name": "month",
+          "label": "Month",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "scope_level",
+          "label": "Level",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "scope_name",
+          "label": "For",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "day",
+          "label": "Day of the month",
+          "column_type": "Int",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "causes",
+          "label": "Causes (one a line, Cause › Detail)",
+          "column_type": "Text",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "note",
+          "label": "Note",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "explained_by",
+          "label": "By",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "explained_by_role",
+          "label": "Their job",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "explained_on",
+          "label": "On",
+          "column_type": "Data"
+        }
+      ]
+    },
+    {
+      "name": "forecasting.day_explanation",
+      "label": "Day Explanation",
+      "module": "Forecasting",
+      "description": "Why a day went more than 10% below or above Feather Forecast, as the person who reviews it says: for a section's day, or one subcategory's day. A later explanation of the same day replaces the earlier one.",
+      "columns": [
+        {
+          "column_name": "run_id",
+          "label": "Run",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The official Run whose month the day is in."
+        },
+        {
+          "column_name": "store_code",
+          "label": "Store Code",
+          "column_type": "Data",
+          "reqd": true,
+          "description": "The store, by its SAP code."
+        },
+        {
+          "column_name": "store_name",
+          "label": "Store",
+          "column_type": "Data",
+          "description": "The store, by its short code."
+        },
+        {
+          "column_name": "section_name",
+          "label": "Section",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The section the day belongs to."
+        },
+        {
+          "column_name": "subcategory_name",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "in_list_view": true,
+          "description": "The subcategory, for one subcategory's day; blank for the section's day."
+        },
+        {
+          "column_name": "explained_date",
+          "label": "Day",
+          "column_type": "Date",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The day explained."
+        },
+        {
+          "column_name": "direction",
+          "label": "Direction",
+          "column_type": "Choice",
+          "choices": "below\nabove",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "Whether the day went below or above Feather Forecast: each has its own causes, and the warehouse tells them apart by this."
+        },
+        {
+          "column_name": "causes",
+          "label": "Causes",
+          "column_type": "Text",
+          "reqd": true,
+          "description": "One or more of the causes for the day's direction, one a line (src/causes.ts)."
+        },
+        {
+          "column_name": "tags",
+          "label": "Tags",
+          "column_type": "Text",
+          "description": "The detail under each cause, one a line, as Cause › Tag."
+        },
+        {
+          "column_name": "note",
+          "label": "What Happened",
+          "column_type": "Long Text",
+          "description": "What happened, and whether it carries into the coming days."
+        },
+        {
+          "column_name": "explained_by",
+          "label": "Explained By",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "Who explained it."
+        },
+        {
+          "column_name": "explained_by_role",
+          "label": "Role",
+          "column_type": "Data",
+          "description": "Their role when they explained it."
+        },
+        {
+          "column_name": "subcategory_code",
+          "label": "Subcategory code",
+          "column_type": "Data"
+        }
+      ],
+      "title_column": "section_name"
+    },
+    {
+      "name": "forecasting.change_reason",
+      "label": "Change Reason",
+      "module": "Forecasting",
+      "description": "Why a forecast change is asked for: the closed list a Team Leader or Store Manager picks from.",
+      "columns": [
+        {
+          "column_name": "reason_code",
+          "label": "Code",
+          "column_type": "Data",
+          "reqd": true,
+          "unique": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "label",
+          "label": "Reason",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "applies_to",
+          "label": "Applies To",
+          "column_type": "Choice",
+          "choices": "both\nmonth\nday",
+          "description": "A month change, a day change, or both."
+        },
+        {
+          "column_name": "sort_order",
+          "label": "Order",
+          "column_type": "Int"
+        }
+      ],
+      "title_column": "label"
+    },
+    {
+      "name": "forecasting.forecast_change_reason",
+      "label": "Forecast Change Reason",
+      "module": "Forecasting",
+      "description": "One reason given for a forecast change.",
+      "columns": [
+        {
+          "column_name": "reason_code",
+          "label": "Reason",
+          "column_type": "Reference",
+          "reference_table": "forecasting.change_reason",
+          "reqd": true,
+          "in_list_view": true
+        }
+      ],
+      "kind": "sub_table"
+    },
+    {
+      "name": "forecasting.forecast_change",
+      "label": "Forecast Change",
+      "module": "Forecasting",
+      "description": "A change someone asked for on a line's forecast: the whole month or one day, by a percent or to a value, with why. Immutable once sent; a revision is a new row that replaces it.",
+      "columns": [
+        {
+          "column_name": "run_id",
+          "label": "Run",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The Feather Forecast run this row belongs to: the official run for the month."
+        },
+        {
+          "column_name": "store_code",
+          "label": "Store Code",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The store, by its SAP code."
+        },
+        {
+          "column_name": "division_name",
+          "label": "Division",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "subdivision_name",
+          "label": "Subdivision",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "category_name",
+          "label": "Category",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "subcategory_name",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "change_scope",
+          "label": "Scope",
+          "column_type": "Choice",
+          "choices": "month\nday",
+          "reqd": true,
+          "description": "The whole month, or one day."
+        },
+        {
+          "column_name": "forecast_date",
+          "label": "Day",
+          "column_type": "Date",
+          "description": "The day changed, for a day change."
+        },
+        {
+          "column_name": "change_method",
+          "label": "Method",
+          "column_type": "Choice",
+          "choices": "percent\nset_value",
+          "reqd": true,
+          "description": "By a percent, or to a value."
+        },
+        {
+          "column_name": "change_percent",
+          "label": "Percent",
+          "column_type": "Float"
+        },
+        {
+          "column_name": "set_value_before_tax",
+          "label": "Value Asked For (Before Tax)",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "engine_value_before_tax",
+          "label": "Feather Forecast (Before Tax)",
+          "column_type": "Currency",
+          "read_only": true,
+          "description": "Feather Forecast for the scope when the change was sent."
+        },
+        {
+          "column_name": "engine_qty",
+          "label": "Feather Forecast Quantity",
+          "column_type": "Float",
+          "read_only": true
+        },
+        {
+          "column_name": "changed_value_before_tax",
+          "label": "Changed Value (Before Tax)",
+          "column_type": "Currency",
+          "read_only": true,
+          "in_list_view": true,
+          "description": "What the scope becomes with this change."
+        },
+        {
+          "column_name": "changed_qty",
+          "label": "Changed Quantity",
+          "column_type": "Float",
+          "read_only": true,
+          "description": "Pieces move with the value, at Feather Forecast's selling price."
+        },
+        {
+          "column_name": "explanation",
+          "label": "Explanation",
+          "column_type": "Text",
+          "reqd": true,
+          "description": "Why the forecast should change: what Feather Forecast cannot know."
+        },
+        {
+          "column_name": "reasons",
+          "label": "Reasons",
+          "column_type": "Sub-table",
+          "row_table": "forecasting.forecast_change_reason"
+        },
+        {
+          "column_name": "replaces_change",
+          "label": "Replaces",
+          "column_type": "Reference",
+          "reference_table": "forecasting.forecast_change",
+          "description": "The change this one replaces."
+        },
+        {
+          "column_name": "change_batch",
+          "label": "Batch",
+          "column_type": "Data",
+          "description": "Day changes entered together share a batch and are approved as one."
+        },
+        {
+          "column_name": "change_status",
+          "label": "Status",
+          "column_type": "Choice",
+          "choices": "draft\nsent\napproved\nrejected\nreplaced\nwithdrawn",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "proposed_by",
+          "label": "Proposed By",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "proposed_by_role",
+          "label": "Proposed As",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "decided_by",
+          "label": "Decided By",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "decided_at",
+          "label": "Decided At",
+          "column_type": "Datetime"
+        },
+        {
+          "column_name": "decision_note",
+          "label": "Decision Note",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "subcategory_code",
+          "label": "Subcategory code",
+          "column_type": "Data"
+        }
+      ],
+      "title_column": "subcategory_name"
+    },
+    {
+      "name": "forecasting.forecast_line_review",
+      "label": "Forecast Line Review",
+      "module": "Forecasting",
+      "description": "One person's answer on one line of a Run: accepted, or a change proposed. A later answer replaces the earlier one.",
+      "columns": [
+        {
+          "column_name": "run_id",
+          "label": "Run",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The Feather Forecast run this row belongs to: the official run for the month."
+        },
+        {
+          "column_name": "store_code",
+          "label": "Store Code",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The store, by its SAP code."
+        },
+        {
+          "column_name": "division_name",
+          "label": "Division",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "subdivision_name",
+          "label": "Subdivision",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "category_name",
+          "label": "Category",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "subcategory_name",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "reviewer",
+          "label": "Reviewer",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "reviewer_role",
+          "label": "Reviewer Role",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "answer",
+          "label": "Answer",
+          "column_type": "Choice",
+          "choices": "accepted\nchange_proposed",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "Accepted, or a change proposed."
+        },
+        {
+          "column_name": "forecast_change",
+          "label": "Change",
+          "column_type": "Reference",
+          "reference_table": "forecasting.forecast_change",
+          "description": "The change proposed with this answer."
+        },
+        {
+          "column_name": "forecast_month",
+          "label": "Month",
+          "column_type": "Date",
+          "read_only": true,
+          "description": "The month of the Run the answer was given on, so a later official Run of the same month can carry it."
+        },
+        {
+          "column_name": "engine_value_before_tax",
+          "label": "Feather Forecast (Before Tax)",
+          "column_type": "Currency",
+          "read_only": true,
+          "description": "Feather Forecast for the subcategory when the answer was given. A later Run that moves it by more than 10% asks for the answer again."
+        },
+        {
+          "column_name": "subcategory_code",
+          "label": "Subcategory code",
+          "column_type": "Data"
+        }
+      ],
+      "title_column": "subcategory_name"
+    },
+    {
+      "name": "forecasting.forecast_question",
+      "label": "Forecast Question",
+      "module": "Forecasting",
+      "description": "A question asked on a line, pinned to its place. Anyone in the Forecast Creator or Forecast Reviewer role answers it in a Comment; the asker is told on the screen.",
+      "columns": [
+        {
+          "column_name": "run_id",
+          "label": "Run",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The Feather Forecast run this row belongs to: the official run for the month."
+        },
+        {
+          "column_name": "store_code",
+          "label": "Store Code",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The store, by its SAP code."
+        },
+        {
+          "column_name": "division_name",
+          "label": "Division",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "subdivision_name",
+          "label": "Subdivision",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "category_name",
+          "label": "Category",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "subcategory_name",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "forecast_date",
+          "label": "Day",
+          "column_type": "Date"
+        },
+        {
+          "column_name": "about",
+          "label": "About",
+          "column_type": "Choice",
+          "choices": "line\nfrom_recent_selling\ndecember_step\nfrom_last_year\nadjustments\nchecks\nother_models",
+          "description": "The part of the forecast the question is about."
+        },
+        {
+          "column_name": "question_text",
+          "label": "Question",
+          "column_type": "Text",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "asked_by",
+          "label": "Asked By",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "question_status",
+          "label": "Status",
+          "column_type": "Choice",
+          "choices": "open\nanswered\nclosed",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "answered_by",
+          "label": "Answered By",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "answered_by_role",
+          "label": "Answered As",
+          "column_type": "Choice",
+          "choices": "Forecast Creator\nForecast Reviewer"
+        },
+        {
+          "column_name": "answered_at",
+          "label": "Answered At",
+          "column_type": "Datetime"
+        },
+        {
+          "column_name": "answer_seen_at",
+          "label": "Asker Saw The Answer At",
+          "column_type": "Datetime"
+        },
+        {
+          "column_name": "subcategory_code",
+          "label": "Subcategory code",
+          "column_type": "Data"
+        }
+      ],
+      "title_column": "question_text"
+    }
+  ],
+  "permissions": [
+    {
+      "table": "forecasting.number",
+      "role": "Forecasting Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.decision",
+      "role": "Forecasting Member",
+      "can_read": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.review_question",
+      "role": "Forecasting Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.idea",
+      "role": "Forecasting Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.idea_history",
+      "role": "Forecasting Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.review_note",
+      "role": "Forecasting Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.forecaster",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.run_line",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.reach",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.explanation",
+      "role": "Forecasting Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.change_reason",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.forecast_change_reason",
+      "role": "Forecasting Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.forecast_change",
+      "role": "Forecasting Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.forecast_line_review",
+      "role": "Forecasting Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.forecast_question",
+      "role": "Forecasting Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.day_explanation",
+      "role": "Forecasting Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.forecast_run",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.forecast_line_month",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.forecast_line_day",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.sales_reference",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.annual_plan_line",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.other_model_day",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.other_model_month",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.actuals_day",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.price_band_mix",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.stock_band",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.price_band_top_item",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.item_health",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.item_stock",
+      "role": "Forecasting Member",
+      "can_read": true
+    }
+  ],
+  "roles": [
+    "Forecasting Member",
+    "Forecast Creator",
+    "Forecast Reviewer"
+  ],
+  "settings": [
+    {
+      "name": "linked_tables",
+      "required": false
+    }
+  ],
+  "datasets": [
+    {
+      "name": "forecast_run",
+      "source": "warehouse",
+      "query": "select run_id, model, purpose, status, origin_date, horizon_from, horizon_to from marts_forecasting.main.fb_forecast_run where run_id in (select run_id from (select run_id, row_number() over (partition by horizon_from, region order by origin_date desc, run_id desc) as newest from marts_forecasting.main.fb_forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)) where newest = 1)",
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "text"
+        },
+        {
+          "name": "model",
+          "type": "text"
+        },
+        {
+          "name": "purpose",
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "type": "text"
+        },
+        {
+          "name": "origin_date",
+          "type": "date"
+        },
+        {
+          "name": "horizon_from",
+          "type": "date"
+        },
+        {
+          "name": "horizon_to",
+          "type": "date"
+        }
+      ],
+      "keys": [
+        "run_id"
+      ],
+      "rowKey": [
+        "run_id"
+      ],
+      "unscoped": true,
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from (select run_id from (select run_id, row_number() over (partition by horizon_from, region order by origin_date desc, run_id desc) as newest from marts_forecasting.main.fb_forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)) where newest = 1)",
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "name": "forecast_line_month",
+      "source": "warehouse",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, forecast_month, forecast_value_before_tax, forecast_qty, own_value_b1, weight_b1, adds_value_b1, own_value_b2, weight_b2, adds_value_b2, own_value_b3, weight_b3, adds_value_b3, own_value_b4, weight_b4, adds_value_b4, own_value_b5, weight_b5, adds_value_b5, own_value_b6, weight_b6, adds_value_b6, growth_factor, seasonal_factor, from_recent_selling, seasonal_step_on_top, from_last_year, adjustments, rebalanced_within_category, price_and_rounding from marts_forecasting.main.fb_forecast_explanation_month where run_id in (select run_id from (select run_id, row_number() over (partition by horizon_from, region order by origin_date desc, run_id desc) as newest from marts_forecasting.main.fb_forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)) where newest = 1)",
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "forecast_month",
+          "type": "date"
+        },
+        {
+          "name": "forecast_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "forecast_qty",
+          "type": "number"
+        },
+        {
+          "name": "own_value_b1",
+          "type": "money"
+        },
+        {
+          "name": "weight_b1",
+          "type": "number"
+        },
+        {
+          "name": "adds_value_b1",
+          "type": "money"
+        },
+        {
+          "name": "own_value_b2",
+          "type": "money"
+        },
+        {
+          "name": "weight_b2",
+          "type": "number"
+        },
+        {
+          "name": "adds_value_b2",
+          "type": "money"
+        },
+        {
+          "name": "own_value_b3",
+          "type": "money"
+        },
+        {
+          "name": "weight_b3",
+          "type": "number"
+        },
+        {
+          "name": "adds_value_b3",
+          "type": "money"
+        },
+        {
+          "name": "own_value_b4",
+          "type": "money"
+        },
+        {
+          "name": "weight_b4",
+          "type": "number"
+        },
+        {
+          "name": "adds_value_b4",
+          "type": "money"
+        },
+        {
+          "name": "own_value_b5",
+          "type": "money"
+        },
+        {
+          "name": "weight_b5",
+          "type": "number"
+        },
+        {
+          "name": "adds_value_b5",
+          "type": "money"
+        },
+        {
+          "name": "own_value_b6",
+          "type": "money"
+        },
+        {
+          "name": "weight_b6",
+          "type": "number"
+        },
+        {
+          "name": "adds_value_b6",
+          "type": "money"
+        },
+        {
+          "name": "growth_factor",
+          "type": "number"
+        },
+        {
+          "name": "seasonal_factor",
+          "type": "number"
+        },
+        {
+          "name": "from_recent_selling",
+          "type": "money"
+        },
+        {
+          "name": "seasonal_step_on_top",
+          "type": "money"
+        },
+        {
+          "name": "from_last_year",
+          "type": "money"
+        },
+        {
+          "name": "adjustments",
+          "type": "money"
+        },
+        {
+          "name": "rebalanced_within_category",
+          "type": "money"
+        },
+        {
+          "name": "price_and_rounding",
+          "type": "money"
+        }
+      ],
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "store_short_code",
+        "subcategory_code",
+        "forecast_month"
+      ],
+      "rowKey": [
+        "run_id",
+        "store_code",
+        "subcategory_name"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "forecast_value_before_tax"
+        }
+      ],
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from (select run_id from (select run_id, row_number() over (partition by horizon_from, region order by origin_date desc, run_id desc) as newest from marts_forecasting.main.fb_forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)) where newest = 1)",
+      "onNewLoad": "carry_changes"
+    },
+    {
+      "name": "forecast_line_day",
+      "source": "warehouse",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, forecast_date, forecast_value_before_tax, forecast_qty, day_shape from marts_forecasting.main.fb_forecast_line_day where run_id in (select run_id from (select run_id, row_number() over (partition by horizon_from, region order by origin_date desc, run_id desc) as newest from marts_forecasting.main.fb_forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)) where newest = 1)",
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "forecast_date",
+          "type": "date"
+        },
+        {
+          "name": "forecast_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "forecast_qty",
+          "type": "number"
+        },
+        {
+          "name": "day_shape",
+          "type": "number"
+        }
+      ],
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "forecast_date",
+        "store_short_code",
+        "subcategory_code"
+      ],
+      "rowKey": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "forecast_date"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "forecast_value_before_tax"
+        }
+      ],
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from (select run_id from (select run_id, row_number() over (partition by horizon_from, region order by origin_date desc, run_id desc) as newest from marts_forecasting.main.fb_forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)) where newest = 1)"
+    },
+    {
+      "name": "sales_reference",
+      "source": "warehouse",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, window_name, date_from, date_to, sales_value_before_tax, sales_qty from marts_forecasting.main.fb_sales_reference where run_id in (select run_id from (select run_id, row_number() over (partition by horizon_from, region order by origin_date desc, run_id desc) as newest from marts_forecasting.main.fb_forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)) where newest = 1)",
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "window_name",
+          "type": "text"
+        },
+        {
+          "name": "date_from",
+          "type": "date"
+        },
+        {
+          "name": "date_to",
+          "type": "date"
+        },
+        {
+          "name": "sales_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "sales_qty",
+          "type": "number"
+        }
+      ],
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "window_name",
+        "store_short_code",
+        "subcategory_code"
+      ],
+      "rowKey": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "window_name"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "sales_value_before_tax"
+        }
+      ],
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from (select run_id from (select run_id, row_number() over (partition by horizon_from, region order by origin_date desc, run_id desc) as newest from marts_forecasting.main.fb_forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)) where newest = 1)"
+    },
+    {
+      "name": "annual_plan_line",
+      "source": "warehouse",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, plan_month, revision_id, plan_value_before_tax, plan_qty from marts_forecasting.main.fb_plan_line where run_id in (select run_id from (select run_id, row_number() over (partition by horizon_from, region order by origin_date desc, run_id desc) as newest from marts_forecasting.main.fb_forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)) where newest = 1)",
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "plan_month",
+          "type": "date"
+        },
+        {
+          "name": "revision_id",
+          "type": "integer"
+        },
+        {
+          "name": "plan_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "plan_qty",
+          "type": "number"
+        }
+      ],
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "plan_month",
+        "revision_id",
+        "store_short_code",
+        "subcategory_code"
+      ],
+      "rowKey": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "plan_month",
+        "revision_id"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "plan_value_before_tax"
+        }
+      ],
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from (select run_id from (select run_id, row_number() over (partition by horizon_from, region order by origin_date desc, run_id desc) as newest from marts_forecasting.main.fb_forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)) where newest = 1)"
+    },
+    {
+      "name": "other_model_day",
+      "source": "warehouse",
+      "query": "select official_run_id, model_run_id, model, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, forecast_date, forecast_value_before_tax, forecast_qty from marts_forecasting.main.fb_other_models",
+      "columns": [
+        {
+          "name": "official_run_id",
+          "type": "text"
+        },
+        {
+          "name": "model_run_id",
+          "type": "text"
+        },
+        {
+          "name": "model",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "forecast_date",
+          "type": "date"
+        },
+        {
+          "name": "forecast_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "forecast_qty",
+          "type": "number"
+        }
+      ],
+      "keys": [
+        "official_run_id",
+        "model",
+        "store_code",
+        "subcategory_name",
+        "forecast_date",
+        "store_short_code",
+        "subcategory_code"
+      ],
+      "rowKey": [
+        "official_run_id",
+        "model",
+        "store_code",
+        "subcategory_name",
+        "forecast_date"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "forecast_value_before_tax"
+        }
+      ]
+    },
+    {
+      "name": "other_model_month",
+      "source": "warehouse",
+      "query": "select official_run_id, model_run_id, model, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, forecast_month, forecast_value_before_tax, forecast_qty from marts_forecasting.main.fb_other_models_month",
+      "columns": [
+        {
+          "name": "official_run_id",
+          "type": "text"
+        },
+        {
+          "name": "model_run_id",
+          "type": "text"
+        },
+        {
+          "name": "model",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "forecast_month",
+          "type": "date"
+        },
+        {
+          "name": "forecast_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "forecast_qty",
+          "type": "number"
+        }
+      ],
+      "keys": [
+        "official_run_id",
+        "model",
+        "store_code",
+        "subcategory_name",
+        "forecast_month",
+        "store_short_code",
+        "subcategory_code"
+      ],
+      "rowKey": [
+        "official_run_id",
+        "model",
+        "store_code",
+        "subcategory_name",
+        "forecast_month"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "forecast_value_before_tax"
+        }
+      ]
+    },
+    {
+      "name": "actuals_day",
+      "source": "warehouse",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, sales_date, sales_value_before_tax, sales_qty, actuals_as_of_date from marts_forecasting.main.fb_actuals_day",
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "sales_date",
+          "type": "date"
+        },
+        {
+          "name": "sales_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "sales_qty",
+          "type": "number"
+        },
+        {
+          "name": "actuals_as_of_date",
+          "type": "date"
+        }
+      ],
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "sales_date",
+        "store_short_code",
+        "subcategory_code"
+      ],
+      "rowKey": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "sales_date"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "sales_value_before_tax"
+        }
+      ]
+    },
+    {
+      "name": "price_band_mix",
+      "source": "warehouse",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, price_band, price_band_order, date_from, date_to, sales_value_before_tax, sales_qty, items_sold, value_share, qty_share, items_to_50_pct, items_to_70_pct from marts_forecasting.main.fb_price_band_mix where run_id in (select run_id from (select run_id, row_number() over (partition by horizon_from, region order by origin_date desc, run_id desc) as newest from marts_forecasting.main.fb_forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)) where newest = 1)",
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "price_band",
+          "type": "text"
+        },
+        {
+          "name": "price_band_order",
+          "type": "integer"
+        },
+        {
+          "name": "date_from",
+          "type": "date"
+        },
+        {
+          "name": "date_to",
+          "type": "date"
+        },
+        {
+          "name": "sales_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "sales_qty",
+          "type": "number"
+        },
+        {
+          "name": "items_sold",
+          "type": "integer"
+        },
+        {
+          "name": "value_share",
+          "type": "number"
+        },
+        {
+          "name": "qty_share",
+          "type": "number"
+        },
+        {
+          "name": "items_to_50_pct",
+          "type": "integer"
+        },
+        {
+          "name": "items_to_70_pct",
+          "type": "integer"
+        }
+      ],
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "price_band",
+        "store_short_code",
+        "subcategory_code"
+      ],
+      "rowKey": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "price_band"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "sales_value_before_tax"
+        }
+      ],
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from (select run_id from (select run_id, row_number() over (partition by horizon_from, region order by origin_date desc, run_id desc) as newest from marts_forecasting.main.fb_forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)) where newest = 1)"
+    },
+    {
+      "name": "stock_band",
+      "source": "warehouse",
+      "query": "select region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, price_band, price_band_order, stock_qty, stock_value_at_cost, items_in_stock, stock_as_of, sales_value_before_tax_28d, sales_qty_28d, avg_daily_qty_28d, days_of_cover, sales_as_of_date from marts_forecasting.main.fb_stock_band where subcategory_code is not null",
+      "columns": [
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "price_band",
+          "type": "text"
+        },
+        {
+          "name": "price_band_order",
+          "type": "integer"
+        },
+        {
+          "name": "stock_qty",
+          "type": "number"
+        },
+        {
+          "name": "stock_value_at_cost",
+          "type": "money"
+        },
+        {
+          "name": "items_in_stock",
+          "type": "integer"
+        },
+        {
+          "name": "stock_as_of",
+          "type": "date"
+        },
+        {
+          "name": "sales_value_before_tax_28d",
+          "type": "money"
+        },
+        {
+          "name": "sales_qty_28d",
+          "type": "number"
+        },
+        {
+          "name": "avg_daily_qty_28d",
+          "type": "number"
+        },
+        {
+          "name": "days_of_cover",
+          "type": "number"
+        },
+        {
+          "name": "sales_as_of_date",
+          "type": "date"
+        }
+      ],
+      "keys": [
+        "store_code",
+        "subcategory_code",
+        "price_band",
+        "store_short_code",
+        "subcategory_name"
+      ],
+      "rowKey": [
+        "store_code",
+        "subcategory_code",
+        "price_band"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        }
+      ]
+    },
+    {
+      "name": "price_band_top_item",
+      "source": "warehouse",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, price_band, price_band_order, item_rank, item_code, item_name, sales_qty, sales_value_before_tax, share_of_band_sales, stock_qty from marts_forecasting.main.fb_price_band_top_item where run_id in (select run_id from (select run_id, row_number() over (partition by horizon_from, region order by origin_date desc, run_id desc) as newest from marts_forecasting.main.fb_forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)) where newest = 1)",
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "price_band",
+          "type": "text"
+        },
+        {
+          "name": "price_band_order",
+          "type": "integer"
+        },
+        {
+          "name": "item_rank",
+          "type": "integer"
+        },
+        {
+          "name": "item_code",
+          "type": "text"
+        },
+        {
+          "name": "item_name",
+          "type": "text"
+        },
+        {
+          "name": "sales_qty",
+          "type": "number"
+        },
+        {
+          "name": "sales_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "share_of_band_sales",
+          "type": "number"
+        },
+        {
+          "name": "stock_qty",
+          "type": "number"
+        }
+      ],
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "price_band",
+        "item_rank",
+        "store_short_code",
+        "subcategory_code",
+        "item_code"
+      ],
+      "rowKey": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "price_band",
+        "item_rank"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        }
+      ],
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from (select run_id from (select run_id, row_number() over (partition by horizon_from, region order by origin_date desc, run_id desc) as newest from marts_forecasting.main.fb_forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)) where newest = 1)"
+    },
+    {
+      "name": "item_health",
+      "source": "warehouse",
+      "query": "select region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, price_band, price_band_order, item_code, item_name, stock_qty, warehouse_stock_qty, can_pull_from_warehouse, last_sold_date, days_since_stock_movement, is_dead_stock, sales_qty_7d, sales_value_before_tax_7d, sales_qty_14d, sales_qty_28d, sales_value_before_tax_28d, sales_qty_90d, sales_value_before_tax_90d, selling_price_28d_before_tax, selling_price_90d_incl_tax, days_of_cover, other_stores_selling, other_stores_sales_qty_28d, other_stores_sales_qty_14d, other_stores_stock_qty, best_other_store_code, best_other_store_short_code, best_other_store_name, best_other_store_sales_qty_28d, best_other_store_stock_qty, stock_as_of, sales_as_of_date from marts_forecasting.main.fb_item_health",
+      "columns": [
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "price_band",
+          "type": "text"
+        },
+        {
+          "name": "price_band_order",
+          "type": "integer"
+        },
+        {
+          "name": "item_code",
+          "type": "text"
+        },
+        {
+          "name": "item_name",
+          "type": "text"
+        },
+        {
+          "name": "stock_qty",
+          "type": "number"
+        },
+        {
+          "name": "warehouse_stock_qty",
+          "type": "number"
+        },
+        {
+          "name": "can_pull_from_warehouse",
+          "type": "boolean"
+        },
+        {
+          "name": "last_sold_date",
+          "type": "date"
+        },
+        {
+          "name": "days_since_stock_movement",
+          "type": "integer"
+        },
+        {
+          "name": "is_dead_stock",
+          "type": "boolean"
+        },
+        {
+          "name": "sales_qty_7d",
+          "type": "number"
+        },
+        {
+          "name": "sales_value_before_tax_7d",
+          "type": "money"
+        },
+        {
+          "name": "sales_qty_14d",
+          "type": "number"
+        },
+        {
+          "name": "sales_qty_28d",
+          "type": "number"
+        },
+        {
+          "name": "sales_value_before_tax_28d",
+          "type": "money"
+        },
+        {
+          "name": "sales_qty_90d",
+          "type": "number"
+        },
+        {
+          "name": "sales_value_before_tax_90d",
+          "type": "money"
+        },
+        {
+          "name": "selling_price_28d_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "selling_price_90d_incl_tax",
+          "type": "money"
+        },
+        {
+          "name": "days_of_cover",
+          "type": "number"
+        },
+        {
+          "name": "other_stores_selling",
+          "type": "integer"
+        },
+        {
+          "name": "other_stores_sales_qty_28d",
+          "type": "number"
+        },
+        {
+          "name": "other_stores_sales_qty_14d",
+          "type": "number"
+        },
+        {
+          "name": "other_stores_stock_qty",
+          "type": "number"
+        },
+        {
+          "name": "best_other_store_code",
+          "type": "text"
+        },
+        {
+          "name": "best_other_store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "best_other_store_name",
+          "type": "text"
+        },
+        {
+          "name": "best_other_store_sales_qty_28d",
+          "type": "number"
+        },
+        {
+          "name": "best_other_store_stock_qty",
+          "type": "number"
+        },
+        {
+          "name": "stock_as_of",
+          "type": "date"
+        },
+        {
+          "name": "sales_as_of_date",
+          "type": "date"
+        }
+      ],
+      "keys": [
+        "store_code",
+        "item_code",
+        "store_short_code",
+        "subcategory_code",
+        "subcategory_name"
+      ],
+      "rowKey": [
+        "store_code",
+        "item_code"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "sales_value_before_tax_28d"
+        }
+      ]
+    },
+    {
+      "name": "item_stock",
+      "source": "warehouse",
+      "query": "select store_code, store_short_code, subcategory_code, price_band, item_code, item_name, stock_qty, warehouse_stock_qty, days_since_stock_movement, is_dead_stock, sales_qty_7d, sales_qty_14d, sales_qty_28d, sales_value_before_tax_28d, selling_price_90d_incl_tax, other_stores_selling, other_stores_sales_qty_14d, stock_as_of, sales_as_of_date from marts_forecasting.main.fb_item_health",
+      "columns": [
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "price_band",
+          "type": "text"
+        },
+        {
+          "name": "item_code",
+          "type": "text"
+        },
+        {
+          "name": "item_name",
+          "type": "text"
+        },
+        {
+          "name": "stock_qty",
+          "type": "number"
+        },
+        {
+          "name": "warehouse_stock_qty",
+          "type": "number"
+        },
+        {
+          "name": "days_since_stock_movement",
+          "type": "integer"
+        },
+        {
+          "name": "is_dead_stock",
+          "type": "boolean"
+        },
+        {
+          "name": "sales_qty_7d",
+          "type": "number"
+        },
+        {
+          "name": "sales_qty_14d",
+          "type": "number"
+        },
+        {
+          "name": "sales_qty_28d",
+          "type": "number"
+        },
+        {
+          "name": "sales_value_before_tax_28d",
+          "type": "money"
+        },
+        {
+          "name": "selling_price_90d_incl_tax",
+          "type": "money"
+        },
+        {
+          "name": "other_stores_selling",
+          "type": "integer"
+        },
+        {
+          "name": "other_stores_sales_qty_14d",
+          "type": "number"
+        },
+        {
+          "name": "stock_as_of",
+          "type": "date"
+        },
+        {
+          "name": "sales_as_of_date",
+          "type": "date"
+        }
+      ],
+      "keys": [
+        "store_code",
+        "store_short_code",
+        "item_code",
+        "subcategory_code"
+      ],
+      "rowKey": [
+        "store_code",
+        "item_code"
+      ],
+      "unscoped": true,
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        }
+      ]
+    }
+  ],
+  "jobs": [
+    {
+      "name": "carry_changes",
+      "title": "Carry Changes To A New Run",
+      "cadence": "daily",
+      "description": "After a new load of the Run's monthly forecast: tells the people who had answered a subcategory this month that Feather Forecast moved by more than 10%, so they answer again (the review asks again on its own). Does nothing on its daily run.",
+      "datasets": [
+        "forecast_line_month"
+      ],
+      "grants": [
+        "read_people",
+        "notify_people"
+      ],
+      "readsAllRows": [
+        "forecasting.forecast_line_review"
+      ]
+    }
+  ],
+  "baseTables": {
+    "read": {
+      "Site": [
+        "name",
+        "operating_region"
+      ],
+      "Section": [
+        "name",
+        "site",
+        "floor",
+        "status"
+      ],
+      "Store Floor": [
+        "name",
+        "site",
+        "floor_order"
+      ],
+      "Section Subcategory": [
+        "store",
+        "subcategory",
+        "section",
+        "starts_on",
+        "ends_on"
+      ],
+      "Subcategory": [
+        "subcategory",
+        "category"
+      ],
+      "Job Assignment": [
+        "employee",
+        "job",
+        "site",
+        "section",
+        "starts_on",
+        "ends_on"
+      ],
+      "Employee": [
+        "name",
+        "person",
+        "status"
+      ],
+      "Merchandise Assignment": [
+        "employee",
+        "responsibility",
+        "category",
+        "subcategory",
+        "operating_region",
+        "starts_on",
+        "ends_on"
+      ]
+    }
+  },
+  "reads": {
+    "version": 1,
+    "tables": [],
+    "operations": {
+      "org_chart": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "signed_in": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "my_places": {
+        "policy": {
+          "kind": "person_scope",
+          "readRoles": [
+            "Forecasting Member"
+          ],
+          "actionRoles": []
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      }
+    }
+  },
+  "scopedTables": [
+    {
+      "table": "forecasting.forecast_change",
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "subcategory_code",
+        "proposed_by",
+        "change_status"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      }
+    },
+    {
+      "table": "forecasting.forecast_line_review",
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "subcategory_code",
+        "reviewer",
+        "forecast_month"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      }
+    },
+    {
+      "table": "forecasting.forecast_question",
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "subcategory_code",
+        "asked_by"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      }
+    },
+    {
+      "table": "forecasting.day_explanation",
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_name",
+        "subcategory_code",
+        "section_name"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      }
+    }
+  ],
+  "orgChartRoles": [
+    "Forecasting Member"
+  ]
+}

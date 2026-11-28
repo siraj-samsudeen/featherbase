@@ -6,7 +6,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { overrideVariable } from '../src/env'
-import { _setMotherDuckUsersFetch, candidateLine, fileReviewTicketsUnderUmbrella, listMotherDuckUsers, motherDuckSyncAccount, MotherDuckSyncStop, syncMotherDuckAccounts, type MotherDuckUser } from '../src/motherduck-accounts'
+import { _setMotherDuckUsersFetch, candidateLine, fileReviewTicketsUnderUmbrella, personWords, listMotherDuckUsers, motherDuckSyncAccount, MotherDuckSyncStop, syncMotherDuckAccounts, type MotherDuckUser } from '../src/motherduck-accounts'
 import { makePerson, patchDoc, searchLines } from './fixtures'
 import { resolve } from 'node:path'
 import { discoverPackages } from '../src/runtime-packages'
@@ -185,6 +185,8 @@ describe('#1346: the MotherDuck account sync', () => {
     expect(candidateLine('Asha R', 'psn_a', { status: 'current', code: 'E-1', jobs: [{ job: 'Buyer', site: { table: 'Site', id: 's1', name: 'Main Store' } }, { job: 'Trainer' }] }))
       .toBe('- Asha R (psn_a) · E-1 · Buyer at Main Store; Trainer')
     expect(candidateLine('Asha R', 'psn_a', undefined)).toBe('- Asha R (psn_a)')
+    // #1396: the screen's suggestion reads the same, without the id.
+    expect(personWords('Asha R', { status: 'current', code: 'E-1', jobs: [{ job: 'Buyer', site: { table: 'Site', id: 's1', name: 'Main Store' } }] })).toBe('Asha R · E-1 · Buyer at Main Store')
   })
 
   test('a reappearing account is listed again, Active, with no removal date', async () => {
@@ -272,5 +274,39 @@ describe('#1397: the review tickets under one umbrella', () => {
     expect(await parents()).toEqual([['asha_one', umbrella.row_id], ['bala_two', umbrella.row_id]])
     expect(await fileReviewTicketsUnderUmbrella(true)).toEqual({ umbrella: umbrella.row_id, tickets: [], filed: [], errors: [] })
     expect(await umbrellas()).toHaveLength(1)
+  })
+})
+
+describe('#1396: linking accounts to people from one screen', () => {
+  test('lists each account with its person and the people its username reads as, and queues the sync, for System Managers only', async ({ admin, createUser }) => {
+    const priya = await makePerson({ full_name: 'Priya Raman' })
+    await makePerson({ full_name: 'Priyanka S' })
+    const linked = await makePerson({ full_name: 'Linked Already', email: 'linked@elsewhere.example' })
+    overrideVariable('MOTHERDUCK_TOKEN', 'md-read-token')
+    motherduck([[
+      { id: 'md-priya', username: 'priya', email: 'priya@elsewhere.example', first_name: 'Priya', last_name: 'R' },
+      { id: 'md-linked', username: 'linked_one', email: 'linked@elsewhere.example' },
+      { id: 'md-bot', username: 'loader_bot', is_service_account: true },
+    ]])
+    await syncMotherDuckAccounts()
+
+    const { accounts } = await admin.get<{ accounts: Record<string, unknown>[] }>('/api/motherduck_accounts/linking')
+    const by = Object.fromEntries(accounts.map((a) => [a.username, a]))
+    expect(Object.keys(by).sort()).toEqual(['linked_one', 'loader_bot', 'priya'])
+    expect(by.priya).toMatchObject({
+      row_id: 'md-priya', full_name: 'Priya R', email: 'priya@elsewhere.example', account_status: 'Active', service_account: false, person: null,
+    })
+    expect(typeof by.priya.updated_at).toBe('string')
+    expect((by.priya.suggestions as { label: string }[]).map((s) => s.label)).toEqual(['Priya Raman', 'Priyanka S'])
+    expect((by.priya.suggestions as { person: string }[])[0].person).toBe(priya)
+    expect(by.linked_one.person).toEqual({ id: linked, name: 'Linked Already' })
+    expect(by.loader_bot).toMatchObject({ service_account: true, suggestions: [] })
+
+    expect((await admin.fetch('/api/motherduck_accounts/sync', { method: 'POST' })).status).toBe(202)
+    expect(await sql`select 1 from background_job where method = 'sync_motherduck_accounts' and job_status = 'queued'`).not.toHaveLength(0)
+
+    const plain = await createUser({ email: 'plain.1396@example.test' })
+    expect((await plain.fetch('/api/motherduck_accounts/linking')).status).toBe(403)
+    expect((await plain.fetch('/api/motherduck_accounts/sync', { method: 'POST' })).status).toBe(403)
   })
 })

@@ -207,6 +207,10 @@ at the repository root.
     for a report taking no filter); a refused or failed open writes none.
     A failed open logs `dash_embed_session_failed` with the person, the report key, the Dive id, the
     status and MotherDuck's answer (`body`), cut to 500 characters with every secret blanked (#1391).
+    A refused report (`report`, `embed_session`, `embed_open`, `report_open`) logs one
+    `dash_report_refused` line with the person, the report key and the reason (`no_access`,
+    `no_reach` for a reader who reaches nothing yet, `not_your_store`, `whole_stores_only`,
+    `report_not_set_up`), and the page says why in plain words, never "couldn't open" (#1423).
 
   `stores`, `report` and `embed_session` are `person_scope` reads for the three app roles.
 - **Settings:** `embed_service_account` (optional: without it a report says "This report couldn't

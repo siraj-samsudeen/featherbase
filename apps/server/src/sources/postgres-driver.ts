@@ -12,7 +12,9 @@ import type {
   SourceConfig,
   SourceDriver,
   SourceFilter,
+  SourceColumnShape,
   SourceRow,
+  SourceTypeFamily,
 } from './types'
 import { orderClause } from './order'
 
@@ -167,7 +169,53 @@ async function run(cfg: SourceConfig, text: string, values: unknown[]): Promise<
   }
 }
 
+// #1418: a Postgres type's family, by its built-in type id; anything else
+// (a domain, an enum, an array) is 'other' and matches no declared type.
+const FAMILY: Record<number, [string, SourceTypeFamily]> = {
+  25: ['text', 'text'], 1043: ['varchar', 'text'], 1042: ['char', 'text'],
+  20: ['bigint', 'integer'], 21: ['smallint', 'integer'], 23: ['integer', 'integer'],
+  1700: ['numeric', 'decimal'], 700: ['real', 'float'], 701: ['double precision', 'float'],
+  1082: ['date', 'date'], 1114: ['timestamp', 'timestamp'], 1184: ['timestamptz', 'timestamp'], 16: ['boolean', 'boolean'],
+}
+
+/** #1418: what a query returns, by name and type, reading no row. */
+async function describe(cfg: SourceConfig, text: string, values: unknown[]): Promise<SourceColumnShape[]> {
+  try {
+    const client = pool(cfg)
+    await vet(cfg, client)
+    const described = await client.begin('read only', (tx) => tx.unsafe(text, values as never[]).describe()) as unknown as { columns: { name: string; type: number }[] }
+    return described.columns.map(({ name, type }) => {
+      const [word, family] = FAMILY[type] ?? [`type ${type}`, 'other' as const]
+      return { name, type: word, family }
+    })
+  } catch (err) {
+    wrapError(cfg, err)
+  }
+}
+
+/** #1418: a query's rows, in chunks, on one connection in a read-only transaction. */
+async function* stream(cfg: SourceConfig, text: string, values: unknown[]): AsyncGenerator<SourceRow[]> {
+  let reserved: Awaited<ReturnType<ReturnType<typeof postgres>['reserve']>> | undefined
+  try {
+    const client = pool(cfg)
+    await vet(cfg, client)
+    reserved = await client.reserve()
+    await reserved.unsafe('begin read only')
+    for await (const rows of reserved.unsafe(text, values as never[]).cursor(5000)) yield rows as unknown as SourceRow[]
+  } catch (err) {
+    wrapError(cfg, err)
+  } finally {
+    // Read-only, so ending it either way is the same; a reader that stopped
+    // early must not hand the connection back mid-transaction.
+    try { await reserved?.unsafe('rollback') } catch { /* the connection is gone; release drops it */ }
+    reserved?.release()
+  }
+}
+
 export const postgresDriver: SourceDriver = {
+  describe,
+  stream,
+
   engine: 'postgres',
   writable: true,
 

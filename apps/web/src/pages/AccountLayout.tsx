@@ -1,7 +1,8 @@
 import { Outlet } from '@tanstack/react-router'
 import { PagePickerSlot, TopBar, useOnAppAddress } from '../components/TopBar'
 import { useShellKind } from '../lib/session'
-import { AccountSidebarGroup, AdminShell, PAGE_PANEL, SidebarAside } from './AdminLayout'
+import { AccountSidebarGroup, AdminShell, PAGE_PANEL } from './AdminLayout'
+import { SidebarAside } from '../components/SidebarAside'
 import { getSessionUser } from '../lib/api'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
 

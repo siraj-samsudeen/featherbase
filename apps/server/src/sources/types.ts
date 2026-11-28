@@ -174,4 +174,15 @@ export interface SourceDriver {
   // (the whole result when omitted: a snapshot build). Engines without it
   // cannot back a dataset.
   query?(source: SourceConfig, text: string, columns: readonly DatasetColumn[], where?: DatasetWhere): Promise<SourceRow[]>
+  // #1418: a read-only copy's load. `describe` names what a query returns,
+  // reading no row; `stream` reads its rows in chunks. `$1`, `$2`… in the
+  // text take `values`. Both run read-only. Engines without them cannot back
+  // a read-only copy.
+  describe?(source: SourceConfig, text: string, values: unknown[]): Promise<SourceColumnShape[]>
+  stream?(source: SourceConfig, text: string, values: unknown[]): AsyncGenerator<SourceRow[]>
 }
+
+/** #1418: what kind of value a source column holds, as a declared column's
+ *  type is compared with it; `type` is the source's own word, for messages. */
+export type SourceTypeFamily = 'text' | 'integer' | 'decimal' | 'float' | 'date' | 'timestamp' | 'boolean' | 'other'
+export interface SourceColumnShape { name: string; type: string; family: SourceTypeFamily }

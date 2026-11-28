@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { appCopyTables } from './read-only-copy'
 import { enabledPeople, namesForApp, ownDisplayName, tableMembers } from './people-directory'
 import { appActorNames } from './actor-names'
 import { z } from 'zod'
@@ -279,7 +280,8 @@ export function executeRuntimeAction(app: string, name: string, input: unknown, 
         return { result: previous.result }
       }
       const { settings, secrets, kept } = await readyAppSetup(app, await (contribution.setup?.() ?? NO_SETUP), contribution.operations.get(name)?.declaration.needs)
-      const context = callerDocuments(app, contribution.tables, user, linkedTables(settings))
+      // #1418: the app's read-only copies read like a linked Table: the current load, never written.
+      const context = callerDocuments(app, contribution.tables, user, [...linkedTables(settings), ...appCopyTables(app)])
       const base = baseTablesReader(app, contribution.baseTables, linkedTables(settings))
       const proposals = proposalsWriter(app, contribution.baseTables, linkedTables(settings), user, contribution.entryTable)
       // Serialized inside the guard (Codex round 2 on #670): a getter on the
@@ -321,7 +323,7 @@ export async function executeRuntimeRead(app: string, name: string, input: unkno
       // have been released, so it holds no row lock, no transaction and no
       // lifecycle connection while it calls out.
       const inTransaction = async (step: RuntimeReadHandler) => {
-        const context = callerDocuments(app, contribution.tables, user, linkedTables(setup.settings))
+        const context = callerDocuments(app, contribution.tables, user, [...linkedTables(setup.settings), ...appCopyTables(app)])
         const { get, list, count, activity, isReader } = context.documents
         const base = baseTablesReader(app, contribution.baseTables, linkedTables(setup.settings))
         const proposals = proposalsReader(app, user, contribution.entryTable)
