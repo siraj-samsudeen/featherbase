@@ -97,7 +97,7 @@ tour('Tasker: a team runs its work', async ({ story, request }) => {
   let arun: Page = meena
   await s.chapter('Start a project', 30_000, async () => {
     await s.step(`Meena starts "${PROJECT}" with just a name`, async () => {
-      await meena.getByRole('button', { name: 'Projects', exact: true }).first().click()
+      await meena.getByRole('link', { name: /^Projects\d*$/ }).first().click()
       await meena.getByRole('textbox', { name: 'New project' }).fill(PROJECT)
       await meena.keyboard.press('Enter')
       await expect(meena.getByRole('heading', { name: PROJECT })).toBeVisible()
@@ -118,7 +118,7 @@ tour('Tasker: a team runs its work', async ({ story, request }) => {
 
   await s.chapter('Hand out the work', 30_000, async () => {
     await s.step('Meena makes Arun responsible for hanging the lights', async () => {
-      await meena.getByRole('button', { name: PROJECT }).first().click()
+      await meena.getByRole('link', { name: PROJECT }).first().click()
       await meena.getByLabel('Assign Hang the lights').selectOption({ label: ARUN.fullName })
       await expect(meena.getByLabel('Assign Hang the lights')).toHaveValue(/.+/)
     })
@@ -154,7 +154,7 @@ tour('Tasker: a team runs its work', async ({ story, request }) => {
   const reply = (discussion: Locator, text: string) => discussion.getByRole('article').getByRole('listitem').filter({ hasText: text })
   await s.chapter('Ask a question on the task', 30_000, async () => {
     await s.step('Meena opens the task and asks Arun which lights to use', async () => {
-      await meena.getByRole('button', { name: PROJECT }).first().click()
+      await meena.getByRole('link', { name: PROJECT }).first().click()
       await meena.getByRole('link', { name: 'Hang the lights' }).click()
       const discussion = details(meena).locator('section[aria-label="Task discussion"]')
       await discussion.getByLabel('Message type').selectOption({ label: 'Question' })
@@ -188,7 +188,7 @@ tour('Tasker: a team runs its work', async ({ story, request }) => {
 
   await s.chapter('Split the work into subtasks', 30_000, async () => {
     await s.step('Arranging the sarees becomes two smaller pieces', async () => {
-      await meena.getByRole('button', { name: PROJECT }).first().click()
+      await meena.getByRole('link', { name: PROJECT }).first().click()
       await meena.getByRole('link', { name: 'Arrange the silk sarees' }).click()
       const subtasks = details(meena).locator('section[aria-label="Subtasks"]')
       for (const title of ['Steam the sarees', 'Fold them for the shelves']) {
@@ -201,7 +201,7 @@ tour('Tasker: a team runs its work', async ({ story, request }) => {
 
   await s.chapter('Plan my day', 30_000, async () => {
     await s.step('Meena picks what she will do first into My Focus', async () => {
-      await meena.getByRole('button', { name: PROJECT }).first().click()
+      await meena.getByRole('link', { name: PROJECT }).first().click()
       await meena.getByRole('button', { name: 'Add to My Focus: Order shelf labels' }).first().click()
       await meena.getByRole('link', { name: 'My Work' }).or(meena.getByRole('button', { name: 'My Work' })).first().click()
       await expect(meena.getByRole('heading', { name: 'My Focus' }).locator('xpath=..')).toContainText('Order shelf labels')
