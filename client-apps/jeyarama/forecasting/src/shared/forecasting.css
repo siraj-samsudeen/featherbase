@@ -31,7 +31,7 @@
 .fr-table > tbody > tr.fr-row { cursor: pointer; }
 .fr-table > tbody > tr.fr-row:hover > td, .fr-table > tbody > tr.fr-row[aria-selected='true'] > td { background: var(--color-hover); }
 /* the line-name column stays put when the table scrolls sideways (TL-18) */
-.fr-table > tbody > tr.fr-row > td:first-child, .fr-table > tfoot > tr > td:first-child, .fr-table > thead > tr > th:first-child { position: sticky; left: 0; z-index: 1; min-width: 190px; }
+.fr-table > tbody > tr.fr-row > td:first-child, .fr-table > tfoot > tr > td:first-child, .fr-table > thead > tr > th:first-child { position: sticky; left: 0; z-index: 1; min-width: 250px; }
 .fr-table > tbody > tr.fr-row > td:first-child { background: var(--color-surface); }
 .fr-table > tbody > tr.fr-row:hover > td:first-child, .fr-table > tbody > tr.fr-row[aria-selected='true'] > td:first-child { background: var(--color-hover); }
 .fr-table > tfoot > tr > td { background: var(--color-subtle); font-weight: 600; }
