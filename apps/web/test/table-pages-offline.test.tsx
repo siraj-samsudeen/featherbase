@@ -13,7 +13,7 @@ const T = { timeout: 10_000 }
 const TABLE = 'Tpo Shelf'
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', { name: TABLE, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: TABLE, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
 }
 
 function networkDown() {

@@ -12,11 +12,11 @@ export const PROFIT = 'Nv Profit Centre'
 export const LONG_NOTE = 'The site sits beside the old canal road. Deliveries come in by the north gate before nine in the morning; the south gate is for staff only. The cold room is shared with the bakery next door and is checked twice a day. Fire drills happen on the first Monday of each month.'
 
 export async function seedSites(admin: Admin, opts: { profitCentres?: number } = {}) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: REGION, id_pattern: 'prompt', title_column: 'region_name',
     columns: [{ column_name: 'region_name', column_type: 'Data', label: 'Region name', in_list_view: true }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: SITE, id_pattern: 'prompt', title_column: 'site_name',
     columns: [
       { column_name: 'site_name', column_type: 'Data', label: 'Site name', in_list_view: true },
@@ -28,7 +28,7 @@ export async function seedSites(admin: Admin, opts: { profitCentres?: number } =
       { column_name: 'email', column_type: 'Data', label: 'Email' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: PLANT, id_pattern: 'prompt', title_column: 'plant_name',
     columns: [
       { column_name: 'plant_name', column_type: 'Data', label: 'Plant name', in_list_view: true },
@@ -36,7 +36,7 @@ export async function seedSites(admin: Admin, opts: { profitCentres?: number } =
       { column_name: 'format', column_type: 'Data', label: 'Format', in_list_view: true },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: PROFIT, id_pattern: 'hash', title_column: 'centre_name',
     columns: [
       { column_name: 'centre_name', column_type: 'Data', label: 'Centre name', in_list_view: true },
@@ -65,7 +65,7 @@ export async function seedSites(admin: Admin, opts: { profitCentres?: number } =
 // #1218 slice 1: a posting links a site to a plant; the site's postings read
 // as plants. Its region is the site's own region, so it is passed over.
 export async function seedPostings(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     // A link table: its title is its own id.
     name: 'Nv Posting', id_pattern: 'field:posting_id', title_column: 'posting_id',
     columns: [

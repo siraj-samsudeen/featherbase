@@ -13,7 +13,7 @@ type Admin = Parameters<typeof renderApp>[1]
 const OLD = 'Twa SAP Plant'
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', { name: OLD, columns: [{ column_name: 'city', column_type: 'Data', label: 'City' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: OLD, columns: [{ column_name: 'city', column_type: 'Data', label: 'City' }] })
   await admin.post('/api/save_row', { table: OLD, row: { city: 'Chennai' } })
 }
 
@@ -45,7 +45,7 @@ test('archiving from the list shows the banner, takes away New, and un-archive b
 
 test('an archived Table is listed under Archived tables, once', async ({ admin }) => {
   await seed(admin)
-  await admin.post('/api/table_def', { name: 'Twa Visit', columns: [{ column_name: 'plant', column_type: 'Data', label: 'Plant' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Twa Visit', columns: [{ column_name: 'plant', column_type: 'Data', label: 'Plant' }] })
   await admin.post('/api/table_def/Twa%20SAP%20Plant/archive', { note: 'Replaced by Plant' })
 
   await renderApp('/featherbase/admin/all-tables', admin)
@@ -57,7 +57,7 @@ test('an archived Table is listed under Archived tables, once', async ({ admin }
 
 test('no table picker offers an archived Table', async ({ admin }) => {
   await seed(admin)
-  await admin.post('/api/table_def', { name: 'Twa Visit', columns: [{ column_name: 'plant', column_type: 'Data', label: 'Plant' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Twa Visit', columns: [{ column_name: 'plant', column_type: 'Data', label: 'Plant' }] })
   await admin.post('/api/table_def/Twa%20SAP%20Plant/archive', { note: 'Replaced by Plant' })
   const user = userEvent.setup()
   await renderApp('/featherbase/admin/table/twa-visit/columns', admin)
@@ -82,7 +82,7 @@ test('a row of an archived Table opens read only, with the banner', async ({ adm
 
 test('#1041: a refusal shows in the dialog, and clicking inside the dialog leaves it open', async ({ admin }) => {
   const user = userEvent.setup()
-  await admin.post('/api/table_def', { name: 'Twa Roster', decides_scope: true, columns: [{ column_name: 'city', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Twa Roster', decides_scope: true, columns: [{ column_name: 'city', column_type: 'Data' }] })
   await renderApp('/featherbase/admin/table/twa-roster', admin)
   await openListMenu('Table administration', screen, { timeout: 10_000 })
   await user.click(await screen.findByTestId('archive-table'))

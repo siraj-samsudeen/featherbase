@@ -23,7 +23,7 @@ const DT = 'I18n Doc'
 type Admin = Parameters<typeof renderApp>[1]
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'priority', label: 'Priority', column_type: 'Data', in_list_view: true },

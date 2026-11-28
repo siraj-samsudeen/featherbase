@@ -18,7 +18,7 @@ const rowPath = (table: string, name: string) =>
 
 /** A plain table, and a second one whose Reference column points at it. */
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: NOTE,
     id_pattern: 'prompt',
     columns: [
@@ -26,7 +26,7 @@ async function setup(admin: TestClient) {
       { column_name: 'stage', column_type: 'Choice', choices: 'Open\nClosed' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: REF,
     id_pattern: 'prompt',
     columns: [{ column_name: 'note', column_type: 'Reference', reference_table: NOTE }],
@@ -37,7 +37,7 @@ describe('TLC-R2: creating a row', () => {
   test('TLC-R2: a row with no row_id is an insert, and the response carries the id the pattern assigned', async ({
     admin,
   }) => {
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: NOTE,
       // hash, not prompt: the point of this test is that the CLIENT does not
       // choose the id — the table's own pattern does.
@@ -132,7 +132,7 @@ describe('TLC-I2 / TLC-I3: the definition API never loses data silently', () => 
   test(
     'TLC-I2 / TLC-R6: a rename typed as remove-plus-add is refused, and the rename operation keeps the data (#250)',
     async ({ admin }) => {
-      await admin.post('/api/table_def', {
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: NOTE,
         id_pattern: 'prompt',
         columns: [{ column_name: 'title', column_type: 'Data' }],

@@ -1,5 +1,5 @@
 // #1454: a Table about places is read only within each person's places, on the ordinary read paths. The app
-// `scopedproof` declares its answers Table under `scopedTables`, mapped on store and section; its Answer Reader role
+// `scopedproof` gives its answers Table the row rule `places` (#1459), mapped on store and section; its Answer Reader role
 // reads and writes the Table whole, and the platform narrows every read and write to the reader's places. The places
 // come from test-apps/fixtures/place-roster, which a test tells what to answer. Every row is made up.
 import type { TestClient } from 'feather-testing-postgres'
@@ -106,9 +106,9 @@ describe('a Table about places', () => {
 
   test('the declaration names the app’s own Table and its plain columns', async () => {
     const problems = async (more: Record<string, unknown>) => JSON.stringify(await discoverPackages([await writeApp(more), (await import('node:path')).resolve('../..', 'test-apps/fixtures/place-roster')]))
-    expect(await problems({ scopedTables: [{ table: 'Shop Store', keys: [], filters: { store: 'store' } }] })).toContain('not one of the app')
-    expect(await problems({ scopedTables: [{ table: ANSWER, keys: ['missing'], filters: { store: 'store' } }] })).toContain('cannot be filtered on missing')
-    expect(await problems({ scopedTables: [{ table: ANSWER, keys: [], filters: { store: 'notes' } }] })).toContain('cannot be filtered on notes')
-    expect(await problems({ scopedTables: [{ table: ANSWER, keys: [], filters: {} }] })).toContain('maps at least one scope filter')
+    expect(await problems({ rowRules: { 'Shop Store': { kind: 'places', columns: { store: 'store' } } } })).toContain('not one of the app')
+    expect(await problems({ rowRules: { [ANSWER]: { kind: 'places', columns: { store: 'missing' } } } })).toContain('cannot be narrowed by missing')
+    expect(await problems({ rowRules: { [ANSWER]: { kind: 'places', columns: { store: 'notes' } } } })).toContain('cannot be narrowed by notes')
+    expect(await problems({ rowRules: { [ANSWER]: { kind: 'places', columns: {} } } })).toContain('Map at least one scope filter')
   })
 })

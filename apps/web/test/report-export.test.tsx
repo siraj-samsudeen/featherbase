@@ -41,7 +41,7 @@ function read(blob: Blob, as: 'text' | 'bytes'): Promise<string | ArrayBuffer> {
 }
 
 test('RPT-003: the CSV and XLSX exports match the on-screen rows and grouping order', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true },

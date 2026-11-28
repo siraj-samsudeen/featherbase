@@ -12,8 +12,8 @@ const ATT = 'Blk Attendance'
 const ROLE = 'Blk Employee Reader'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', { name: EMP, id_pattern: 'prompt', columns: [{ column_name: 'dept', column_type: 'Data' }] })
-  await admin.post('/api/table_def', { name: ATT, columns: [{ column_name: 'employee', column_type: 'Reference', reference_table: EMP }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: EMP, id_pattern: 'prompt', columns: [{ column_name: 'dept', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: ATT, columns: [{ column_name: 'employee', column_type: 'Reference', reference_table: EMP }] })
 }
 
 const backlinkTables = async (client: TestClient) =>
@@ -41,7 +41,7 @@ describe('Tables that point at a table', () => {
   test('names the readable Tables holding a sub-table', async ({ admin, createUser }) => {
     await admin.post('/api/table_def', { name: 'Blk Line', kind: 'sub_table', columns: [{ column_name: 'qty', column_type: 'Int' }] })
     for (const name of ['Blk Order', 'Blk Return'])
-      await admin.post('/api/table_def', { name, columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Blk Line' }] })
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name, columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Blk Line' }] })
     const holders = async (client: TestClient) =>
       (await client.get<{ holders: string[] }>(`/api/table/${encodeURIComponent('Blk Line')}:backlinks`)).holders
     expect(await holders(admin)).toEqual(['Blk Order', 'Blk Return'])

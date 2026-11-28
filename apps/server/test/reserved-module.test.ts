@@ -15,14 +15,14 @@ test('the name "System" is reserved in any case or spacing; other names are not'
 
 test('building a Table in module "System" is refused with a plain message, and no second System page appears', async ({ admin }) => {
   for (const module of ['System', ' system ', 'Sys tem']) {
-    const res = await admin.fetch('/api/table_def', { method: 'POST', body: JSON.stringify({ name: 'Reserved Module 1287', module, columns }) })
+    const res = await admin.fetch('/api/table_def', { method: 'POST', body: JSON.stringify({ row_rule: { kind: 'all' }, name: 'Reserved Module 1287', module, columns }) })
     expect(res.status, module).toBe(417)
     expect(await res.json()).toMatchObject({ error: refusal })
   }
   expect(await sql`select 1 from table_def where name = 'Reserved Module 1287'`).toEqual([])
   expect(await sql`select row_id from home_page where label = 'System'`).toEqual([{ row_id: 'system' }])
   // Any other module is built as before, with its own page.
-  const ok = await admin.fetch('/api/table_def', { method: 'POST', body: JSON.stringify({ name: 'Reserved Module 1287', module: 'System Tools', columns }) })
+  const ok = await admin.fetch('/api/table_def', { method: 'POST', body: JSON.stringify({ row_rule: { kind: 'all' }, name: 'Reserved Module 1287', module: 'System Tools', columns }) })
   expect(ok.status).toBe(201)
   expect(await sql`select row_id from home_page where module = 'System Tools'`).toHaveLength(1)
 })

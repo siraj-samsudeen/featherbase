@@ -8,7 +8,7 @@ import { test, expect, renderApp } from './pg-test'
 
 test('storage the browser refuses to copy is to be selected by hand', async ({ admin }) => {
   const user = userEvent.setup()
-  await admin.post('/api/table_def', { name: 'Tsc Plant', columns: [{ column_name: 'plant_name', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Tsc Plant', columns: [{ column_name: 'plant_name', column_type: 'Data' }] })
   await renderApp(rowHref('Table', 'Tsc Plant'), admin)
   const storage = await screen.findByTestId('table-storage', {}, { timeout: 10_000 })
   vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new DOMException('Write permission denied.', 'NotAllowedError'))

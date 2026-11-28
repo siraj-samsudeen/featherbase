@@ -17,7 +17,7 @@ const api = `/api/table/${encodeURIComponent(PLANTS)}`
 const WAIT = { timeout: 15_000 }
 
 async function plants(admin: TestClient, first: string, second: string) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: PLANTS,
     module: 'Custom',
     id_pattern: 'prompt',

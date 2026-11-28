@@ -13,7 +13,7 @@ afterEach(() => clearSession())
 
 test('failures from the duplicate gate and from the server come back in source-row order', async ({ admin }) => {
   setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Iro Zone',
     columns: [
       { column_name: 'zone', column_type: 'Data', label: 'Zone', unique: true },
@@ -37,7 +37,7 @@ test('failures from the duplicate gate and from the server come back in source-r
 
 test('#851 changes in separate import parts count together', async ({ admin }) => {
   setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Iro Zone', track_changes: false,
     columns: [
       { column_name: 'zone', column_type: 'Data' },

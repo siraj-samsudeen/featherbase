@@ -3,7 +3,7 @@
   "platformVersion": "2026-10",
   "name": "datasetproof",
   "title": "Dataset proof",
-  "entryTable": "datasetproof.note",
+  "entryTable": "datasetproof.note", "rowRules": {"datasetproof.note": { "kind": "all" }},
   "server": "server.mjs",
   "tables": [
     {

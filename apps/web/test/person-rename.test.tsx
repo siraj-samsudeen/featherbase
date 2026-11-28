@@ -95,7 +95,7 @@ test('service accounts are listed by name, never by their svc_ id', async ({ adm
 
 test('names, not ids: a comment by a person shows their name and initials', async ({ admin, createUser }) => {
   const asha = await createUser({ email: 'asha.names@example.com', fullName: 'Asha Kumar' })
-  await admin.post('/api/table_def', { name: 'Names Row', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Names Row', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await grantRole(admin, { table: 'Names Row', role: 'All', can_read: true })
   await grantRole(admin, { table: 'Comment', role: 'All', can_read: true, can_create: true, can_write: true })
   const doc = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Names Row', row: { title: 'discuss' } })
@@ -131,7 +131,7 @@ test('a comment\'s author is named even to a viewer who may not read Person, nev
   // open it too, but may not read the author's Person row.
   const author = await createUser({ email: 'hidden.author@example.com', fullName: 'Hidden Author', roles: ['Hidden Row Reader'] })
   const reader = await createUser({ email: 'no.person.read@example.com', roles: ['Hidden Row Reader'] })
-  await admin.post('/api/table_def', { name: 'Hidden Row', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Hidden Row', columns: [{ column_name: 'title', column_type: 'Data' }] })
   // A grant of their own earns the Admin (#410); grants to the implicit All role alone do not.
   await grantRole(admin, { table: 'Hidden Row', role: 'Hidden Row Reader', can_read: true })
   await grantRole(admin, { table: 'Comment', role: 'All', can_read: true, can_create: true, can_write: true })
@@ -200,7 +200,7 @@ test('a Recent row for a person with no caption shows the name and no id tooltip
 // #1224: who made a row is named to anyone who may read the row, even without
 // Person read; the same id without that context stays unnamed.
 test('who made a row reads by name to a reader without Person read; outside the Table it stays unnamed', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Actor Row', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Actor Row', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await grantRole(admin, { table: 'Actor Row', role: 'Actor Row Writer', can_read: true, can_create: true })
   await grantRole(admin, { table: 'Actor Row', role: 'Actor Row Reader', can_read: true })
   const writer = await createUser({ email: 'actor.writer@example.com', fullName: 'Actor Writer', roles: ['Actor Row Writer'] })

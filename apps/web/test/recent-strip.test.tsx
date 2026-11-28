@@ -13,7 +13,7 @@ function remember(rowId: string, at: number) {
 }
 
 test('#741 a deleted row leaves the Recent strip; the rows still there stay', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: TABLE, title_column: 'bin_name', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: TABLE, title_column: 'bin_name', columns: [
     { column_name: 'bin_name', column_type: 'Data' },
   ] })
   const kept = await admin.post<{ row_id: string }>(`/api/table/${encodeURIComponent(TABLE)}`, { bin_name: 'Kept bin' })
@@ -29,7 +29,7 @@ test('#741 a deleted row leaves the Recent strip; the rows still there stay', as
 })
 
 test('#741 with every remembered row deleted, no Recent strip shows', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: TABLE, title_column: 'bin_name', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: TABLE, title_column: 'bin_name', columns: [
     { column_name: 'bin_name', column_type: 'Data' },
   ] })
   const gone = await admin.post<{ row_id: string }>(`/api/table/${encodeURIComponent(TABLE)}`, { bin_name: 'Deleted bin' })
@@ -44,7 +44,7 @@ test('#741 with every remembered row deleted, no Recent strip shows', async ({ a
 })
 
 test('#959 a retired row leaves the Recent strip until Show retired is on', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: TABLE, title_column: 'bin_name', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: TABLE, title_column: 'bin_name', columns: [
     { column_name: 'bin_name', column_type: 'Data' },
   ] })
   const kept = await admin.post<{ row_id: string }>(`/api/table/${encodeURIComponent(TABLE)}`, { bin_name: 'Kept bin' })

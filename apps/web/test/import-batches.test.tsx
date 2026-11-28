@@ -97,7 +97,7 @@ test('one action deletes the three Tables an import created, naming them first',
 }, 60_000)
 
 test('a Table that only received rows is never deleted with the batch', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: EXISTING,
     columns: [{ column_name: 'bch_alpha', column_type: 'Data' }, { column_name: 'bch_note', column_type: 'Data' }],
   })
@@ -167,7 +167,7 @@ test('Past imports with nothing imported says so and offers an import', async ({
 })
 
 test('an import with refused rows counts them as failed, on the import and on its Table', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Bch Needs Note', columns: [{ column_name: 'note', column_type: 'Data', reqd: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Bch Needs Note', columns: [{ column_name: 'note', column_type: 'Data', reqd: true }] })
   await importInto(admin, 'Bch Needs Note', [{ note: 'kept' }, { note: '' }], 'bch-failed', 'bch-failed-run')
   await renderApp('/featherbase/admin/imports', admin)
   const batch = await screen.findByTestId('ib-batch-bch-failed', {}, WAIT)
@@ -176,7 +176,7 @@ test('an import with refused rows counts them as failed, on the import and on it
 })
 
 test('a run taken back is marked reverted on its Table', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Bch Taken Back', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Bch Taken Back', columns: [{ column_name: 'note', column_type: 'Data' }] })
   await importInto(admin, 'Bch Taken Back', [{ note: 'one' }], 'bch-reverted', 'bch-reverted-run')
   await admin.post(`/api/table/${encodeURIComponent('Bch Taken Back')}:import-revert`, { run_id: 'bch-reverted-run' })
   await renderApp('/featherbase/admin/imports', admin)
@@ -195,7 +195,7 @@ test('Past imports the network drops says it could not load them', async ({ admi
 })
 
 test('deleting an import the network drops says it could not delete', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Bch Kept Anyway', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Bch Kept Anyway', columns: [{ column_name: 'note', column_type: 'Data' }] })
   await importInto(admin, 'Bch Kept Anyway', [{ note: 'one' }], 'bch-lost', 'bch-lost-run', true)
   await renderApp('/featherbase/admin/imports', admin)
   await userEvent.click(await screen.findByTestId('ib-delete-bch-lost', {}, WAIT))

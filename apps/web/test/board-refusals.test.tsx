@@ -27,7 +27,7 @@ function landOn(testid: string) {
 }
 
 async function seedBoard(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: BOARD,
     id_pattern: 'prompt',
     title_column: 'title',
@@ -40,7 +40,7 @@ async function seedBoard(admin: Admin) {
 }
 
 async function seedSchedule(admin: Admin, row: Record<string, unknown>) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: SCHED,
     id_pattern: 'prompt',
     title_column: 'title',

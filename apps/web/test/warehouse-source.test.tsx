@@ -285,7 +285,7 @@ test('mapping search reaches the last of 80 columns and updates its source ident
 test('someone who is not a System Manager sees no Data sources group', async ({ admin, createUser }) => {
   await connect(admin, 'web-wh-hidden')
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Warehouse Shelf Clerk' } })
-  await admin.post('/api/table_def', { name: 'Warehouse Shelf Note', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Warehouse Shelf Note', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await grantRole(admin, { table: 'Warehouse Shelf Note', role: 'Warehouse Shelf Clerk', can_read: true })
   const clerk = await createUser({ email: 'wh.clerk@example.com', roles: ['Warehouse Shelf Clerk'] })
   await renderApp('/featherbase/admin', clerk)

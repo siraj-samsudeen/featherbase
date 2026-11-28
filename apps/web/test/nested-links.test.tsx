@@ -12,7 +12,7 @@ type Saved = { row_id: string }
 const enc = encodeURIComponent
 
 async function seedOrders(admin: TestClient) {
-  await admin.post('/api/table_def', { name: 'Nest Customer', id_pattern: 'prompt', columns: [{ column_name: 'city', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Nest Customer', id_pattern: 'prompt', columns: [{ column_name: 'city', column_type: 'Data' }] })
   for (const name of ['Acme Ltd', 'Globex Ltd', 'Formco'])
     await admin.post('/api/save_row', { table: 'Nest Customer', row: { row_id: name, city: 'x' } })
   await admin.post('/api/table_def', {
@@ -23,7 +23,7 @@ async function seedOrders(admin: TestClient) {
     name: 'Nest Note', kind: 'sub_table',
     columns: [{ column_name: 'about', column_type: 'Reference', label: 'About', reference_table: 'Nest Customer' }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Nest Order',
     columns: [
       { column_name: 'notes', column_type: 'Sub-table', label: 'Notes', row_table: 'Nest Note' },

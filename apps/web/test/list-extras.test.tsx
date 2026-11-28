@@ -19,7 +19,7 @@ async function seed(admin: Parameters<typeof renderApp>[1]) {
       { column_name: 'price', column_type: 'Currency', label: 'Price' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: T, id_pattern: 'prompt',
     columns: [
       // Search looks in the first text column, which then has no field box (#1289); Customer keeps its box.

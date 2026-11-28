@@ -3,7 +3,7 @@
   "platformVersion": "2026-10",
   "name": "setupproof",
   "title": "Setup proof",
-  "entryTable": "setupproof.note",
+  "entryTable": "setupproof.note", "rowRules": {"setupproof.note": { "kind": "all" }},
   "server": "server.mjs",
   "tables": [
     {

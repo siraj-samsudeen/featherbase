@@ -38,7 +38,7 @@ describe('#101: /api/saved_views', () => {
 
   test('private views stay private; sharing opens them read-only', async ({ admin, api }) => {
     const DT = 'SV Share DT'
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: DT,
       id_pattern: 'prompt',
       columns: [{ column_name: 'title', column_type: 'Data' }],
@@ -88,7 +88,7 @@ describe('#101: /api/saved_views', () => {
   // can neither browse its shared views nor publish chips for it.
   test('saved views respect Table read permission', async ({ admin, api }) => {
     const DT = 'SV Locked DT'
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: DT,
       id_pattern: 'prompt',
       columns: [{ column_name: 'title', column_type: 'Data' }],
@@ -168,7 +168,7 @@ describe('#101: /api/saved_views', () => {
   // take the sharing back, and teammates stop seeing it.
   test('the owner can make a shared view private again', async ({ admin, api }) => {
     const DT = 'SV Unshare DT'
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: DT,
       id_pattern: 'prompt',
       columns: [{ column_name: 'title', column_type: 'Data' }],

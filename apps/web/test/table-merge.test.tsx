@@ -29,7 +29,7 @@ type Admin = Parameters<typeof renderApp>[1]
 // `pop` fold to the same name on both sides, so those pair themselves and
 // the store column does not — which is the whole subject.
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: SRC,
     columns: [
       { column_name: 'glor', label: 'Glor', column_type: 'Data' },
@@ -37,7 +37,7 @@ async function seed(admin: Admin) {
       { column_name: 'pop', label: 'Pop', column_type: 'Int' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DST,
     columns: [
       { column_name: 'floor', label: 'Floor', column_type: 'Data' },

@@ -24,7 +24,7 @@ function recordFailures(): string[] {
 const WAIT = { timeout: 8000 }
 
 async function shelfNote(admin: Parameters<typeof renderApp>[1]) {
-  await admin.post('/api/table_def', { name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true }] })
   await admin.post('/api/save_row', { table: 'Shelf Note', row: { title: 'Restock aisle 4' } })
 }
 

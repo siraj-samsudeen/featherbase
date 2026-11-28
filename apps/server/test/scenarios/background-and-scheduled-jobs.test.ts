@@ -20,7 +20,7 @@ import { registerCopyRefreshJobs } from '../../src/copy-refresh'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from '../motherduck-standin'
 import { test } from '../pg-test'
 import { scenarioFor } from '../scenario'
-import { expectRefused } from '../fixtures'
+import { expectRefused, readWhole } from '../fixtures'
 
 const scenario = scenarioFor(test, 'background-and-scheduled-jobs')
 
@@ -62,6 +62,7 @@ class Plants {
       database: 'sales', schema: 'main', table: this.relation, name: 'Plants', key: 'code',
       columns: [{ source: 'code', column_name: 'code' }, { source: 'name', column_name: 'title' }],
     })
+    await readWhole(this.admin, 'Plants')
     return this
   }
 

@@ -18,13 +18,13 @@ const SECSUB = 'Nar Section Subcategory'
 
 async function setup(admin: TestClient) {
   for (const name of [STORE, FLOOR, CATEGORY])
-    await admin.post('/api/table_def', { name, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
-  await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: SUBCAT,
     id_pattern: 'prompt',
     columns: [{ column_name: 'category', column_type: 'Reference', reference_table: CATEGORY }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: SECTION,
     id_pattern: 'prompt',
     columns: [
@@ -33,7 +33,7 @@ async function setup(admin: TestClient) {
       { column_name: 'kind', column_type: 'Choice', choices: 'Fashion\nGrocery' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: SECSUB,
     columns: [
       { column_name: 'section', column_type: 'Reference', reference_table: SECTION },
@@ -195,7 +195,7 @@ describe('#1289: Click To Narrow counts', () => {
   test('a link to a row of any Table cannot be a list, and lists must be JSON', async ({ admin }) => {
     await setup(admin)
     const PIN = 'Nar Pin'
-    await admin.post('/api/table_def', { name: PIN, columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: PIN, columns: [
       { column_name: 'pinned_table', column_type: 'Reference', reference_table: 'Table' },
       { column_name: 'pinned', column_type: 'Reference', table_column: 'pinned_table', choices: `${STORE}\n${FLOOR}` },
     ] })

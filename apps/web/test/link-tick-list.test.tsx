@@ -29,14 +29,14 @@ const NOTE = 'Lt Note'
 const ROLES = ['Floor Lead', 'Buyer', 'Team Leader', 'Store Lead', 'Category Head', 'Head Office', 'Data Steward']
 
 async function seed(admin: Admin, opts: { roles?: number; correctionPath?: boolean; moreFields?: boolean } = {}) {
-  await admin.post('/api/table_def', { name: MEMBER, id_pattern: 'prompt', title_column: 'member_name',
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: MEMBER, id_pattern: 'prompt', title_column: 'member_name',
     columns: [{ column_name: 'member_name', column_type: 'Data', label: 'Member name', in_list_view: true }] })
-  await admin.post('/api/table_def', { name: ROLE, id_pattern: 'prompt', title_column: 'role_name',
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: ROLE, id_pattern: 'prompt', title_column: 'role_name',
     columns: [{ column_name: 'role_name', column_type: 'Data', label: 'Role name', in_list_view: true }] })
-  await admin.post('/api/table_def', { name: PLACE, id_pattern: 'prompt', title_column: 'place_name',
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: PLACE, id_pattern: 'prompt', title_column: 'place_name',
     columns: [{ column_name: 'place_name', column_type: 'Data', label: 'Place name', in_list_view: true }] })
   // Rows that only link: a member, a role, where it applies, until when and why.
-  await admin.post('/api/table_def', { name: GIVEN, id_pattern: 'hash',
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: GIVEN, id_pattern: 'hash',
     ...(opts.correctionPath ? { correction_path: '/fix?member={member}' } : {}),
     columns: [
       { column_name: 'member', column_type: 'Reference', reference_table: MEMBER, label: 'Member', in_list_view: true },
@@ -51,7 +51,7 @@ async function seed(admin: Admin, opts: { roles?: number; correctionPath?: boole
         { column_name: 'starts_at', column_type: 'Datetime', label: 'Starts at' },
       ] : []),
     ] })
-  await admin.post('/api/table_def', { name: NOTE, id_pattern: 'hash', title_column: 'note_text',
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: NOTE, id_pattern: 'hash', title_column: 'note_text',
     columns: [
       { column_name: 'note_text', column_type: 'Data', label: 'Note', in_list_view: true },
       { column_name: 'member', column_type: 'Reference', reference_table: MEMBER, label: 'Member', in_list_view: true },

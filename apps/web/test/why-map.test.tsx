@@ -33,7 +33,7 @@ test('someone the app does not let explain sees no toggle, only the neighbours',
 })
 
 test('a record no app explains has no toggle', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Why Plain', id_pattern: 'prompt', title_column: 'title', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Why Plain', id_pattern: 'prompt', title_column: 'title', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Why Plain', row: { row_id: 'p1', title: 'Plain' } })
   await renderApp(`${tableHref('Why Plain')}/row/p1`, admin)
   fireEvent.click(await screen.findByRole('tab', { name: 'Map' }))

@@ -15,7 +15,7 @@ const DT = 'Cust5 Srv'
 // Per-test setup (the sandbox rolls everything back): the Table plus one
 // custom field and one metadata override.
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
@@ -38,7 +38,7 @@ async function setup(admin: TestClient) {
 
 describe('CUST-005: export/import customizations', () => {
   test('#800 collaboration flags round-trip over HTTP without deleting existing content', async ({ admin, createUser }) => {
-    await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
     const target = await admin.post<{ row_id: string }>('/api/save_row', { table: DT, row: { title: 'Keep collaboration' } })
     const assignee = await createUser({ roles: [] })
     await admin.post('/api/assign', { table: DT, row_id: target.row_id, assign_to: assignee.user })
@@ -94,7 +94,7 @@ describe('CUST-005: export/import customizations', () => {
 
   for (const enabled of [false, true]) {
     test(`#800 collaboration flags ${enabled} leave parent-row authorization unchanged`, async ({ admin, createUser }) => {
-      await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
       if (enabled) {
         await admin.post('/api/import_customizations', {
           property_setters: ['enable_assignments', 'enable_tags', 'enable_files', 'enable_discussion'].map((property) => ({
@@ -211,7 +211,7 @@ describe('CUST-005: export/import customizations', () => {
   })
 
   test('an imported field with omitted options becomes an optional Data column', async ({ admin }) => {
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: DT, columns: [{ column_name: 'title', column_type: 'Data' }],
     })
     expect(await admin.post('/api/import_customizations', {
@@ -240,7 +240,7 @@ describe('CUST-005: export/import customizations', () => {
   })
 
   test('re-importing a Table-level label override does not duplicate it', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
     const bundle = { property_setters: [{ table_name: DT, property: 'label', value: 'Customer requests' }] }
     expect(await admin.post('/api/import_customizations', bundle)).toEqual({ custom_fields: 0, property_setters: 1 })
     expect(await admin.get(`/api/table/${encodeURIComponent(DT)}:meta`)).toMatchObject({ label: 'Customer requests' })
@@ -254,7 +254,7 @@ describe('CUST-005: export/import customizations', () => {
   })
 
   test('an imported field cannot replace an existing base column', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
     const saved = await admin.post<{ row_id: string }>('/api/save_row', { table: DT, row: { title: 'Keep this value' } })
     const rowPath = `/api/table/${encodeURIComponent(DT)}/${saved.row_id}`
     const before = await admin.get(rowPath)

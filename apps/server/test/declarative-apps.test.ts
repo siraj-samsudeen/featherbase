@@ -16,7 +16,7 @@ const MANIFEST = {
   name: APP,
   tables: [
     {
-      name: DT,
+      name: DT, row_rule: { kind: 'all' },
       module: 'Test',
       id_pattern: 'hash',
       columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],

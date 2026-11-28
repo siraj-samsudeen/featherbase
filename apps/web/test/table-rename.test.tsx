@@ -12,7 +12,7 @@ const NEW = 'Twr Plant'
 const pathOf = (r: { router: unknown }) => (r.router as { state: { location: { pathname: string } } }).state.location.pathname
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', { name: OLD, columns: [{ column_name: 'city', column_type: 'Data', label: 'City' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: OLD, columns: [{ column_name: 'city', column_type: 'Data', label: 'City' }] })
   await admin.post('/api/save_row', { table: OLD, row: { city: 'Chennai' } })
 }
 
@@ -54,7 +54,7 @@ test('the list just opened stays in recently opened under the new name', async (
 test('a name already in use is refused in the dialog, and nothing changes', async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)
-  await admin.post('/api/table_def', { name: NEW, columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: NEW, columns: [{ column_name: 'code', column_type: 'Data' }] })
   await renderApp('/featherbase/admin/table/twr-sap-plant', admin)
   await openListMenu('Table administration')
   await user.click(await screen.findByTestId('rename-table', undefined, { timeout: 10_000 }))

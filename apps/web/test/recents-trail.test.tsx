@@ -33,7 +33,7 @@ function filtersIn(app: App): unknown[] {
 }
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: 'prompt',
     columns: [{ column_name: 'note', column_type: 'Data', label: 'Note', in_list_view: true }],

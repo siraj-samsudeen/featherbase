@@ -23,7 +23,7 @@ const addTerm = (admin: TestClient, row: Record<string, unknown>) =>
   admin.post<{ row_id: string }>('/api/save_row', { table: 'Glossary Term', row })
 
 async function stockCount(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Stock Count',
     columns: [
       { column_name: 'aisle', column_type: 'Data', label: 'Aisle' },

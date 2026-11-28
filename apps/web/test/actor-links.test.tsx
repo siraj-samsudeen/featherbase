@@ -12,7 +12,7 @@ type CreateUser = (o: { email?: string; roles?: string[] }) => Promise<Client>
 const WAIT = { timeout: 10_000 }
 
 async function seed(admin: Client) {
-  await admin.post('/api/table_def', { name: T, columns: [{ column_name: 'note', column_type: 'Data', label: 'Note', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: T, columns: [{ column_name: 'note', column_type: 'Data', label: 'Note', in_list_view: true }] })
   const row = await admin.post<{ row_id: string }>('/api/save_row', { table: T, row: { note: 'first' } })
   await grantRole(admin, { role: `${T} Reader`, table: T, can_read: true })
   return row.row_id
@@ -47,7 +47,7 @@ test('a reader who may not read Person sees the same name, not a link', async ({
 
 // #1264: a person in a list cell opens their record, not the row's panel.
 test("clicking a person in a list cell doesn't also open the row in the panel", async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Actor Links Owners', columns: [
       { column_name: 'note', column_type: 'Data', in_list_view: true },
       { column_name: 'owner', column_type: 'Reference', reference_table: 'Person', in_list_view: true },

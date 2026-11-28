@@ -15,7 +15,7 @@ describe('Choose how new rows are named', () => {
   // id on a new row and offer no place to type one, so a Table named "by
   // whoever creates the row" refused every save from the form.
   test('a row in a typed-in-name Table can be created from the form', async ({ admin }) => {
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: DT,
       id_pattern: 'prompt',
       columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],

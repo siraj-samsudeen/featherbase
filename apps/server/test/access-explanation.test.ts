@@ -25,7 +25,7 @@ interface Explanation {
 const pageOf = (person: string) => `/api/access_explanation/${encodeURIComponent(person)}`
 
 test('roles say who gave them, and the Tables they reach name the roles that grant them', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Ae Plant', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ae Plant', columns: [{ column_name: 'code', column_type: 'Data' }] })
   await grantRole(admin, { role: 'Ae Plant Reader', table: 'Ae Plant', can_read: true })
   await grantRole(admin, { role: 'Ae Plant Writer', table: 'Ae Plant', can_read: true, can_write: true, own_rows_only: true })
   const person = await createUser({ roles: ['Ae Plant Reader', 'Ae Plant Writer'] })
@@ -84,7 +84,7 @@ test('a System Manager reaches every Table', async ({ admin, createUser }) => {
 })
 
 test('Data Scope limits and shared rows say who set them, and when', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Ae Site', title_column: 'site_name', columns: [{ column_name: 'site_name', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ae Site', title_column: 'site_name', columns: [{ column_name: 'site_name', column_type: 'Data' }] })
   const north = await admin.post<{ row_id: string }>(`/api/table/${encodeURIComponent('Ae Site')}`, { site_name: 'North' })
   const person = await createUser({ roles: [] })
   await admin.post('/api/save_row', { table: 'Data Scope', row: { person: person.user, allow_table: 'Ae Site', for_value: north.row_id } })
@@ -99,7 +99,7 @@ test('Data Scope limits and shared rows say who set them, and when', async ({ ad
 })
 
 test('a row the viewer cannot read shows its Table and id, never its title', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Ae Store', title_column: 'store_name', columns: [{ column_name: 'store_name', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ae Store', title_column: 'store_name', columns: [{ column_name: 'store_name', column_type: 'Data' }] })
   const store = await admin.post<{ row_id: string }>(`/api/table/${encodeURIComponent('Ae Store')}`, { store_name: 'Lakeside' })
   const person = await createUser({ roles: [] })
   await admin.post('/api/save_row', { table: 'Data Scope', row: { person: person.user, allow_table: 'Ae Store', for_value: store.row_id } })
@@ -219,7 +219,7 @@ test('a scope provider that is not set up yet says so, and the rest of the page 
 })
 
 test('#1224: each Table reached says its label and module, and an app Table with no label reads in words', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Ae Brand', module: 'Merchandising', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ae Brand', module: 'Merchandising', columns: [{ column_name: 'code', column_type: 'Data' }] })
   await grantRole(admin, { role: 'Ae Brand Editor', table: 'Ae Brand', can_read: true, can_write: true })
   const person = await createUser({ roles: ['Ae Brand Editor'] })
   const page = await admin.get<{ read: { table: string; label: string; module: string; app: string | null }[] }>(pageOf(person.user!))
@@ -230,7 +230,7 @@ test('#1224: each Table reached says its label and module, and an app Table with
 })
 
 test('#1224 the page says which of the records it names the viewer may open', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Ae Depot', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ae Depot', columns: [{ column_name: 'code', column_type: 'Data' }] })
   await grantRole(admin, { role: 'Ae Depot Reader', table: 'Ae Depot', can_read: true })
   const person = await createUser({ roles: ['Ae Depot Reader'] })
   const asManager = await admin.get<{ viewer_opens: string[] }>(pageOf(person.user!))
@@ -269,10 +269,10 @@ test('#1224 a row is linkable only when the viewer may open that row, not just i
 
 test('#1224 the page names the Tables that keep rows private, for someone who reaches every Table too', async ({ admin, createUser }) => {
   const { sql } = await import('../src/db')
-  await admin.post('/api/table_def', { name: 'Ae Private', label: 'Ae Private', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ae Private', label: 'Ae Private', columns: [{ column_name: 'body', column_type: 'Data' }] })
   await sql`update table_def set access_policy = ${sql.json({ roles: ['All'], shared_column: 'body', inherit_column: null })} where name = 'Ae Private'`
   // A roles-only policy admits roles; it keeps no row private.
-  await admin.post('/api/table_def', { name: 'Ae Roles Only', label: 'Ae Roles Only', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ae Roles Only', label: 'Ae Roles Only', columns: [{ column_name: 'body', column_type: 'Data' }] })
   await sql`update table_def set access_policy = ${sql.json({ roles: ['All'], shared_column: null, inherit_column: null })} where name = 'Ae Roles Only'`
   const manager = await createUser({ roles: ['System Manager'] })
   const page = await admin.get<{ every_table: boolean; private_tables: string[] }>(pageOf(manager.user!))

@@ -38,7 +38,7 @@ async function source(admin: Admin, access = 'read_write') {
 test('bulk-deleting rows of a connected Table removes them from the source', async ({ admin }) => {
   await cli.unsafe(`delete from web_srf.shelf; insert into web_srf.shelf (id, label) values (1, 'A1'), (2, 'A2'), (3, 'A3')`)
   await source(admin)
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Srf Shelf',
     data_source: 'web-srf',
     external_schema: 'web_srf',
@@ -63,7 +63,7 @@ test('bulk-deleting rows of a connected Table removes them from the source', asy
 test('a bulk delete on a connected Table tries every row and keeps the failed ones selected (#332)', async ({ admin }) => {
   await cli.unsafe(`delete from web_srf.shelf; insert into web_srf.shelf (id, label) values (1, 'A1'), (2, 'A2'), (3, 'A3')`)
   await source(admin)
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Srf Partial',
     data_source: 'web-srf',
     external_schema: 'web_srf',
@@ -104,7 +104,7 @@ test('testing or turning on tables of a source deleted meanwhile says it is not 
 test('a table whose name is already taken is skipped, with the reason', async ({ admin }) => {
   const user = userEvent.setup()
   await source(admin, 'read_only')
-  await admin.post('/api/table_def', { name: 'Web Shelf', columns: [{ column_name: 'label', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Web Shelf', columns: [{ column_name: 'label', column_type: 'Data' }] })
   cleanup()
   await renderApp('/featherbase/admin/source/web-srf', admin)
   await user.click(await screen.findByTestId('sb-load'))

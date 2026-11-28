@@ -11,7 +11,7 @@ const ALICE_SECRET = 'gs-browser-alice-secret'
 const BOB_ID = 'bob-customer-id'
 
 test('search shows only an allowed row ID and never its sensitive title', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: TABLE,
     id_pattern: 'prompt',
     title_column: 'secret_name',

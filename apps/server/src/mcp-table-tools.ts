@@ -7,7 +7,7 @@
 // the browser: read the file, match headings, coerce cells, send parts (D3).
 import { createHash, randomUUID } from 'node:crypto'
 import * as z from 'zod'
-import { LIST_COLUMNS_ON_CREATE, autoMapImportColumns, coerceRows, inferTableDef, splitForSend, type CoercedRow } from 'shared'
+import { LIST_COLUMNS_ON_CREATE, autoMapImportColumns, coerceRows, inferTableDef, rowRuleSchema, splitForSend, type CoercedRow } from 'shared'
 import { parseCsv, type CsvDelimiter } from './csv'
 import { AppError } from './errors'
 import { COLUMN_TYPE_VALUES, ROW_KEY } from './meta'
@@ -243,10 +243,12 @@ export function registerTableTools(tool: RegisterTool, api: Api, tokenId: string
       description: z.string().optional(),
       id_pattern: z.string().optional().describe('How new rows get their id, e.g. "SUP-.###"; a random id when left out'),
       columns: z.array(columnArg).min(1),
+      row_rule: rowRuleSchema.optional().describe('Who reads which rows (#1459): {"kind":"all"} every row to whoever is granted the Table, '
+        + '{"kind":"own"} the rows a person created, {"kind":"administrators"}. Left out, only System Managers read the Table\'s rows.'),
     },
     ADDS,
-    async ({ table, label, description, id_pattern, columns }) => described((await api('POST', '/api/table_def', {
-      ...given({ name: table, label, description, id_pattern }),
+    async ({ table, label, description, id_pattern, columns, row_rule }) => described((await api('POST', '/api/table_def', {
+      ...given({ name: table, label, description, id_pattern, row_rule }),
       // As the wizard does: the first columns show in the Table's list.
       columns: columns.map((c, i) => ({ ...columnDef(c), in_list_view: i < LIST_COLUMNS_ON_CREATE })),
     })) as TableDef))

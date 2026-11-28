@@ -111,7 +111,7 @@ describe('#245 public route admission', () => {
 
   test('successful public forms still consume budget even with a supplied session', async ({ admin }) => {
     vi.stubEnv('PREAUTH_FORM_MAX', '1')
-    await admin.post('/api/table_def', { name: 'Limited Intake', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Limited Intake', columns: [{ column_name: 'title', column_type: 'Data' }] })
     await admin.post('/api/save_row', { table: 'Web Form', row: { row_id: 'Limited Intake Form', title: 'Intake', route: 'limited-intake', ref_table: 'Limited Intake', published: true, web_fields: ['title'] } })
     const login = await request('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'Administrator', pwd: 'admin' }) })
     const { token } = await login.json() as { token: string }

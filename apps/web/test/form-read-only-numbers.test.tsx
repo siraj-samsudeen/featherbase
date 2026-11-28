@@ -10,7 +10,7 @@ import { test, expect, renderApp } from './pg-test'
 const T = { timeout: 10_000 }
 
 test('a read-only Currency and Float column show their formatted value once; an editable one keeps its echo', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Frn Plan', id_pattern: 'prompt', title_column: 'plan_name', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Frn Plan', id_pattern: 'prompt', title_column: 'plan_name', columns: [
     { column_name: 'plan_name', column_type: 'Data', label: 'Plan name' },
     { column_name: 'amount', column_type: 'Currency', label: 'Amount' },
     { column_name: 'factor', column_type: 'Float', label: 'Factor' },

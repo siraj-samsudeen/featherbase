@@ -25,7 +25,7 @@ type Stored = { settings: { hiddenCols?: string[]; shownCols?: string[] } | null
 
 /** Section and Floor in the list; Remarks and Notes (restricted) not. */
 async function seedTable(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'section', column_type: 'Data', label: 'Section', in_list_view: true },

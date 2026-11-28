@@ -5,7 +5,7 @@ import { screen } from '@testing-library/react'
 import { test, expect, renderApp } from './pg-test'
 
 test("a list's table scrolls in its own box, its header row stays in view, and the list is not capped at 1280px", async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Fit Note', columns: [{ column_name: 'note', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Fit Note', columns: [{ column_name: 'note', column_type: 'Data', in_list_view: true }] })
   await admin.post('/api/save_row', { table: 'Fit Note', row: { note: 'one' } })
   await renderApp('/featherbase/admin/table/fit-note', admin)
   const box = await screen.findByTestId('list-table-scroll', {}, { timeout: 10_000 })

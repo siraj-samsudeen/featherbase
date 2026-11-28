@@ -48,7 +48,7 @@ describe('naming-and-numbering', () => {
   scenario("A plant's code is corrected", async ({ admin, seed }, step) => {
     let session!: Session
     await step('plant PLANT-8151 is open', async () => {
-      await admin.post('/api/table_def', {
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: 'Plant',
         id_pattern: 'PLANT-{plant_code}',
         columns: [

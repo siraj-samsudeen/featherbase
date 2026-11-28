@@ -3,7 +3,7 @@
   "platformVersion": "2026-10",
   "name": "shelves",
   "title": "Shelves",
-  "entryTable": "shelves.assignment",
+  "entryTable": "shelves.assignment", "rowRules": {"shelves.assignment": { "kind": "all" }, "shelves.bay": { "kind": "all" }},
   "tables": [
     {
       "name": "shelves.assignment",

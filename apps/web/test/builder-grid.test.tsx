@@ -14,7 +14,7 @@ const cell = (row: HTMLElement, f: string) => row.querySelector(`[data-rowfield=
 
 test('a table built in the grid stores its module, fixed names, link and Required', async ({ admin }) => {
   const user = userEvent.setup()
-  await admin.post('/api/table_def', { name: 'Bg Region', columns: [{ column_name: 'label', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Bg Region', columns: [{ column_name: 'label', column_type: 'Data' }] })
   await renderApp('/featherbase/admin/new-table', admin)
   await screen.findByTestId('table-builder')
   await user.type(screen.getByTestId('dt-name'), 'Bg Depot')
@@ -60,7 +60,7 @@ test('a table built in the grid stores its module, fixed names, link and Require
 
 test('a name already taken is refused with the server’s reason, and nothing is created twice', async ({ admin }) => {
   const user = userEvent.setup()
-  await admin.post('/api/table_def', { name: 'Bg Taken', columns: [{ column_name: 'label', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Bg Taken', columns: [{ column_name: 'label', column_type: 'Data' }] })
   await renderApp('/featherbase/admin/new-table', admin)
   await screen.findByTestId('table-builder')
   await user.type(screen.getByTestId('dt-name'), 'Bg Taken')

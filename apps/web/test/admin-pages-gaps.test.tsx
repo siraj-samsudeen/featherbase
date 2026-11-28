@@ -13,7 +13,7 @@ const enc = encodeURIComponent
 
 test('a column rename can be cancelled, leaving the name as it was', async ({ admin }) => {
   const user = userEvent.setup()
-  await admin.post('/api/table_def', { name: 'Apg Zone', columns: [{ column_name: 'glor', label: 'Glor', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Apg Zone', columns: [{ column_name: 'glor', label: 'Glor', column_type: 'Data' }] })
   await renderApp(`/featherbase/admin/table/apg-zone/columns`, admin)
   await user.click(await screen.findByTestId('ce-rename-glor', {}, { timeout: 8000 }))
   expect(screen.getByTestId('ce-rename-input-glor')).toBeInTheDocument()
@@ -31,7 +31,7 @@ test('the column editor of a Table that is not there says so', async ({ admin })
 })
 
 test('an old Explore address of a Table deleted meanwhile opens All tables', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Apg Gone', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Apg Gone', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
   await admin.delete(`/api/table_def/${enc('Apg Gone')}`)
   const r = await renderApp(`/featherbase/admin/explore?root=${enc('Apg Gone')}`, admin)
   await waitFor(() => expect((r.router as unknown as { state: { location: { pathname: string } } }).state.location.pathname).toBe('/featherbase/admin/all-tables'), { timeout: 8000 })

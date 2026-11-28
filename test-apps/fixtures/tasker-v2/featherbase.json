@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1, "platformVersion": "2026-10",
   "name": "tasker", "title": "Tasker",
-  "server": "dist/server.mjs", "client": "dist/client", "entryTable": "tasker.task",
+  "server": "dist/server.mjs", "client": "dist/client", "entryTable": "tasker.task", "rowRules": {"tasker.project": { "kind": "all" }, "tasker.task": { "kind": "all" }},
   "actions": {"version": 1, "names": ["promote", "delete_accidental"], "tables": ["tasker.task", "tasker.project"]},
   "migrations": [{"id": "project_description", "fromVersion": "0.0.1", "toVersion": "2.0.0", "operations": [
     {"kind": "addColumn", "table": "tasker.project", "column": {"column_name": "description", "label": "Description", "column_type": "Text"}}

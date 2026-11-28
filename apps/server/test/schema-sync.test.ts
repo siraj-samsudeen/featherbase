@@ -22,7 +22,7 @@ const baseColumns = [
 // The legacy suite mutated ONE Table across sequential tests; under the
 // sandbox each test rebuilds the state it needs, then rolls back.
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', { name: DT, columns: baseColumns })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: baseColumns })
   for (const t of ['a', 'b'])
     await admin.post('/api/save_row', { table: DT, row: { title: t, points: 1 } })
 }
@@ -241,7 +241,7 @@ describe('Changing a Table definition', () => {
   test('a Sub-table column must point at a Table that exists', async ({ admin }) => {
     const res = await admin.fetch('/api/table_def', {
       method: 'POST',
-      body: JSON.stringify({ name: 'Sync Holder', columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'No Such Lines' }] }),
+      body: JSON.stringify({ row_rule: { kind: 'all' }, name: 'Sync Holder', columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'No Such Lines' }] }),
     })
     await expectStatus(res, 417)
     expect(await res.json()).toMatchObject({ error: { fields: { lines: 'Sub-table target No Such Lines does not exist' } } })
@@ -250,7 +250,7 @@ describe('Changing a Table definition', () => {
   test('a link column must point at a Table that exists (#511)', async ({ admin }) => {
     const created = await admin.fetch('/api/table_def', {
       method: 'POST',
-      body: JSON.stringify({ name: 'Sync Linker', columns: [{ column_name: 'other', column_type: 'Reference', reference_table: 'NoSuchTable' }] }),
+      body: JSON.stringify({ row_rule: { kind: 'all' }, name: 'Sync Linker', columns: [{ column_name: 'other', column_type: 'Reference', reference_table: 'NoSuchTable' }] }),
     })
     await expectStatus(created, 417)
     expect(await created.json()).toMatchObject({ error: { fields: { other: 'Link target NoSuchTable does not exist' } } })
@@ -270,7 +270,7 @@ describe('Changing a Table definition', () => {
     await expectStatus(await put(admin, DT, { columns: self }), 200)
     const created = await admin.fetch('/api/table_def', {
       method: 'POST',
-      body: JSON.stringify({ name: 'Sync Linker', columns: [
+      body: JSON.stringify({ row_rule: { kind: 'all' }, name: 'Sync Linker', columns: [
         { column_name: 'task', column_type: 'Reference', reference_table: DT },
         { column_name: 'next', column_type: 'Reference', reference_table: 'Sync Linker' },
       ] }),

@@ -83,13 +83,13 @@ describe('#246 scope_on: only the declared Reference columns narrow rows', () =>
 
   test('scope_on must name Reference columns of the Table', async ({ admin }) => {
     await makeTable(admin, { name: STORE, id_pattern: 'prompt', columns: ['city'] })
-    await expectApiError(admin.post('/api/table_def', {
+    await expectApiError(admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Sr Bad', columns: [{ column_name: 'title', column_type: 'Data' }], scope_on: ['title'],
     }), { status: 417 })
-    await expectApiError(admin.post('/api/table_def', {
+    await expectApiError(admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Sr Bad', columns: [{ column_name: 'title', column_type: 'Data' }], scope_on: ['nowhere'],
     }), { status: 417 })
-    await expectApiError(admin.post('/api/table_def', {
+    await expectApiError(admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Sr Bad', columns: [{ column_name: 'title', column_type: 'Data' }], scope_required: true,
     }), { status: 417 })
   })

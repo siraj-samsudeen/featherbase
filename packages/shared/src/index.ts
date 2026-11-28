@@ -64,3 +64,4 @@ export { RECORD_FACTS_LIMITS, RECORD_FACT_TONES, actionDoneSchema, actionPreview
 export { WORKED_OUT_LIMITS, workedOutRowSchema, workedOutSchema, type WorkedOut, type WorkedOutAnswer, type WorkedOutRow } from './worked-out'
 export { ADDRESS_MAX, UNAVAILABLE_PATH, askedAddress, unavailableHref } from './unavailable-address'
 export { needsEmail, personMeta, personMetaShort, personMetaText, type PersonLabel, type PersonMetaPart } from './person-label'
+export { rowRuleSchema, rowRuleWords, ROW_RULE_KINDS, type RowRule } from './row-rule'

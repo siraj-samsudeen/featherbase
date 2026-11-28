@@ -25,7 +25,7 @@ const BOOK = {
 
 test('#851 a grouped target confirms changed rows across all its sheets', async ({ admin }) => {
   clearSession()
-  await admin.post('/api/table_def', { name: 'Iws Groups', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Iws Groups', columns: [
     { column_name: 'zone', column_type: 'Data' },
     { column_name: 'population', column_type: 'Int' },
   ] })
@@ -56,7 +56,7 @@ test('#851 a grouped target confirms changed rows across all its sheets', async 
 
 test('#851 a repeated key across grouped sheets stays refused through import', async ({ admin }) => {
   clearSession()
-  await admin.post('/api/table_def', { name: 'Iws Groups', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Iws Groups', columns: [
     { column_name: 'zone', column_type: 'Data' },
     { column_name: 'population', column_type: 'Int' },
   ] })
@@ -86,7 +86,7 @@ test('#851 a repeated key across grouped sheets stays refused through import', a
 
 test('a failed row remains explained when saved decisions survive without the workbook rows', async ({ admin }) => {
   clearSession()
-  await admin.post('/api/table_def', { name: 'Iws Counts', columns: [{ column_name: 'count', column_type: 'Int' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Iws Counts', columns: [{ column_name: 'count', column_type: 'Int' }] })
   const user = userEvent.setup()
   const first = await renderApp('/featherbase/admin/import', admin)
   fireEvent.change(await screen.findByTestId('iw-file-input'), { target: { files: [uploadWorkbook({

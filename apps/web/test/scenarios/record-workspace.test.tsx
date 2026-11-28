@@ -27,7 +27,7 @@ afterEach(async () => {
 })
 
 async function plant(admin: Client) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Plant', id_pattern: 'prompt', title_column: 'plant_name',
     columns: [{ column_name: 'plant_name', column_type: 'Data', label: 'Plant name', in_list_view: true }],
   })

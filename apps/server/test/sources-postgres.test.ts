@@ -14,7 +14,7 @@ import { sql } from '../src/db'
 import { invalidateSources } from '../src/sources/registry'
 import { invalidateMeta } from '../src/meta'
 import type { ReflectionCandidate } from '../src/sources/reflect'
-import { expectStatus, grantRole, makeTable } from './fixtures'
+import { expectStatus, grantRole, makeTable, readWhole } from './fixtures'
 
 const EXT_URL_ENV = 'EXT_FIXTURE_URL'
 process.env[EXT_URL_ENV] = EXTERNAL_DATABASE_URL
@@ -491,7 +491,7 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
   test('a required source column omitted from a valid binding produces a source validation error and no insert', async ({ admin }) => {
     await makeSource(admin)
     // A binding may intentionally expose only some columns of a relation.
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Partial Refusal Parent', data_source: 'ext-fixture', external_schema: 'ext_fixture',
       external_table: 'refusal_parent', external_pk: 'id',
       columns: [{ column_name: 'label', column_type: 'Text' }],
@@ -672,6 +672,7 @@ describe('EDS-2: foreign keys reflect as References', () => {
       expect(reflected.skipped).toEqual([])
       expect(reflected.created.map((r) => r.table)).toEqual(['vehicle', 'garage', 'accident'])
       const [vehicle, garage, accident] = reflected.created.map((r) => r.name)
+      await readWhole(admin, vehicle, garage, accident)
       const path = `/api/table/${encodeURIComponent(accident)}`
       const metaPaths = reflected.created.map((r) => `/api/table/${encodeURIComponent(r.name)}:meta`)
       const allMetadata = await Promise.all(metaPaths.map((p) => admin.get<{ columns: Record<string, unknown>[] }>(p)))
@@ -819,7 +820,7 @@ describe('EDS-2: foreign keys reflect as References', () => {
     // earliest-created binding must win as the Reference target — names
     // chosen so the created_at tie-break (name asc) agrees.
     for (const name of ['Alpha Vehicle', 'Zeta Vehicle']) {
-      await admin.post('/api/table_def', {
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name,
         data_source: 'ext-fixture',
         external_schema: 'ext_fixture',
@@ -855,7 +856,7 @@ describe('EDS-2: foreign keys reflect as References', () => {
   test('Reference preview does not substitute a later matching key for the first binding', async ({ admin }) => {
     await makeSource(admin)
     for (const [name, key] of [['Alpha Alternate', 'reg_no'], ['Zeta Primary', 'id']]) {
-      await admin.post('/api/table_def', {
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name, data_source: 'ext-fixture', external_schema: 'ext_fixture',
         external_table: 'vehicle', external_pk: key,
         columns: [{ column_name: 'reg_no', column_type: 'Data' }],
@@ -929,7 +930,7 @@ describe('Turn a data source table into a Featherbase table', () => {
   test('a column left out when connecting is never read or written', async ({ admin }) => {
     await makeSource(admin)
     // Hand-written binding that maps only `plan`; `internal_notes` and `slug` are left out.
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Ext Tenant Plans',
       data_source: 'ext-fixture',
       external_schema: 'ext_fixture',
@@ -1097,7 +1098,7 @@ describe('Connect a data source: limiting which tables can be connected', () => 
     expect(((await allowed.json()) as { created: { name: string }[] }).created.map((c) => c.name)).toEqual(['Ext Tenant'])
     // A hand-written binding to a table outside the list is refused too.
     await expect(
-      admin.post('/api/table_def', {
+      admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: 'Ext Business By Hand',
         data_source: 'ext-fixture',
         external_schema: 'ext_fixture',

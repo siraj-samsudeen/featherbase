@@ -10,9 +10,9 @@ const FLOOR = 'Ctl Floor'
 const ZONE = 'Ctl Zone'
 
 async function seed(admin: Admin, codes: string[]) {
-  await admin.post('/api/table_def', { name: FLOOR, id_pattern: 'prompt', columns: [{ column_name: 'floor_name', label: 'Floor name', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: FLOOR, id_pattern: 'prompt', columns: [{ column_name: 'floor_name', label: 'Floor name', column_type: 'Data' }] })
   for (const id of ['G', 'M']) await admin.post('/api/save_row', { table: FLOOR, row: { row_id: id, floor_name: id === 'G' ? 'Ground' : 'Mezzanine' } })
-  await admin.post('/api/table_def', { name: ZONE, columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: ZONE, columns: [
     { column_name: 'zone_name', label: 'Zone name', column_type: 'Data' },
     { column_name: 'floor', label: 'Floor', column_type: 'Data' },
     { column_name: 'pop', label: 'Pop', column_type: 'Int' },

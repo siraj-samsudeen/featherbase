@@ -27,8 +27,8 @@ describe('#101: GET /api/activity_feed', () => {
 
   // #1340 (verifier): a Table opened is said by its label, as its list is headed, not by its internal name.
   test('a list opened is said by its Table\'s label', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Feed Named', columns: [{ column_name: 'title', column_type: 'Data' }] })
-    await admin.post('/api/table_def', { name: 'Feed Unlabelled', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Feed Named', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Feed Unlabelled', columns: [{ column_name: 'title', column_type: 'Data' }] })
     // An app's Table carries its own label (dash.business_role is headed "Business Role").
     await sql`update table_def set label = 'Feed Shown' where name = 'Feed Named'`
     await admin.post('/api/events', { events: [{ kind: 'list', key: 'list:Feed Named', label: 'Feed Named', path: '/featherbase/admin/table/feed-named', at: Date.now() }, { kind: 'list', key: 'list:Feed Unlabelled', label: 'Feed Unlabelled', path: '/featherbase/admin/table/feed-unlabelled', at: Date.now() - 1000 }] })
@@ -74,7 +74,7 @@ describe('#101: GET /api/activity_feed', () => {
 
   test("'team' carries changes (Version) and logins, never read events", async ({ admin }) => {
     // A tracked edit writes a Version row (track_changes is the default).
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Feed DT',
       id_pattern: 'prompt',
       columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
@@ -156,7 +156,7 @@ describe('#101: GET /api/activity_feed', () => {
     expect(JSON.stringify(mine)).not.toContain(person.row_id)
 
     // The team scope names the editor too, not their id.
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Feed Named DT',
       id_pattern: 'prompt',
       columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
@@ -218,7 +218,7 @@ describe('#101: GET /api/activity_feed', () => {
 
   // #440 (Siraj's addition): team rows name the person and their main role.
   test('team rows carry who_name and who_role; a nameless person falls back to the email local part', async ({ admin }) => {
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Feed Role DT',
       id_pattern: 'prompt',
       columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
@@ -284,7 +284,7 @@ describe('#101: GET /api/activity_feed', () => {
       label: 'feed token',
       owner: svc.row_id,
     })
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Feed Svc DT',
       id_pattern: 'prompt',
       columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
@@ -330,7 +330,7 @@ describe('#101: GET /api/activity_feed', () => {
   })
 
   test("'mine' titles an opened row from its values when its Table has no title column", async ({ admin }) => {
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Feed Merch Map',
       id_pattern: 'prompt',
       columns: ['store_code', 'material_group', 'mch_subcategory'].map((column_name) => ({ column_name, column_type: 'Data' })),
@@ -355,7 +355,7 @@ describe('#101: GET /api/activity_feed', () => {
   })
 
   test("'team' collapses one person's repeated edits of one row, and keeps distinct rows apart", async ({ admin }) => {
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Feed Repeat DT',
       id_pattern: 'prompt',
       columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],

@@ -69,7 +69,7 @@ const rowLink = async (name: string) => within(await screen.findByTestId('list-r
 const enc = encodeURIComponent
 
 async function arrange(admin: TestClient, name = 'Route Probe', ids = ['Stock review', 'Unselected review']) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name, module: 'Route acceptance', id_pattern: 'field:subject', title_column: 'subject',
     columns: [
       { column_name: 'subject', column_type: 'Data', label: 'Review title', reqd: true, in_list_view: true },
@@ -359,7 +359,7 @@ describe('table-addresses', () => {
     })
     await step("the user attempts to create another Table with Route Probe's address", async () => {
       before = await snapshot(admin)
-      refusal = await admin.fetch('/api/table_def', { method: 'POST', body: JSON.stringify({ name: 'Route Probe ', columns: [{ column_name: 'subject', column_type: 'Data' }] }) })
+      refusal = await admin.fetch('/api/table_def', { method: 'POST', body: JSON.stringify({ row_rule: { kind: 'all' }, name: 'Route Probe ', columns: [{ column_name: 'subject', column_type: 'Data' }] }) })
     })
     await step('the new Table is refused without changing Route Probe', () => unchanged(admin, before, refusal))
     await step('the original Route Probe remains reachable with its unchanged identity', async () => {

@@ -22,7 +22,7 @@ const ATK = ['store', '=', 'Attakulangara']
 const KIDS = ['dept_name', 'like', 'Kids%']
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DEPT, id_pattern: 'prompt', title_column: 'dept_name',
     columns: [
       { column_name: 'dept_name', column_type: 'Data', label: 'Department', in_list_view: true },
@@ -155,7 +155,7 @@ test('Back to the unfiltered list it opened as shows it unfiltered, after a filt
 // opened, the remembered filters included. Two legacy Tables of one spelling share
 // a slug, which names neither; opened by its exact name, the list must stay.
 test('remembered filters come back on a Table opened by its exact name, whose slug is ambiguous', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Legacy Rf Probe', id_pattern: 'prompt', title_column: 'place',
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Legacy Rf Probe', id_pattern: 'prompt', title_column: 'place',
     columns: [{ column_name: 'place', column_type: 'Data', label: 'Place', in_list_view: true }] })
   await admin.post('/api/save_row', { table: 'Legacy Rf Probe', row: { row_id: 'P1', place: 'Lakeside' } })
   await admin.post('/api/save_row', { table: 'Legacy Rf Probe', row: { row_id: 'P2', place: 'Hillview' } })

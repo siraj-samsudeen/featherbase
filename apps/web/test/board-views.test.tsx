@@ -34,7 +34,7 @@ function landOn(testid: string) {
 }
 
 async function seedBoard(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: BOARD,
     id_pattern: 'prompt',
     title_column: 'title',
@@ -84,7 +84,7 @@ test('Board: dropping a card back where it started changes nothing', async ({ ad
 })
 
 test('Board: a table with no choice column says there is nothing to group by', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: PLAIN, columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: PLAIN, columns: [{ column_name: 'title', column_type: 'Data' }] })
   await renderApp(`/featherbase/admin/table/${tableSlug(PLAIN)}/view/kanban`, admin)
   expect(await screen.findByTestId('kanban-no-select')).toHaveTextContent('no Choice column')
 })
@@ -98,7 +98,7 @@ test('Board: a row whose value is not one of the choices still shows, in a colum
 })
 
 async function seedSchedule(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: SCHED,
     id_pattern: 'prompt',
     title_column: 'title',
@@ -138,7 +138,7 @@ test('Calendar: a row shows on the day its date falls on, and dragging it to ano
 })
 
 test('Calendar: months can be paged, and a table with no date column says so', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: PLAIN, columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: PLAIN, columns: [{ column_name: 'title', column_type: 'Data' }] })
   await renderApp(`/featherbase/admin/table/${tableSlug(PLAIN)}/view/calendar`, admin)
   expect(await screen.findByTestId('calendar-no-date')).toHaveTextContent('no Date column')
 })
@@ -287,13 +287,13 @@ test('Timeline: a resize the network drops says the resize failed', async ({ adm
 })
 
 test('Timeline: a table without two date columns says so', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: PLAIN, columns: [{ column_name: 'due', column_type: 'Date' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: PLAIN, columns: [{ column_name: 'due', column_type: 'Date' }] })
   await renderApp(`/featherbase/admin/table/${tableSlug(PLAIN)}/view/gantt`, admin)
   expect(await screen.findByTestId('gantt-no-dates')).toHaveTextContent('two Date columns')
 })
 
 test('Board: with two choice columns the user picks which one the board follows', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: BOARD, id_pattern: 'prompt', title_column: 'title',
     columns: [
       { column_name: 'title', column_type: 'Data' },

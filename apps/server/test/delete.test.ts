@@ -11,7 +11,7 @@ const INVOICE = 'Del Invoice'
 const ROW = 'Del Line Row'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: CUSTOMER,
     id_pattern: 'prompt',
     columns: [{ column_name: 'city', column_type: 'Data' }],
@@ -21,7 +21,7 @@ async function setup(admin: TestClient) {
     kind: 'sub_table',
     columns: [{ column_name: 'supplier', column_type: 'Reference', reference_table: CUSTOMER }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: INVOICE,
     columns: [
       { column_name: 'customer', column_type: 'Reference', reference_table: CUSTOMER },
@@ -169,7 +169,7 @@ describe('A row with comments, history, attachments or shares can\'t be deleted'
 describe('a settings Table that links to a row', () => {
   test('does not hold the row back from deletion', async ({ admin }) => {
     await setup(admin)
-    await admin.post('/api/table_def', { name: 'Del Preferences', kind: 'settings', columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Del Preferences', kind: 'settings', columns: [
       { column_name: 'favourite', column_type: 'Reference', reference_table: CUSTOMER },
     ] })
     await admin.post('/api/save_row', { table: 'Del Preferences', row: { favourite: 'Initech' } })

@@ -28,7 +28,7 @@ const rows = () => Array.from({ length: ROWS }, (_, i) => ({ title: `Asset ${i}`
 
 describe('#1074: an import asks each person-and-Table question once', () => {
   test("a System Manager's import into a Table someone made reads their roles and the Table's scripts once", async ({ admin, createUser }) => {
-    await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
     const importer = await createUser({ roles: ['System Manager'] })
     const roles = await scans('has_role')
     const scripts = await scans('server_script')
@@ -39,7 +39,7 @@ describe('#1074: an import asks each person-and-Table question once', () => {
   })
 
   test('a Table whose controller runs hooks is read row by row, since a hook may change what was read', async ({ admin, createUser }) => {
-    await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
     const controller = { table: DT, hooks: { validate: () => {} } }
     registerController(controller)
     try {
@@ -56,7 +56,7 @@ describe('#1074: an import asks each person-and-Table question once', () => {
     const people = ['psn_runreads1', 'psn_runreads2']
     for (const p of people)
       await sql`insert into person ${sql({ row_id: p, created_by: 'Administrator', updated_by: 'Administrator', email: `${p.slice(4)}@x.com`, enabled: true })}`
-    await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
     await saveDoc('Assignment Rule', { row_id: 'Run Reads Turns', ref_table: DT, users: people.map((user) => ({ user })) })
     await admin.post(PATH, { rows: rows().slice(0, 4) })
     const todos = await sql`select allocated_to from todo where ref_table = ${DT} order by created_at, row_id`
@@ -64,7 +64,7 @@ describe('#1074: an import asks each person-and-Table question once', () => {
   })
 
   test("only a Table someone made qualifies: a platform Table's or an app's rows can change what was read", async ({ admin }) => {
-    await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
     const made = await getMeta(DT)
     expect(writesNoRememberedFacts(made)).toBe(true)
     expect(writesNoRememberedFacts(await getMeta('Has Role'))).toBe(false)

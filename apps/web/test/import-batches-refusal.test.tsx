@@ -9,12 +9,12 @@ import { test, expect, renderApp } from './pg-test'
 
 test('Keep them backs out; a Table another Table points at is kept, with the reason', async ({ admin }) => {
   const user = userEvent.setup()
-  await admin.post('/api/table_def', { name: 'Ibr Shelf', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ibr Shelf', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/table/Ibr%20Shelf:import', {
     rows: [{ row_id: 'shelf-1', title: 'top' }],
     context: { batch_id: 'ibr-batch', run_id: 'ibr-run', table_created: true },
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Ibr Bin',
     columns: [{ column_name: 'shelf', column_type: 'Reference', reference_table: 'Ibr Shelf' }],
   })
@@ -35,7 +35,7 @@ test('Keep them backs out; a Table another Table points at is kept, with the rea
 // #993: one Table is "it", not "them".
 test('deleting the one Table an import created speaks of it in the singular', async ({ admin }) => {
   const user = userEvent.setup()
-  await admin.post('/api/table_def', { name: 'Ibr Lone', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ibr Lone', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/table/Ibr%20Lone:import', {
     rows: [{ row_id: 'lone-1', title: 'only' }],
     context: { batch_id: 'ibr-lone', run_id: 'ibr-lone-run', table_created: true },

@@ -21,7 +21,7 @@ test('I18N-002: a stored language is applied on sign-in, and a date renders in t
       table: 'Translation',
       row: { row_id: `fr-login-${source}`, language: 'fr', source_text: source, translated_text: translated },
     })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [{ column_name: 'due', column_type: 'Date', in_list_view: true }],
   })

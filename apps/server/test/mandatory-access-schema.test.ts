@@ -11,7 +11,7 @@ const columns = [
 
 for (const kind of ['settings', 'sub_table']) {
   test(`mandatory privacy refuses ${kind} storage`, async ({ admin }) => {
-    await expect(admin.post('/api/table_def', {
+    await expect(admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Invalid Privacy Storage', kind, columns, access_policy: policy,
     })).rejects.toMatchObject({ status: 417, type: 'ValidationError', fields: {
       access_policy: 'Mandatory access requires a local collection',
@@ -24,7 +24,7 @@ for (const [column, message] of [
   ['inherit_column', 'The inherited access column must be a Reference column'],
 ]) {
   test(`mandatory privacy refuses a Data column as ${column}`, async ({ admin }) => {
-    await expect(admin.post('/api/table_def', {
+    await expect(admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Invalid Privacy Column', columns: [{ column_name: 'title', column_type: 'Data' }],
       access_policy: { version: 1, roles: ['Schema Member'], [column]: 'title' },
     })).rejects.toMatchObject({ status: 417, type: 'ValidationError', fields: { access_policy: message } })

@@ -15,7 +15,7 @@ const WAIT = { timeout: 10_000 }
 const TABLE = 'Unsaved Desk'
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', { name: TABLE, id_pattern: 'prompt', title_column: 'label', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: TABLE, id_pattern: 'prompt', title_column: 'label', columns: [
     { column_name: 'label', column_type: 'Data' }, { column_name: 'note', column_type: 'Data' },
   ] })
   await admin.post(`/api/table/${encodeURIComponent(TABLE)}`, { row_id: 'D-1', label: 'First', note: 'old' })

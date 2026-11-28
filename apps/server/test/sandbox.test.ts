@@ -14,7 +14,7 @@ import { expectRefused } from './fixtures'
 const DT = 'Sandbox Probe'
 
 async function createProbeTable(admin: { post: (p: string, b?: unknown) => Promise<unknown> }) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'title', label: 'Title', column_type: 'Data', reqd: true, in_list_view: true },

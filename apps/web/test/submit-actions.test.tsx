@@ -13,7 +13,7 @@ const here = (r: { router: unknown }) =>
 const title = () => document.querySelector<HTMLInputElement>('[data-field=title]')
 
 test('UI-010: Draft offers Submit, Submitted locks the fields and offers Cancel, Cancelled offers Amend to a new draft', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     is_submittable: true,
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Title', reqd: true }],
@@ -49,7 +49,7 @@ test('UI-010: Draft offers Submit, Submitted locks the fields and offers Cancel,
 })
 
 test('a Submit the network drops says the action failed and leaves the row a draft', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     is_submittable: true,
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Title', reqd: true }],

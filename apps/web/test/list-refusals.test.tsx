@@ -14,7 +14,7 @@ const enc = encodeURIComponent
 const OPEN = [['stage', '=', 'Open']]
 
 async function seed(admin: Admin, name: string, submittable = false) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name,
     id_pattern: 'prompt',
     is_submittable: submittable,

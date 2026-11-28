@@ -8,9 +8,9 @@ type Admin = Parameters<typeof renderApp>[1]
 const T = { timeout: 10_000 }
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', { name: 'Atp Site', module: 'Store Layout', description: 'Every store and warehouse',
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Atp Site', module: 'Store Layout', description: 'Every store and warehouse',
     columns: [{ column_name: 'site_name', column_type: 'Data', in_list_view: true }] })
-  await admin.post('/api/table_def', { name: 'Atp Floor', module: 'Store Layout', columns: [{ column_name: 'floor', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Atp Floor', module: 'Store Layout', columns: [{ column_name: 'floor', column_type: 'Data', in_list_view: true }] })
   await admin.post('/api/table_def', { name: 'atp stores raw', label: 'Stores only', kind: 'view', view_of: 'Atp Site', view_filters: [['site_name', '!=', '']] })
 }
 
@@ -45,7 +45,7 @@ test('Find a table has the focus on open and narrows by what people read', async
 
 // admin-lists 11: how many rows, muted on the right of each Table.
 test('each Table says how many rows it holds', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Atp Counted', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Atp Counted', columns: [{ column_name: 'note', column_type: 'Data' }] })
   for (const note of ['a', 'b', 'c']) await admin.post('/api/save_row', { table: 'Atp Counted', row: { note } })
   await renderApp('/featherbase/admin/all-tables', admin)
   const link = await screen.findByRole('link', { name: /Atp Counted/ }, { timeout: 10_000 })

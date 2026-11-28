@@ -16,7 +16,7 @@ const ENC = encodeURIComponent(T)
 type Admin = Parameters<typeof renderApp>[1]
 
 async function editedRow(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: T,
     columns: [
       { column_name: 'title', label: 'Title', column_type: 'Data' },
@@ -45,7 +45,7 @@ async function diffLines(admin: Admin, rowId: string) {
 }
 
 test('a changed column uses its metadata display label', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: T, columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: T, columns: [
     { column_name: 'client_id', label: 'OAuth client ID', column_type: 'Data' },
   ] })
   const row = await admin.post<{ row_id: string; updated_at: string }>('/api/save_row', {
@@ -58,7 +58,7 @@ test('a changed column uses its metadata display label', async ({ admin }) => {
 })
 
 test('long unbroken change values remain fully readable with wrapping', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: T, columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: T, columns: [
     { column_name: 'client_id', label: 'Client ID', column_type: 'Data' },
   ] })
   const before = `old${'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'.repeat(3)}.apps.googleusercontent.com`
@@ -112,7 +112,7 @@ test('#637: an edit and a comment read on the viewer\'s own clock, naming its zo
 })
 
 test('nested JSON history shows both saved values and allows long values to wrap', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: T, columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: T, columns: [
     { column_name: 'extra', label: 'Extra', column_type: 'JSON' },
   ] })
   const before = { shelf: 3, nested: { bins: ['old', 'west'] } }
@@ -153,7 +153,7 @@ test('a Datetime change reads on the viewer\'s clock, and an empty side reads �
 // strings, and switching one off read ✓ → ✓.
 test('a Settings checkbox switched off reads ✓ → ✗', async ({ admin }) => {
   const S = 'Atl Store Settings'
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: S,
     kind: 'settings',
     columns: [{ column_name: 'open_sundays', label: 'Open Sundays', column_type: 'Check' }],
@@ -170,7 +170,7 @@ test('a Settings checkbox switched off reads ✓ → ✗', async ({ admin }) => 
 })
 
 test('import and resolution history says who imported and which decision the person made', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: T, columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: T, columns: [
     { column_name: 'title', label: 'Title', column_type: 'Data' },
     { column_name: 'city', label: 'City', column_type: 'Data' },
     { column_name: 'phone', label: 'Phone', column_type: 'Data' },

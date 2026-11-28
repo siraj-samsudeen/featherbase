@@ -35,7 +35,7 @@ const DT = 'Recall Roles'
 type Admin = Parameters<typeof renderApp>[1]
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],
   })

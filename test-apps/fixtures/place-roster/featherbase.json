@@ -3,7 +3,7 @@
   "platformVersion": "2026-10",
   "name": "placeroster",
   "title": "Place roster proof",
-  "entryTable": "placeroster.position",
+  "entryTable": "placeroster.position", "rowRules": {"placeroster.position": { "kind": "all" }},
   "server": "server.mjs",
   "tables": [
     {

@@ -19,7 +19,7 @@ import { test, expect, renderApp } from './pg-test'
 const DT = 'CV Form'
 
 async function makeForm(admin: { post: (p: string, b: unknown) => Promise<unknown> }) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data', label: 'Title', reqd: true },

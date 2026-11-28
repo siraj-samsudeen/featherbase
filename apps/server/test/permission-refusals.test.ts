@@ -12,7 +12,7 @@ import { expectStatus } from './fixtures'
 const TABLE = 'Rf Gadget'
 
 async function labelledTable(admin: { post: (path: string, body: unknown) => Promise<unknown> }) {
-  await admin.post('/api/table_def', { name: TABLE, columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: TABLE, columns: [{ column_name: 'title', column_type: 'Data' }] })
   await sql`update table_def set label = 'Gadget' where name = ${TABLE}`
   invalidateMeta(TABLE)
 }
@@ -44,7 +44,7 @@ describe('permission refusals use words people use', () => {
   })
 
   test('a Table with no label, or none at all, keeps its name', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Rf Plain', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Rf Plain', columns: [{ column_name: 'title', column_type: 'Data' }] })
     expect(await tableWords('Rf Plain')).toBe('Rf Plain')
     expect(await tableWords('Rf Never Made')).toBe('Rf Never Made')
     expect((await permissionRefusal('Guest', 'Rf Never Made', 'write')).message).toBe("You don't have write permission on Rf Never Made.")

@@ -3,7 +3,7 @@
   "platformVersion": "2026-10",
   "name": "optproof",
   "title": "Optional secret proof",
-  "entryTable": "optproof.note",
+  "entryTable": "optproof.note", "rowRules": {"optproof.note": { "kind": "all" }},
   "server": "server.mjs",
   "tables": [
     {

@@ -90,7 +90,7 @@ async function givenStockCount(admin: TestClient) {
       { column_name: 'done', label: 'Done', column_type: 'Check' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: STOCK_COUNT, id_pattern: 'prompt', title_column: 'item',
     columns: [
       { column_name: 'item', label: 'Item', column_type: 'Data', in_list_view: true },
@@ -231,7 +231,7 @@ describe('usable-on-any-device', () => {
     let pathBefore = ''
     await step('the user is on a phone', usePhone)
     await step('the table "Section Mapping" has seven list columns', async () => {
-      await admin.post('/api/table_def', {
+      await admin.post('/api/table_def', { row_rule: { kind: 'all' },
         name: 'Section Mapping', id_pattern: 'prompt',
         columns: SECTION_MAPPING.map((label) => ({ column_name: COLUMN_NAMES[label], label, column_type: 'Data', in_list_view: listColumns.includes(label) })),
       })

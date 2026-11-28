@@ -111,7 +111,7 @@ test('Choice cannot be picked for a column with no values', async ({ admin }) =>
 
 // #993: after Start over, the name a first attempt took is an existing Table.
 test('a new Table named like an existing one says so before importing, and offers to import into it', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Iwc Taken', columns: [{ column_name: 'zone', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Iwc Taken', columns: [{ column_name: 'zone', column_type: 'Data' }] })
   const user = await singleSheet('Iwc Taken', [['Zone', 'Code'], ['a', 'x']], admin)
   expect(await screen.findByTestId('iw-name-taken-0')).toHaveTextContent(
     'A Table called Iwc Taken already exists. Import into it, or give the new Table another name.',

@@ -30,7 +30,7 @@ function dropNetwork(method: string, part: string) {
 
 /** A person who may use the Admin but is not a System Manager. */
 async function deskUser(admin: Client, createUser: (o: { roles: string[] }) => Promise<Client>) {
-  await admin.post('/api/table_def', { name: 'Atx Desk', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Atx Desk', columns: [{ column_name: 'code', column_type: 'Data' }] })
   await grantRole(admin, { table: 'Atx Desk', role: 'Atx Reader', can_read: true })
   return createUser({ roles: ['Atx Reader'] })
 }
@@ -64,7 +64,7 @@ test("another person's token whose owner has no name, username or email reads Un
 
 test("a token's reach names its first six Tables, marks own-rows ones, and counts the rest", async ({ admin }) => {
   const tables = Array.from({ length: 7 }, (_, i) => `Reach Bin ${i + 1}`)
-  for (const name of tables) await admin.post('/api/table_def', { name, columns: [{ column_name: 'code', column_type: 'Data' }] })
+  for (const name of tables) await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name, columns: [{ column_name: 'code', column_type: 'Data' }] })
   await grantRole(admin, { table: tables, role: 'Reach Many', can_read: true, own_rows_only: true })
   const svc = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'many-bins' })
   await admin.post(`/api/service_accounts/${svc.row_id}/roles`, { roles: ['Reach Many'] })

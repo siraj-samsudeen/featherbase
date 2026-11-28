@@ -26,7 +26,7 @@ afterEach(() => {
 })
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
   })
   await admin.post('/api/table/Metadata%20Override', { row_id: `rt-${DT}-discussion`, table_name: DT, property: 'enable_discussion', value: 'true' })

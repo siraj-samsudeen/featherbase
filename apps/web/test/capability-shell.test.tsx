@@ -34,8 +34,8 @@ function recordCalls(): string[] {
 async function seed(admin: Admin) {
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Store Reader' } })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Shelf Clerk' } })
-  await admin.post('/api/table_def', { name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
-  await admin.post('/api/table_def', { name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   await grantRole(admin, { table: 'Shelf Note', role: 'Shelf Clerk', can_read: true })
 }
 
@@ -242,7 +242,7 @@ test('the preview banner shows on the no-access page', async ({ createUser }) =>
 // (3) A create-only grant is a grant of their own: the shared-rows page is for people with none.
 test('a create-only grant holder is not told "nothing is open to you"', async ({ admin, createUser }) => {
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Drop Box Clerk' } })
-  await admin.post('/api/table_def', { name: 'Drop Box', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Drop Box', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   // The role's ONLY grant: create. It reads nothing, so `tables` is empty.
   await grantRole(admin, { table: 'Drop Box', role: 'Drop Box Clerk', can_create: true })
   const writer = await createUser({ email: 'writer-only@example.com', roles: ['Drop Box Clerk'] })

@@ -54,7 +54,7 @@ describe('person registry: classification', () => {
   })
 
   test('an app Table is classified from its metadata: a Reference to Person is an id', async ({ admin }) => {
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Registry Probe',
       columns: [
         { column_name: 'owner_person', column_type: 'Reference', reference_table: 'Person' },
@@ -80,7 +80,7 @@ describe('person registry: classification', () => {
 
   test('a kept column whose name a layout column now holds is reported unclassified', async ({ admin }) => {
     const TITLE = { column_name: 'title', column_type: 'Data' }
-    await admin.post('/api/table_def', { name: 'Registry Layout', columns: [TITLE, { column_name: 'old_owner', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Registry Layout', columns: [TITLE, { column_name: 'old_owner', column_type: 'Data' }] })
     // Removed without drop_columns: the data stays in the table…
     await admin.put('/api/table_def/Registry%20Layout', { name: 'Registry Layout', columns: [TITLE], remove_columns: ['old_owner'] })
     // …and the name is reused for a Section Break, which has no storage of its own.
@@ -102,7 +102,7 @@ describe('what a Person save refuses', () => {
 
 describe('person registry: an app Table\'s JSON column', () => {
   test('is free text, classified by its type', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Registry Json Probe', columns: [{ column_name: 'payload', column_type: 'JSON' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Registry Json Probe', columns: [{ column_name: 'payload', column_type: 'JSON' }] })
     const { byKey } = await cls()
     expect(byKey.get('registry_json_probe.payload')).toMatchObject({ class: 'free-text', rule: 'JSON on an app Table' })
   })

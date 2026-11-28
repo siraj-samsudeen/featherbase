@@ -27,7 +27,7 @@ function recordCalls(): string[] {
 }
 
 async function seed(admin: Admin): Promise<string> {
-  await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
   await grantRole(admin, { table: DT, role: ROLE, can_read: true })
   const row = (await admin.post('/api/save_row', { table: DT, row: { title: 'Blue box' } })) as { row_id: string }

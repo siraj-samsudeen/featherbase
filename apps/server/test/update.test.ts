@@ -9,7 +9,7 @@ const DT = 'Upd Test Note'
 const TABLE = 'featherbase.upd_test_note'
 
 async function makeDT(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })

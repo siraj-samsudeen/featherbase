@@ -19,7 +19,7 @@ const ITEM = 'Dpf Item'
 const T = { timeout: 10_000 }
 
 async function seedBins(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: BIN, id_pattern: 'prompt', title_column: 'bin_name',
     columns: [
       { column_name: 'bin_name', column_type: 'Data', label: 'Bin name', in_list_view: true },
@@ -30,7 +30,7 @@ async function seedBins(admin: Admin) {
       { column_name: 'photo', column_type: 'Attach', label: 'Photo' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: ITEM, id_pattern: 'prompt', title_column: 'item_name',
     columns: [
       { column_name: 'item_name', column_type: 'Data', label: 'Item name', in_list_view: true },

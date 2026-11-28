@@ -14,7 +14,7 @@ const ALICE = 'portal-alice@x.com'
 const base = `/featherbase/portal/${encodeURIComponent(tableSlug(DT))}`
 
 async function seed(admin: Admin, createUser: CreateUser) {
-  await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'subject', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'subject', column_type: 'Data', in_list_view: true }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
   for (const operation of ['read', 'update', 'create'])
     await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: DT, role: ROLE, operation, scope_mode: 'creator' } })
@@ -54,7 +54,7 @@ test('WEB-003: the owner opens their own ticket', async ({ admin, createUser }) 
 })
 
 async function seedFlags(admin: Admin, createUser: CreateUser) {
-  await admin.post('/api/table_def', { name: DT, columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [
     { column_name: 'subject', column_type: 'Data', in_list_view: true },
     { column_name: 'urgent', column_type: 'Check', in_list_view: true },
     { column_name: 'note', column_type: 'Data', in_list_view: true },

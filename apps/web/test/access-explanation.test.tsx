@@ -18,7 +18,7 @@ const cells = (row: HTMLElement) => [...row.querySelectorAll('td')].map((td) => 
 const rowFor = (scope: HTMLElement, table: string) => within(scope).getAllByTestId('access-table-row').find((r) => cells(r)[0] === table)!
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', { name: 'Ax Site', title_column: 'site_name', columns: [{ column_name: 'site_name', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ax Site', title_column: 'site_name', columns: [{ column_name: 'site_name', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Ax Site Reader' } })
   await grantRole(admin, { table: 'Ax Site', role: 'Ax Site Reader', can_read: true })
   const north = await admin.post<{ row_id: string }>(`/api/table/${encodeURIComponent('Ax Site')}`, { site_name: 'North' })
@@ -152,7 +152,7 @@ test('#628 the page for someone who is not a person says there is no such person
 
 test('#1224 the page shows as a summary, by role or by area, and remembers the choice', async ({ admin, createUser }) => {
   await seed(admin)
-  await admin.post('/api/table_def', { name: 'Ax Brand', module: 'Merchandising', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ax Brand', module: 'Merchandising', columns: [{ column_name: 'code', column_type: 'Data' }] })
   await grantRole(admin, { table: 'Ax Brand', role: 'Ax Brand Editor', can_read: true, can_write: true })
   const person = await createUser({ roles: ['Ax Site Reader', 'Ax Brand Editor'], fullName: 'Ax Layouts' })
   localStorage.removeItem('featherbase.access-layout')
@@ -190,7 +190,7 @@ test('#1224 who gave a role is named even when the viewer may not read Person', 
 })
 
 test('#1224 a role card says only what that role gives; own-rows reach is per operation and narrows the summary', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Ax Order', module: 'Sales', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ax Order', module: 'Sales', columns: [{ column_name: 'code', column_type: 'Data' }] })
   await grantRole(admin, { table: 'Ax Order', role: 'Ax Order Reader', can_read: true })
   await grantRole(admin, { table: 'Ax Order', role: 'Ax Order Writer', can_write: true, own_rows_only: true })
   const person = await createUser({ roles: ['Ax Order Reader', 'Ax Order Writer'] })
@@ -214,7 +214,7 @@ test('#1224 a role card says only what that role gives; own-rows reach is per op
 })
 
 test('#1224 a table reached only through what every account holds is explained in every layout', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Ax Notice', module: 'Notices', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ax Notice', module: 'Notices', columns: [{ column_name: 'code', column_type: 'Data' }] })
   await grantRole(admin, { table: 'Ax Notice', role: 'All', can_read: true })
   const person = await createUser({ roles: [] })
   localStorage.removeItem('featherbase.access-layout')
@@ -235,7 +235,7 @@ test('#1224 a table reached only through what every account holds is explained i
 })
 
 test('#1224 a role card keeps its own row scope when another role reads every row', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Ax Ledger', module: 'Finance', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ax Ledger', module: 'Finance', columns: [{ column_name: 'code', column_type: 'Data' }] })
   await grantRole(admin, { table: 'Ax Ledger', role: 'Ax Own Reader', can_read: true, own_rows_only: true })
   await grantRole(admin, { table: 'Ax Ledger', role: 'Ax Full Reader', can_read: true })
   const person = await createUser({ roles: ['Ax Own Reader', 'Ax Full Reader'] })

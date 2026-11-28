@@ -16,6 +16,8 @@ const helpdesk: AppManifest = {
   tables: [
     {
       name: 'HD Ticket',
+      // #1459: every row, to whoever is granted the Table (a grant may still be own rows only)
+      row_rule: { kind: 'all' },
       // User-space on purpose: app tables carry the app's own module (never
       // system: true), so the Admin sidebar groups HD Ticket under
       // "Helpdesk", not under the collapsed System group.

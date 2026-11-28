@@ -342,7 +342,7 @@ describe('#859 the rest of retirement', () => {
   test('the reason has a limit, and the names are reserved', async ({ admin }) => {
     const { plant } = await plants(admin)
     await expectApiError(retire(admin, plant, 'Sample plant', 'x'.repeat(1001)), { status: 417, fields: { retired_reason: 'Too long' } })
-    await expectRefused(admin.post('/api/table_def', { name: 'Rt Reserved', columns: [{ column_name: 'retired_at', column_type: 'Data' }] }), 417)
+    await expectRefused(admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Rt Reserved', columns: [{ column_name: 'retired_at', column_type: 'Data' }] }), 417)
     const { renameColumn } = await import('../src/table-rename')
     await expect(renameColumn(PLANT, 'city', 'retired_by')).rejects.toMatchObject({ type: 'ValidationError' })
   })

@@ -31,7 +31,7 @@ interface Meta {
 }
 
 async function seed(admin: Admin, extra: Record<string, unknown> = {}) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'glor', label: 'Glor', column_type: 'Data', in_list_view: true },
@@ -290,7 +290,7 @@ test('a title already stored shows its radio, even on a column that could not be
 })
 
 test('choosing a title saves at once, naming only the title, and links read it', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: DT, description: 'Kept', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, description: 'Kept', columns: [
     { column_name: 'glor', label: 'Glor', column_type: 'Data', in_list_view: true },
     { column_name: 'zone_name', label: 'Zone name', column_type: 'Data', in_list_view: true },
   ] })
@@ -346,12 +346,12 @@ test("the Table's list opens its column editor from Table administration", async
 // Moved from e2e/column-editor.spec.ts (#1080): a list of another Table, read
 // once with the raw ids, shows the new title after moving within the app.
 test("a title chosen here replaces the id in another Table's list already read", async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Ce Title Zone', id_pattern: 'field:zone_code', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ce Title Zone', id_pattern: 'field:zone_code', columns: [
     { column_name: 'zone_code', label: 'Zone code', column_type: 'Data', in_list_view: true },
     { column_name: 'zone_name', label: 'Zone name', column_type: 'Data', in_list_view: true },
   ] })
   await admin.post('/api/save_row', { table: 'Ce Title Zone', row: { zone_code: 'VLM', zone_name: 'Vellayambalam' } })
-  await admin.post('/api/table_def', { name: 'Ce Title Store', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ce Title Store', columns: [
     { column_name: 'store_name', column_type: 'Data', in_list_view: true },
     { column_name: 'zone', column_type: 'Reference', reference_table: 'Ce Title Zone', in_list_view: true },
   ] })
@@ -414,7 +414,7 @@ describe('adding a column, at its edges', () => {
   test('a link column asks for its target Table, then links to it', async ({ admin }) => {
     const user = userEvent.setup()
     await seed(admin)
-    await admin.post('/api/table_def', { name: 'Ce Aisle', columns: [{ column_name: 'code', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ce Aisle', columns: [{ column_name: 'code', column_type: 'Data' }] })
     await openEditor(admin)
     await user.type(await screen.findByTestId('ce-add-label'), 'Aisle')
     await user.selectOptions(screen.getByTestId('ce-add-type'), 'Reference')

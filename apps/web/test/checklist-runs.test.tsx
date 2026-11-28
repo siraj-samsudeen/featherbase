@@ -30,7 +30,7 @@ async function seedTables(admin: { post: (p: string, b: unknown) => Promise<unkn
       { column_name: 'done', label: 'Done', column_type: 'Check' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: T,
     title_column: 'run_title',
     columns: [
@@ -106,7 +106,7 @@ test('runs on the same date are ordered by latest update rather than title', asy
 
 test('a checklist without date or summary columns lists only titles in update order', async ({ admin }) => {
   await seedTables(admin)
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Cr Minimal',
     title_column: 'title',
     columns: [

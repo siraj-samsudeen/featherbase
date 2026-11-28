@@ -24,7 +24,7 @@ const COLUMNS = [
 ]
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: idPatternFor(DT),
     columns: [
@@ -171,9 +171,9 @@ describe('IMP-I4: a rehearsal refuses a link to no row', () => {
   const ASSETS_PATH = `/api/table/${encodeURIComponent(ASSETS)}:import`
 
   async function linked(admin: TestClient) {
-    await admin.post('/api/table_def', { name: STORES, id_pattern: 'prompt', columns: [{ column_name: 'city', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: STORES, id_pattern: 'prompt', columns: [{ column_name: 'city', column_type: 'Data' }] })
     await admin.post('/api/save_row', { table: STORES, row: { row_id: 'T Nagar', city: 'Chennai' } })
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: ASSETS,
       id_pattern: 'field:tag',
       columns: [

@@ -12,7 +12,7 @@ const ROLE = 'Retire Grant Role'
 const list = `/api/table/${encodeURIComponent(DT)}`
 
 async function grantWithHistory(admin: TestClient) {
-  await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
   const read = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Permission', row: { ref_table: DT, role: ROLE, operation: 'read', scope_mode: 'all' } })
   for (const scope_mode of ['creator', 'all']) {

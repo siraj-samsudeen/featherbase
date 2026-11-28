@@ -49,8 +49,8 @@ describe('an app declares its areas', () => {
 
   // The areas' Tables are the instance's: they are created here, as an instance has them.
   async function tables(admin: { post: (path: string, body: unknown) => Promise<unknown> }) {
-    await admin.post('/api/table_def', { name: 'Cluster', id_pattern: 'prompt', title_column: 'name', columns: [{ column_name: 'name', column_type: 'Data' }] })
-    await admin.post('/api/table_def', { name: 'Site', id_pattern: 'prompt', title_column: 'name', columns: [{ column_name: 'name', column_type: 'Data' },
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Cluster', id_pattern: 'prompt', title_column: 'name', columns: [{ column_name: 'name', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Site', id_pattern: 'prompt', title_column: 'name', columns: [{ column_name: 'name', column_type: 'Data' },
       { column_name: 'cluster', column_type: 'Reference', reference_table: 'Cluster' }, { column_name: 'is_store', column_type: 'Check' }] })
   }
 

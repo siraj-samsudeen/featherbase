@@ -32,7 +32,7 @@ const DT = 'HP Widget'
 const ROLE = 'HP Viewer Role'
 
 async function makeTable(admin: TestClient, name = DT, module = 'HP Mod') {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name,
     module,
     columns: [{ column_name: 'title', column_type: 'Data' }],

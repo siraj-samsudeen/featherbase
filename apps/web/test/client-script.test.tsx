@@ -12,7 +12,7 @@ type Admin = Parameters<typeof renderApp>[1]
 const field = (name: string) => document.querySelector<HTMLInputElement>(`[data-field=${name}]`)!
 
 async function tableWithScript(admin: Admin, table: string, script: string) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: table,
     columns: [
       { column_name: 'qty', column_type: 'Int', in_list_view: true },

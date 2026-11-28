@@ -37,7 +37,7 @@ export async function importedZones(admin: TestClient, opts: ZoneOptions = {}): 
   const table = `Reimport Zones ${randomUUID().slice(0, 8)}`
   const rows = zones(count)
   if (repeated) rows[1]!.zone_code = rows[0]!.zone_code
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: table,
     columns: [
       { column_name: 'zone_code', label: 'Zone Code', column_type: 'Data', in_list_view: true, ...(restricted ? { tier: 'restricted' } : {}) },

@@ -27,7 +27,7 @@ export const manifest = (more: Record<string, unknown> = {}) => ({
     { table: ANSWER, role: 'Answer Reader', can_read: true, can_write: true, can_create: true },
     { table: REASON, role: 'Answer Reader', can_read: true, can_write: true, can_create: true },
   ],
-  scopedTables: [{ table: ANSWER, keys: ['body'], filters: { store: 'store', section: 'section' } }],
+  rowRules: { [`${APP}.entry`]: { kind: 'all' }, [ANSWER]: { kind: 'places', columns: { store: 'store', section: 'section' } } },
   ...more,
 })
 

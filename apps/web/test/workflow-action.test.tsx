@@ -11,7 +11,7 @@ const DT = 'Wfa Task'
 const ENC = encodeURIComponent(DT)
 
 test('WF-002: the Approve button moves the row to Approved and records who took it', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],

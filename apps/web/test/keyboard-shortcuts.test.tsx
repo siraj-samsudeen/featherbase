@@ -15,7 +15,7 @@ const here = (r: { router: unknown }) =>
   (r.router as { state: { location: { pathname: string } } }).state.location.pathname
 
 async function seedDoc(admin: Admin, table: string) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: table,
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true }],
   })

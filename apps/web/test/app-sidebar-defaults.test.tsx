@@ -74,7 +74,7 @@ test("someone who can use the Admin sees the bell at the top of an app's sidebar
 
 test("an @mention shows the unread count on an app page's bell with no reload", async ({ admin, createUser }) => {
   await installBarProof(admin)
-  await admin.post('/api/table_def', { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/table/Metadata%20Override', { row_id: `asd-${DT}-discussion`, table_name: DT, property: 'enable_discussion', value: 'true' })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Asd Admin Reader' } })
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Asd Admin Reader', operation: 'read' } })

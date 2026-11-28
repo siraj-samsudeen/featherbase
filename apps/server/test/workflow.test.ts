@@ -30,7 +30,7 @@ const FLOW_DOC = {
 
 // Each test rebuilds its world inside its own rolled-back transaction.
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data' }],
@@ -219,7 +219,7 @@ describe('workflow: definition validation edges', () => {
     admin,
   }) => {
     const DT = 'Cov WfDef Note'
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: DT,
       columns: [{ column_name: 'title', column_type: 'Data' }],
     })
@@ -317,7 +317,7 @@ describe('Move a row forward with an allowed action', () => {
 
 describe('Finalise a row instead of leaving it open to change', () => {
   test('a submitted row cannot be edited and the user is told to cancel it first', async ({ admin }) => {
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Wf Fin Invoice',
       is_submittable: true,
       id_pattern: 'prompt',

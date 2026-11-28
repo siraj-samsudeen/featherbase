@@ -23,7 +23,7 @@ describe('Tables and Columns named after JavaScript built-ins (#436)', () => {
   })
 
   test.for(PROTOTYPE_KEYS)('a row round-trips in a Table named %s with a Column named constructor', async (name, { admin }) => {
-    await admin.post('/api/table_def', { name, columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name, columns: [
       { column_name: 'constructor', column_type: 'Data' },
       { column_name: 'title', column_type: 'Data' },
     ] })
@@ -36,7 +36,7 @@ describe('Tables and Columns named after JavaScript built-ins (#436)', () => {
   })
 
   test('a Column named constructor left empty stays empty', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Proto Empty', columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Proto Empty', columns: [
       { column_name: 'constructor', column_type: 'Data' },
       { column_name: 'title', column_type: 'Data' },
     ] })
@@ -48,7 +48,7 @@ describe('Tables and Columns named after JavaScript built-ins (#436)', () => {
   // #596 review: JSON columns skip the empty-string-to-empty step (an empty
   // string is a JSON value) but must still not read the inherited function.
   test('a JSON Column named constructor left out stays empty', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Proto Json', columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Proto Json', columns: [
       { column_name: 'constructor', column_type: 'JSON' },
       { column_name: 'title', column_type: 'Data' },
     ] })
@@ -58,12 +58,12 @@ describe('Tables and Columns named after JavaScript built-ins (#436)', () => {
   })
 
   test('a Column named constructor gets its default, and a Reference named constructor may be left out', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Proto Target', columns: [{ column_name: 'title', column_type: 'Data' }] })
-    await admin.post('/api/table_def', { name: 'Proto Defaults', track_changes: true, columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Proto Target', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Proto Defaults', track_changes: true, columns: [
       { column_name: 'constructor', column_type: 'Data', default_value: 'from default' },
       { column_name: 'title', column_type: 'Data' },
     ] })
-    await admin.post('/api/table_def', { name: 'Proto Links', columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Proto Links', columns: [
       { column_name: 'constructor', column_type: 'Reference', reference_table: 'Proto Target' },
       { column_name: 'title', column_type: 'Data' },
     ] })
@@ -74,7 +74,7 @@ describe('Tables and Columns named after JavaScript built-ins (#436)', () => {
   })
 
   test('a Table named by a Column called constructor still requires that Column', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Proto Named', id_pattern: 'field:constructor', columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Proto Named', id_pattern: 'field:constructor', columns: [
       { column_name: 'constructor', column_type: 'Data' },
       { column_name: 'title', column_type: 'Data' },
     ] })
@@ -85,7 +85,7 @@ describe('Tables and Columns named after JavaScript built-ins (#436)', () => {
   })
 
   test('the person-column classification treats a Table named constructor like any other', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'constructor', columns: [{ column_name: 'name', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'constructor', columns: [{ column_name: 'name', column_type: 'Data' }] })
     const { classified, unclassified } = await classifyColumns()
     const mine = [...classified, ...unclassified].filter((c) => c.relation === 'constructor' && c.column === 'name')
     expect(mine).toHaveLength(1)

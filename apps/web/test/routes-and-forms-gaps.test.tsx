@@ -49,7 +49,7 @@ for (const path of [
 }
 
 test('someone with a Table but no Home Page is pointed at All tables', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Rfg Note', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Rfg Note', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Rfg Clerk' } })
   await grantRole(admin, { table: 'Rfg Note', role: 'Rfg Clerk', can_read: true })
   await sql`delete from home_page`
@@ -61,7 +61,7 @@ test('someone with a Table but no Home Page is pointed at All tables', async ({ 
 })
 
 async function noteTable(admin: Parameters<typeof renderApp>[1]) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Rfg Visit',
     columns: [
       { column_name: 'store', column_type: 'Data', label: 'Store' },
@@ -83,7 +83,7 @@ test('a new row opened with prefilled values starts with them; a prefill that is
 })
 
 test('a public web form takes a yes/no', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Rfg Signup',
     columns: [
       { column_name: 'full_name', label: 'Full name', column_type: 'Data', reqd: true },
@@ -108,8 +108,8 @@ test('a public web form takes a yes/no', async ({ admin }) => {
 })
 
 test('a yes/no in a related group\'s rows reads ✓ or ✗', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Rfg Store', columns: [{ column_name: 'label', column_type: 'Data', in_list_view: true }] })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Rfg Store', columns: [{ column_name: 'label', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Rfg Audit',
     columns: [
       { column_name: 'store', column_type: 'Reference', reference_table: 'Rfg Store', label: 'Store' },

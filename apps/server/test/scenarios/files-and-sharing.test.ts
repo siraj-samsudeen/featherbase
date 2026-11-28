@@ -18,7 +18,7 @@ const orderUrl = (id: string) => `/api/table/${encodeURIComponent(TABLE)}/${enco
 
 /** The orders table with one order, and the user with exactly this access to it and nothing on File. */
 async function orderFor(admin: TestClient, createUser: CreateUserFn, orderId: string, access: { can_read: true; can_write?: true }) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: TABLE, id_pattern: 'prompt', title_column: 'customer',
     columns: [{ column_name: 'customer', column_type: 'Data', label: 'Customer', in_list_view: true }],
   })

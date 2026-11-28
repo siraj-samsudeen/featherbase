@@ -9,7 +9,7 @@ const DT = 'Tag Srv DT'
 
 // Each test builds its Table + document inside its own sandbox transaction.
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data' }],

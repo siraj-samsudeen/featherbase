@@ -16,6 +16,7 @@ async function fixture(handler: string, declaration: unknown = { owner_table: 'o
       access_policy: { version: 1, roles: ['Owner jobs member'], shared_column: 'shared' },
       columns: [{ column_name: 'body', column_type: 'Data' }, { column_name: 'shared', column_type: 'Check' }] }],
     permissions: [{ table: 'ownerjobs.note', role: 'Owner jobs member', can_read: true, can_create: true, can_write: true }],
+    rowRules: { 'ownerjobs.note': { kind: 'all' } },
     jobs: [{ name: 'advance', cadence: 'hourly', description: 'Advance owned notes', ...(declaration ? { documents: declaration } : {}) }],
   }))
   await writeFile(resolve(dir, 'server.mjs'), `export const platformVersion='2026-10'; export const jobs={async advance(ctx){${handler}}}`)
@@ -216,6 +217,7 @@ async function documentUpgrade(declaration: { owner_table: string; tables: strin
   const manifest = JSON.parse(await readFile(source, 'utf8'))
   manifest.tables.push({ ...structuredClone(manifest.tables[0]), name: 'ownerjobs.other', label: 'Other private registry' })
   manifest.permissions.push({ ...manifest.permissions[0], table: 'ownerjobs.other' })
+  manifest.rowRules['ownerjobs.other'] = { kind: 'all' }
   await writeFile(source, JSON.stringify(manifest))
   const next = await mkdtemp(resolve('test/.owner-jobs-upgrade-'))
   await cp(prior, next, { recursive: true })

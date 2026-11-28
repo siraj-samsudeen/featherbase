@@ -15,7 +15,7 @@ const T = { timeout: 10_000 }
 const BIN = 'Pdg Bin'
 
 async function bins(admin: Admin, count: number) {
-  await admin.post('/api/table_def', { name: BIN, id_pattern: 'prompt', title_column: 'label', columns: [{ column_name: 'label', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: BIN, id_pattern: 'prompt', title_column: 'label', columns: [{ column_name: 'label', column_type: 'Data', in_list_view: true }] })
   if (count) await admin.post(`/api/table/${encodeURIComponent(BIN)}:import`, {
     rows: Array.from({ length: count }, (_, i) => ({ row_id: `B${String(i + 1).padStart(2, '0')}`, label: `Bin ${i + 1}` })),
   })
@@ -71,7 +71,7 @@ test("more than twenty rows asked, as an import run's can be, lists twenty and c
 
 async function crates(admin: Admin, links: number) {
   await bins(admin, 2)
-  await admin.post('/api/table_def', { name: 'Pdg Crate', id_pattern: 'prompt', columns: [{ column_name: 'bin', column_type: 'Reference', reference_table: BIN }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Pdg Crate', id_pattern: 'prompt', columns: [{ column_name: 'bin', column_type: 'Reference', reference_table: BIN }] })
   await admin.post(`/api/table/${encodeURIComponent('Pdg Crate')}:import`, {
     rows: Array.from({ length: links }, (_, i) => ({ row_id: `C${i + 1}`, bin: i % 2 ? 'B02' : 'B01' })),
   })
@@ -96,7 +96,7 @@ test('more rows pointing at a row than the plan names are counted', async ({ adm
 test('lines of a document pointing at a row are named as lines in their documents', async ({ admin }) => {
   await bins(admin, 1)
   await admin.post('/api/table_def', { name: 'Pdg Load Line', kind: 'sub_table', columns: [{ column_name: 'bin', column_type: 'Reference', reference_table: BIN }] })
-  await admin.post('/api/table_def', { name: 'Pdg Load', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Pdg Load', columns: [
     { column_name: 'note', column_type: 'Data' },
     { column_name: 'lines', column_type: 'Sub-table', row_table: 'Pdg Load Line' },
   ] })
@@ -108,7 +108,7 @@ test('lines of a document pointing at a row are named as lines in their document
 
 test('rows pointing at a row that can be neither deleted nor unlinked hold the delete', async ({ admin }) => {
   await bins(admin, 1)
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Pdg Locked',
     id_pattern: 'prompt',
     access_policy: { version: 1, roles: ['System Manager'] },

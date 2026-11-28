@@ -562,7 +562,8 @@ describe('a job that reads every row of its app\'s Tables', () => {
   const PRIVATE = { tables: [{ name: `${APP}.note`, label: 'Note', id_pattern: 'prompt',
     access_policy: { version: 1, roles: ['Jobs Writer'], shared_column: 'shared' },
     columns: [{ column_name: 'body', column_type: 'Data' }, { column_name: 'shared', column_type: 'Check' }] }],
-    roles: ['Jobs Writer'], permissions: [{ table: `${APP}.note`, role: 'Jobs Writer', can_read: true, can_create: true }] }
+    roles: ['Jobs Writer'], permissions: [{ table: `${APP}.note`, role: 'Jobs Writer', can_read: true, can_create: true }],
+    rowRules: { [`${APP}.note`]: { kind: 'all' } } }
   const readAll: Job = { name: 'read_all', cadence: 'daily', description: 'Reads every note.', readsAllRows: [`${APP}.note`] }
 
   test('reads each person\'s private rows, filtered or by id, and cannot write them', async ({ admin, createUser }) => {

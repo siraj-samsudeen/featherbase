@@ -49,7 +49,7 @@ function viewport(initial: number) {
 const sidebar = () => screen.getByTestId('admin-sidebar')
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data', in_list_view: true },

@@ -13,9 +13,9 @@ const ROLE = 'Rs Business Role'
 const GIVEN = 'Rs Role Given'
 
 async function seed(admin: TestClient) {
-  await admin.post('/api/table_def', { name: ROLE, id_pattern: 'prompt', title_column: 'role_name',
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: ROLE, id_pattern: 'prompt', title_column: 'role_name',
     columns: [{ column_name: 'role_name', column_type: 'Data', label: 'Role name' }] })
-  await admin.post('/api/table_def', { name: GIVEN, id_pattern: 'prompt',
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: GIVEN, id_pattern: 'prompt',
     columns: [
       { column_name: 'person_ref', column_type: 'Data', label: 'Person' },
       { column_name: 'role', column_type: 'Reference', reference_table: ROLE, label: 'Role' },
@@ -105,10 +105,10 @@ describe('#1273: a Table names where a feed row is corrected', () => {
     const columns = [{ column_name: 'person_ref', column_type: 'Data' }]
     for (const correction_path of ['https://elsewhere.example/fix', '//elsewhere.example/fix', '/fix\\x', 'javascript:alert(1)', '/fix?who={nobody}']) {
       const res = await admin.fetch('/api/table_def', { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: 'Rs Bad Path', correction_path, columns }) })
+        body: JSON.stringify({ row_rule: { kind: 'all' }, name: 'Rs Bad Path', correction_path, columns }) })
       expect(res.status, correction_path).toBe(417)
     }
-    const made = await admin.post<{ name?: string }>('/api/table_def', { name: 'Rs Good Path', correction_path: '/fix?who={person_ref}&row={row_id}', columns })
+    const made = await admin.post<{ name?: string }>('/api/table_def', { row_rule: { kind: 'all' }, name: 'Rs Good Path', correction_path: '/fix?who={person_ref}&row={row_id}', columns })
     expect(made).toBeTruthy()
   })
 })

@@ -122,6 +122,8 @@ async function shelfDatabase() {
 async function connectShelves(admin: TestClient, names: Record<string, string>) {
   await readerSource(admin, SHELF_SOURCE, SHELVES, ['shelf', 'bin'])
   await admin.post(`/api/table/Data%20Source/${SHELF_SOURCE}:reflect`, { schema: SHELVES, tables: Object.keys(names), names })
+  // #1459: a reflected Table has no row rule, so only System Managers read it until one is said
+  for (const table of Object.values(names)) await admin.put(`/api/table_def/${encodeURIComponent(String(table))}/row_rule`, { row_rule: { kind: 'all' } })
 }
 
 /** A data source's Browse screen, loaded on a schema. */
@@ -575,6 +577,8 @@ describe('external-data-sources', () => {
         sender varchar(500) not null, rack_id bigint references ${s}.rack(id), updated_by varchar(60))`)
       await readerSource(admin, PARCEL_SOURCE, s, ['rack', 'parcel'])
       await admin.post(`/api/table/Data%20Source/${PARCEL_SOURCE}:reflect`, { schema: s, tables: ['rack', 'parcel'], names: { rack: 'Rack', parcel: 'Parcel' } })
+      // #1459: a reflected Table has no row rule, so only System Managers read it until one is said
+      for (const table of ['Rack', 'Parcel']) await admin.put(`/api/table_def/${table}/row_rule`, { row_rule: { kind: 'all' } })
     })
     await step('a parcel labelled "Blue box" on the rack "Top"', async () => {
       await outside(`insert into ${s}.rack values (3, 'Top')`)

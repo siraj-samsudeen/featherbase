@@ -73,7 +73,7 @@ test("a filter typed into a field box shows in the box, not as a chip, and the b
 
 // #1289: a chip's value reads as a person reads it: a Check is Yes or No, never 1 or 0.
 test('a Check filter reads Yes or No on its chip', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Lfb Flags', id_pattern: 'prompt', title_column: 'flag_name', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Lfb Flags', id_pattern: 'prompt', title_column: 'flag_name', columns: [
     { column_name: 'flag_name', column_type: 'Data', label: 'Flag', in_list_view: true },
     { column_name: 'enabled', column_type: 'Check', label: 'Enabled', in_list_view: true },
   ] })
@@ -105,7 +105,7 @@ test("a chip names a linked record the viewer may not open in plain words, with 
 
 // #1289: a filter on many values reads each as the cells would.
 test('a Check filter on several values reads each as Yes or No', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Lfb Many Flags', id_pattern: 'prompt', title_column: 'flag_name', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Lfb Many Flags', id_pattern: 'prompt', title_column: 'flag_name', columns: [
     { column_name: 'flag_name', column_type: 'Data', label: 'Flag', in_list_view: true },
     { column_name: 'enabled', column_type: 'Check', label: 'Enabled', in_list_view: true },
   ] })

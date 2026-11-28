@@ -12,7 +12,7 @@ const anonymous = { user: null, token: null } as never
 type Admin = Parameters<typeof renderApp>[1]
 
 async function publish(admin: Admin, published = true) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Wf Comp Order',
     columns: [
       { column_name: 'full_name', label: 'Full name', column_type: 'Data', reqd: true },
@@ -79,7 +79,7 @@ test('a form that is still a draft is not shown', async ({ admin }) => {
 // WEB-002, moved down from e2e/web-form.spec.ts (#1080): choices whose answers
 // look like numbers, and an optional choice left on its placeholder.
 test('WEB-002: anonymous web form submit creates a document', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Wf Msg',
     columns: [
       { column_name: 'full_name', label: 'Full name', column_type: 'Data', reqd: true },

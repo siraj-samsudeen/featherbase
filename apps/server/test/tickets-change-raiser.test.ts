@@ -282,7 +282,8 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
       const earlier = { ...before, migrations: manifest.migrations.filter((m: any) => !later.includes(m)),
         tables: tablesBefore(manifest.tables.filter((t: any) => t.name !== RULES), later), permissions: manifest.permissions.filter((p: any) => p.table !== RULES),
         actions: { ...manifest.actions, tables: manifest.actions.tables.filter((t: string) => t !== RULES) },
-        reads: { ...manifest.reads, tables: manifest.reads.tables.filter((t: string) => t !== RULES) } }
+        reads: { ...manifest.reads, tables: manifest.reads.tables.filter((t: string) => t !== RULES) },
+        rowRules: Object.fromEntries(Object.entries(manifest.rowRules).filter(([table]) => table !== RULES)) }
       await writeFile(resolve(prior, 'featherbase.json'), JSON.stringify(earlier))
       // Its code knows no rule Table either: today's handlers, without the rule Table's guards.
       await writeFile(resolve(prior, 'dist/server.mjs'), [

@@ -34,7 +34,7 @@ async function installAppWithReaderRole(admin: TestClient) {
 
 /** A Table of the instance's own, with a role that reads it. */
 async function instanceTableWithRole(admin: TestClient, role: string) {
-  await admin.post('/api/table_def', { name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: role } })
   await grantRole(admin, { table: 'Back Office', role, can_read: true })
 }
@@ -111,7 +111,7 @@ describe('grants outside installed apps count as before', () => {
 
   test("an app's Table grant is not a grant of their own beside a shared instance row", async ({ admin, createUser }) => {
     await installAppWithReaderRole(admin)
-    await admin.post('/api/table_def', { name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
     const row = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Back Office', row: { title: 'Shared' } })
     const reader = await createUser({ email: 'app.and.share@example.com', roles: [ROLE] })
     await admin.post('/api/save_row', { table: 'Share', row: { share_table: 'Back Office', share_name: row.row_id, person: reader.user, read: true } })

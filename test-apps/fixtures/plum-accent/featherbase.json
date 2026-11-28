@@ -4,7 +4,7 @@
   "name": "plumproof",
   "title": "Plum proof",
   "accent": "plum",
-  "entryTable": "plumproof.note",
+  "entryTable": "plumproof.note", "rowRules": {"plumproof.note": { "kind": "all" }},
   "tables": [
     {
       "name": "plumproof.note",

@@ -117,7 +117,7 @@ test('a module without an emoji of its own shows its initials in the rail', asyn
 })
 
 test('Saved views fold into one icon in the rail, whose menu opens a view', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DEPT, id_pattern: 'prompt', title_column: 'dept_name',
     columns: [{ column_name: 'dept_name', column_type: 'Data', label: 'Department', in_list_view: true },
       { column_name: 'store', column_type: 'Data', label: 'Store', in_list_view: true }],
@@ -141,7 +141,7 @@ test('Saved views fold into one icon in the rail, whose menu opens a view', asyn
 })
 
 test('a fold menu works by keyboard, and a click outside closes it', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DEPT, id_pattern: 'prompt', title_column: 'dept_name',
     columns: [{ column_name: 'dept_name', column_type: 'Data', label: 'Department', in_list_view: true },
       { column_name: 'store', column_type: 'Data', label: 'Store', in_list_view: true }],
@@ -177,7 +177,7 @@ test('a fold menu works by keyboard, and a click outside closes it', async ({ ad
 })
 
 test('Recently opened folds into one icon in the rail, and its menu opens the place again', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DEPT, id_pattern: 'prompt', title_column: 'dept_name',
     columns: [{ column_name: 'dept_name', column_type: 'Data', label: 'Department', in_list_view: true }],
   })

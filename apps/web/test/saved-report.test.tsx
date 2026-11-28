@@ -15,7 +15,7 @@ const search = (r: { router: unknown }) =>
   (r.router as { state: { location: { searchStr: string } } }).state.location.searchStr
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: T,
     columns: [
       { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true },

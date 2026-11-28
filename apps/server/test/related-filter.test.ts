@@ -13,7 +13,7 @@ const LINE = 'Rel Order Line'
 const ORDER = 'Rel Order'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: SUP,
     id_pattern: 'prompt',
     columns: [
@@ -22,7 +22,7 @@ async function setup(admin: TestClient) {
       { column_name: 'parent_sup', column_type: 'Reference', reference_table: SUP },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: PART,
     id_pattern: 'prompt',
     columns: [{ column_name: 'part_name', column_type: 'Data' }],
@@ -35,7 +35,7 @@ async function setup(admin: TestClient) {
       { column_name: 'qty', column_type: 'Int', default_value: '1' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: ORDER,
     id_pattern: 'prompt',
     columns: [
@@ -141,7 +141,7 @@ describe('NAV-002: related filters', () => {
     await expect(list(admin, SUP, [['row_id', 'related', { table: LINE, column: 'parent' }]]))
       .rejects.toMatchObject({ status: 417, message: expect.stringContaining(`${LINE} rows are not held by ${SUP}`) })
     const HELD = 'Rel Hidden Lines Order'
-    await admin.post('/api/table_def', { name: HELD, id_pattern: 'prompt', columns: [
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: HELD, id_pattern: 'prompt', columns: [
       { column_name: 'lines', column_type: 'Sub-table', row_table: LINE, tier: 'restricted' },
     ] })
     const ROLE = 'Rel Hidden Lines Role'
@@ -181,7 +181,7 @@ describe('NAV-002: related filters', () => {
   test('a back-link through a column the reader may not read is refused', async ({ admin, createUser }) => {
     await setup(admin)
     const AUDIT = 'Rel Audit'
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: AUDIT,
       columns: [{ column_name: 'checked', column_type: 'Reference', reference_table: SUP, tier: 'restricted' }],
     })

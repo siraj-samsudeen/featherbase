@@ -18,7 +18,7 @@ async function seedZones(codes: string[], createdBy: string) {
 
 test('#851 key coverage combines all import parts', async ({ admin }) => {
   setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
-  await admin.post('/api/table_def', { name: 'Ika Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ika Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
   const rows = Array.from({ length: 520 }, (_, i) => ({ code: `Z${i}` }))
   await seedZones(rows.map((r) => r.code), admin.user!)
   expect(await analyzeImportKeys({ table: 'Ika Zone', columns: ['code'], rows: rows.map((values, sourceIndex) => ({ values, sourceIndex })) }))
@@ -26,7 +26,7 @@ test('#851 key coverage combines all import parts', async ({ admin }) => {
 })
 
 test('#851 readable coverage survives aggregation without write permission', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Ika Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ika Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
   const rows = Array.from({ length: 520 }, (_, i) => ({ code: `Z${i}` }))
   await seedZones(rows.map((r) => r.code), admin.user!)
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Ika Reader' } })
@@ -38,7 +38,7 @@ test('#851 readable coverage survives aggregation without write permission', asy
 })
 
 test('#851 matching permission must hold in every import part', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Ika Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ika Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
   const rows = Array.from({ length: 520 }, (_, i) => ({ code: `Z${i}` }))
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Ika Reader' } })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Ika Own Writer' } })
@@ -56,7 +56,7 @@ test('#851 matching permission must hold in every import part', async ({ admin, 
 
 test('#851 a duplicate spanning import parts is not a candidate', async ({ admin }) => {
   setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
-  await admin.post('/api/table_def', { name: 'Ika Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ika Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
   const rows = Array.from({ length: 520 }, (_, i) => ({ code: `Z${i}` }))
   await seedZones(rows.map((r) => r.code), admin.user!)
   rows[519].code = ' Z0 '
@@ -66,7 +66,7 @@ test('#851 a duplicate spanning import parts is not a candidate', async ({ admin
 
 test('#851 partial remembered-key coverage stays incomplete across parts', async ({ admin }) => {
   setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
-  await admin.post('/api/table_def', { name: 'Ika Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ika Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
   const rows = Array.from({ length: 520 }, (_, i) => ({ code: `Z${i}` }))
   await seedZones(rows.slice(0, 510).map((r) => r.code), admin.user!)
   expect(await analyzeImportKeys({ table: 'Ika Zone', columns: ['code'], rows: rows.map((values, sourceIndex) => ({ values, sourceIndex })) }))
@@ -75,7 +75,7 @@ test('#851 partial remembered-key coverage stays incomplete across parts', async
 
 test('#851 an ambiguous key in the last part removes the candidate', async ({ admin }) => {
   setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
-  await admin.post('/api/table_def', { name: 'Ika Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ika Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
   const rows = Array.from({ length: 520 }, (_, i) => ({ code: `Z${i}` }))
   await seedZones([...rows.map((r) => r.code), 'Z519'], admin.user!)
   expect(await analyzeImportKeys({ table: 'Ika Zone', columns: ['code'], rows: rows.map((values, sourceIndex) => ({ values, sourceIndex })) }))

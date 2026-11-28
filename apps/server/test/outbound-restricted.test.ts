@@ -20,7 +20,7 @@ async function setup(admin: TestClient) {
       { column_name: 'amount', column_type: 'Currency', tier: 'restricted' },
     ],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     is_submittable: true,
     columns: [

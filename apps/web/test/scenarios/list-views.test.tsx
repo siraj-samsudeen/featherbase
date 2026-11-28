@@ -21,7 +21,7 @@ const PEOPLE = ['Chitra', 'Anitha', 'Bala']
 
 /** A Table whose rows are named for people, readable by a reader role. */
 async function seed(admin: Client, name: string, queue = false) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name, title_column: 'person', ...(queue ? { queue: true } : {}),
     columns: [
       { column_name: 'person', column_type: 'Data', label: 'Person', in_list_view: true },

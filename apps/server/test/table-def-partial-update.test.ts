@@ -10,7 +10,7 @@ type Meta = { title_column: string | null; description: string | null; module: s
 const meta = (admin: Parameters<typeof makeTable>[0], table: string) => admin.get<Meta>(`/api/table/${encodeURIComponent(table)}:meta`)
 
 async function plant(admin: Parameters<typeof makeTable>[0], name = 'Pu Plant') {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name,
     module: 'Pu Module',
     id_pattern: 'prompt',

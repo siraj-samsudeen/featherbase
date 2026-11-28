@@ -9,7 +9,7 @@ const T = 'Dv Task'
 const DASH = 'Dv Board'
 
 test('UI-026: dashboard number cards and bar chart match the underlying data', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: T,
     columns: [
       { column_name: 'title', column_type: 'Data', in_list_view: true },
@@ -46,7 +46,7 @@ test('UI-026: dashboard number cards and bar chart match the underlying data', a
 })
 
 async function stages(admin: Parameters<typeof renderApp>[1]) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: T,
     columns: [
       { column_name: 'title', column_type: 'Data', in_list_view: true },

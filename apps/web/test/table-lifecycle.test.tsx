@@ -86,8 +86,8 @@ test('TLC-R1.sub_table: a child Table reached directly offers no create affordan
 })
 
 async function seedNotes(admin: Parameters<typeof renderApp>[1]) {
-  await admin.post('/api/table_def', { name: NOTE, id_pattern: 'prompt', columns: [{ column_name: 'body', column_type: 'Data' }] })
-  await admin.post('/api/table_def', { name: REF, id_pattern: 'prompt', columns: [{ column_name: 'note', column_type: 'Reference', reference_table: NOTE }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: NOTE, id_pattern: 'prompt', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: REF, id_pattern: 'prompt', columns: [{ column_name: 'note', column_type: 'Reference', reference_table: NOTE }] })
   await admin.post('/api/save_row', { table: NOTE, row: { row_id: 'note-1', body: 'spoken for' } })
   await admin.post('/api/save_row', { table: NOTE, row: { row_id: 'note-2', body: 'a mistake' } })
   await admin.post('/api/save_row', { table: REF, row: { row_id: 'ref-1', note: 'note-1' } })

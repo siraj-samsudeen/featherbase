@@ -12,7 +12,7 @@ const STAGES = ['Open', 'Open', 'Open', 'Closed', 'Closed', 'Pending']
 
 // Each test rebuilds the Table + rows inside its own rolled-back tx.
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },

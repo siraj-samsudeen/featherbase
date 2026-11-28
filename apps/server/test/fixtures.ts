@@ -180,10 +180,18 @@ export function tableRef(name: string): TableRef {
 export async function makeTable(admin: TestClient, def: TableDef): Promise<TableRef> {
   const { columns, ...rest } = def
   await admin.post('/api/table_def', {
+    // #1459: a Table with no row rule is read by System Managers only; a test Table reads whole unless it says otherwise.
+    ...(rest.kind === 'sub_table' || rest.kind === 'view' ? {} : { row_rule: { kind: 'all' } }),
     ...rest,
     ...(columns ? { columns: columns.map(toColumn) } : {}),
   })
   return tableRef(def.name)
+}
+
+// #1459: a Table made by connecting, reflecting or copying an outside source has no row rule, so only System
+// Managers read it. A test that reads such a Table as someone else says its rule first: every row.
+export async function readWhole(admin: TestClient, ...tables: string[]): Promise<void> {
+  for (const table of tables) await admin.put(`/api/table_def/${encodeURIComponent(table)}/row_rule`, { row_rule: { kind: 'all' } })
 }
 
 function toColumn(spec: ColumnSpec): Record<string, unknown> {

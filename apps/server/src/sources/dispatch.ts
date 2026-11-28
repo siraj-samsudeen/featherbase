@@ -1,3 +1,4 @@
+import { readsConnectedRows } from '../row-rule'
 import { sql } from '../db'
 import { assertNotPlatformRelation } from './platform-guard'
 import { AppError } from '../errors'
@@ -294,6 +295,8 @@ async function boundScopeFilters(
   bind: Binding,
 ): Promise<SourceFilter[]> {
   if (await isPrivileged(user)) return []
+  // #1459: a connected Table's rows are read whole or not at all, by its row rule
+  if (!(await readsConnectedRows(meta, user))) return [{ column: bind.pk, op: 'in', value: [] }]
   const scope = tableScope(meta, await getScopeMap(user))
   if (!scope) return []
   // #246: no Data Scope on a required dimension matches no row at all.

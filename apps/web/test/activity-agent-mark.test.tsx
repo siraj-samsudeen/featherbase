@@ -17,7 +17,7 @@ type Admin = Parameters<typeof renderApp>[1]
 type Row = { row_id: string; updated_at: string }
 
 async function depotTable(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: T,
     track_changes: true,
     columns: [

@@ -40,7 +40,7 @@ test('a System Manager holding the role finds the app in the switcher as usual',
 
 test("someone who isn't a System Manager keeps the shorter list", async ({ admin, createUser }) => {
   await installTasker(admin)
-  await admin.post('/api/table_def', { name: 'Sw Note', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Sw Note', columns: [{ column_name: 'note', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Sw Reader' } })
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Sw Note', role: 'Sw Reader', operation: 'read', scope_mode: 'all' } })
   const reader = await createUser({ roles: ['Sw Reader'] })

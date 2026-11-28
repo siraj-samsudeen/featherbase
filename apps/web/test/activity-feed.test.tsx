@@ -63,7 +63,7 @@ test('Team tab: name, then main role; nameless person falls back to the email lo
   const mgr = await createUser({ roles: ['System Manager'], fullName: 'Team Lead' })
   const bare = await createUser({ roles: [], email: 'jo.nameless@x.com', fullName: '' })
   // Version rows are what the Team tab shows; attribute one edit to each.
-  await mgr.post('/api/table_def', {
+  await mgr.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Feed Web DT',
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],

@@ -20,7 +20,7 @@ const FLOW = 'Wf Notify Flow'
 // approver user (via the createUser fixture — its minted token replaces the
 // legacy password login), and workflow. Returns the approver's client.
 async function setup(admin: TestClient, createUser: CreateUserFn, waitsForApproval = true): Promise<TestClient> {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data' }],

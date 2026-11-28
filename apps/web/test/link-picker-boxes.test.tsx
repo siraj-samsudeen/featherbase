@@ -18,14 +18,14 @@ const REGION = 'Lb Region'
 const SHOP = 'Lb Shop'
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: REGION, id_pattern: 'prompt', title_column: 'region_name',
     columns: [{ column_name: 'region_name', column_type: 'Data', label: 'Region name', in_list_view: true }],
   })
   // Saved out of order: the newest first would read Tamil Nadu before Kerala.
   for (const [row_id, region_name] of [['r-k', 'Kerala'], ['r-a', 'Andhra'], ['r-t', 'Tamil Nadu']])
     await admin.post('/api/save_row', { table: REGION, row: { row_id, region_name } })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: SHOP, id_pattern: 'prompt', title_column: 'shop_name',
     columns: [
       { column_name: 'shop_name', column_type: 'Data', label: 'Shop name', in_list_view: true },
@@ -291,7 +291,7 @@ test("a form link's list opened before its Table's details arrive lists names on
 })
 
 test('a person search that answers after the box was left does not open its list', async ({ admin }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Lb Visit', columns: [{ column_name: 'host', column_type: 'Reference', reference_table: 'Person', label: 'Host' }],
   })
   await renderApp(`${tableHref('Lb Visit')}/new`, admin)

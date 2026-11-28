@@ -45,14 +45,14 @@ test("a new Table's columns can be renamed and retyped before the import", async
 test('the target picker: Escape closes it, Enter takes the best match, and New Table or any other Table can be chosen', async ({ admin }) => {
   clearSession()
   const user = userEvent.setup()
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Ix Stock',
     columns: [
       { column_name: 'sku', column_type: 'Data' },
       { column_name: 'qty', column_type: 'Int' },
     ],
   })
-  await admin.post('/api/table_def', { name: 'Ix Unrelated', columns: [{ column_name: 'colour', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ix Unrelated', columns: [{ column_name: 'colour', column_type: 'Data' }] })
   await renderApp('/featherbase/admin/import', admin)
   await upload('sku,qty\nA-1,1\n')
   const target = await screen.findByTestId('iw-target-0', undefined, { timeout: 8000 })

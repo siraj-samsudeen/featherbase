@@ -204,6 +204,8 @@ jobs:
       # from example-apps/, client-apps/ or test-apps/. Tests may.
       - name: Platform source imports no app code
         run: pnpm check:platform-imports
+      - name: Every app Table has a row rule
+        run: pnpm check:row-rules
 
       - name: The dev command's rules
         run: pnpm check:dev

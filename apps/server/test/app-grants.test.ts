@@ -20,7 +20,7 @@ function manifest(extra: Partial<AppManifest> = {}): AppManifest {
     name: APP,
     tables: [
       {
-        name: DT,
+        name: DT, row_rule: { kind: 'all' },
         module: 'Test',
         id_pattern: 'hash',
         columns: [{ column_name: 'title', column_type: 'Data' }],
@@ -46,7 +46,7 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
           { column_name: 'text', column_type: 'Data' },
           { column_name: 'private_text', column_type: 'Data' },
         ] },
-        { name: DT, id_pattern: 'prompt', columns: [
+        { name: DT, row_rule: { kind: 'all' }, id_pattern: 'prompt', columns: [
           { column_name: 'public_notes', column_type: 'Sub-table', row_table: 'Grant Note' },
           { column_name: 'private_notes', column_type: 'Sub-table', row_table: 'Grant Note' },
         ] },
@@ -72,7 +72,7 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     registerApp(manifest({
       tables: [
         { name: 'Grant Note', kind: 'sub_table', columns: [{ column_name: 'text', column_type: 'Data' }] },
-        { name: DT, id_pattern: 'prompt', columns: [
+        { name: DT, row_rule: { kind: 'all' }, id_pattern: 'prompt', columns: [
           { column_name: 'title', column_type: 'Data' },
           { column_name: 'notes', column_type: 'Sub-table', row_table: 'Grant Note' },
         ] },

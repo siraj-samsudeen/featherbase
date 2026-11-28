@@ -16,7 +16,7 @@ const FLOW = 'Cond Wf Flow'
 
 // Each test rebuilds the Table + workflow inside its own rolled-back tx.
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: 'prompt',
     columns: [

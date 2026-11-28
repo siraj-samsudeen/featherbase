@@ -80,7 +80,7 @@ describe('PERM-002/003: Permission grants enforced server-side', () => {
     await setup(admin)
     const user = await createUserWithRole(admin, createUser, { role: ROLE, table: [] })
     await expectApiError(
-      user.post('/api/table_def', {
+      user.post('/api/table_def', { row_rule: { kind: 'all' },
         name: 'Hax DT',
         columns: [{ column_name: 'x', column_type: 'Data' }],
       }),

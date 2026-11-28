@@ -21,7 +21,7 @@ async function setup(admin: TestClient) {
     await sql`insert into person ${sql({
       row_id: u, created_by: 'Administrator', updated_by: 'Administrator', email: `${u.slice(4)}@x.com`, enabled: true,
     })}`
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },

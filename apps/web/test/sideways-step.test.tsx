@@ -14,11 +14,11 @@ configure({ asyncUtilTimeout: 10_000 })
 type Client = Parameters<typeof renderApp>[1]
 
 async function seed(admin: Client, orders = 6) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Sw Customer', id_pattern: 'prompt', title_column: 'title',
     columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Sw Order', id_pattern: 'prompt', title_column: 'title',
     columns: [
       { column_name: 'title', column_type: 'Data', in_list_view: true },

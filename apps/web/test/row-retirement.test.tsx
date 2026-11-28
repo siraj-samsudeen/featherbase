@@ -15,7 +15,7 @@ const WAIT = { timeout: 15_000 }
 type Admin = Parameters<typeof renderApp>[1]
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', { name: TABLE, id_pattern: 'prompt', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: TABLE, id_pattern: 'prompt', columns: [
     { column_name: 'city', column_type: 'Data', in_list_view: true },
   ] })
   await admin.post(api, { row_id: 'Riverside', city: 'Kochi' })
@@ -84,7 +84,7 @@ test('#859 the list leaves retired rows out until asked, and marks them', async 
 test('#859 a System Manager deletes a row permanently, seeing what points at it first', async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)
-  await admin.post('/api/table_def', { name: 'Retire Bin Order', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Retire Bin Order', columns: [
     { column_name: 'plant', column_type: 'Reference', reference_table: TABLE },
   ] })
   await admin.post('/api/table/Retire%20Bin%20Order', { plant: 'Sample plant' })
@@ -207,7 +207,7 @@ test('#859 a click outside Delete With History closes it, deleting nothing', asy
 
 test('#859 Delete With History can go back from clearing the links to deleting what points at the row', async ({ admin }) => {
   await seed(admin)
-  await admin.post('/api/table_def', { name: 'Retire Bin Order', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Retire Bin Order', columns: [
     { column_name: 'plant', column_type: 'Reference', reference_table: TABLE },
   ] })
   await admin.post('/api/table/Retire%20Bin%20Order', { plant: 'Sample plant' })

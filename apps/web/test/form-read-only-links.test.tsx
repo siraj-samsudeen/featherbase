@@ -12,9 +12,9 @@ type Admin = Parameters<typeof renderApp>[1]
 const T = { timeout: 10_000 }
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', { name: 'Frl Rack', id_pattern: 'prompt', title_column: 'rack_name',
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Frl Rack', id_pattern: 'prompt', title_column: 'rack_name',
     columns: [{ column_name: 'rack_name', column_type: 'Data', label: 'Rack name' }] })
-  await admin.post('/api/table_def', { name: 'Frl Parcel', id_pattern: 'prompt', title_column: 'label', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Frl Parcel', id_pattern: 'prompt', title_column: 'label', columns: [
     { column_name: 'label', column_type: 'Data', label: 'Label' },
     { column_name: 'rack', column_type: 'Reference', reference_table: 'Frl Rack', label: 'Rack' },
   ] })

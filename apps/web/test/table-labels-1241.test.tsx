@@ -13,11 +13,11 @@ type Admin = Parameters<typeof renderApp>[1]
 /** Two Tables whose labels differ from their names, as an app's Tables do
  *  ("tickets.ticket" reads "Ticket"); a Table made here stores no label of its own. */
 async function seed(admin: Admin, db: unknown) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Tl Customer', id_pattern: 'prompt', title_column: 'title',
     columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Tl Order', id_pattern: 'prompt', title_column: 'title',
     columns: [
       { column_name: 'title', column_type: 'Data', in_list_view: true },

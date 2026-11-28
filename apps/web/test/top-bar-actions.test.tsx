@@ -83,7 +83,7 @@ test("choosing Featherbase in the switcher on an app's address hands the person 
 })
 
 test('Open Admin refused because the grant went meanwhile stays on the page, ready to try again', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Tba Note', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Tba Note', columns: [{ column_name: 'note', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Tba Clerk' } })
   const [grantId] = await grantRole(admin, { table: 'Tba Note', role: 'Tba Clerk', can_read: true })
   const clerk = await createUser({ roles: ['Tba Clerk'] })

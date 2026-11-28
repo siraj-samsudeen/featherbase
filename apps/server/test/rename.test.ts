@@ -13,7 +13,7 @@ const ORDER = 'Rn Order'
 const ITEM = 'Rn Order Item'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: CUST,
     id_pattern: 'prompt',
     columns: [{ column_name: 'city', column_type: 'Data' }],
@@ -23,7 +23,7 @@ async function setup(admin: TestClient) {
     kind: 'sub_table',
     columns: [{ column_name: 'supplier', column_type: 'Reference', reference_table: CUST }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: ORDER,
     id_pattern: 'prompt',
     columns: [

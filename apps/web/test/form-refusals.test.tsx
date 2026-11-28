@@ -20,7 +20,7 @@ const field = (name: string) => document.querySelector<HTMLElement>(`[data-field
 afterEach(() => vi.unstubAllGlobals())
 
 async function seedNotes(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Frf Note',
     id_pattern: 'prompt',
     columns: [
@@ -166,7 +166,7 @@ test('a stored JSON value saves unchanged when the person edits another field', 
 
 test('primary lifecycle actions reach the amended draft from a cancelled row', async ({ admin }) => {
   const user = userEvent.setup()
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Frf Lifecycle', is_submittable: true,
     columns: [{ column_name: 'item', column_type: 'Data', label: 'Item' }],
   })
@@ -191,7 +191,7 @@ test('primary lifecycle actions reach the amended draft from a cancelled row', a
 
 test('submitting a row someone else already submitted is refused with the reason', async ({ admin }) => {
   const user = userEvent.setup()
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Frf Order',
     id_pattern: 'prompt',
     is_submittable: true,
@@ -209,7 +209,7 @@ test('submitting a row someone else already submitted is refused with the reason
 
 test('a Reference to a service account shows the account by its label, not its id', async ({ admin }) => {
   const bot = (await admin.post('/api/service_accounts', { label: 'svc-frf-stock-bot' })) as { row_id: string }
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Frf Job',
     id_pattern: 'prompt',
     columns: [{ column_name: 'runner', column_type: 'Reference', label: 'Runner', reference_table: 'Service Account' }],
@@ -222,8 +222,8 @@ test('a Reference to a service account shows the account by its label, not its i
 
 test('a Reference search the server refuses offers no matches rather than failing', async ({ admin, createUser }) => {
   // The clerk may edit Frf Visit but not read the Frf Depot it points at.
-  await admin.post('/api/table_def', { name: 'Frf Depot', id_pattern: 'prompt', columns: [{ column_name: 'city', column_type: 'Data' }] })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Frf Depot', id_pattern: 'prompt', columns: [{ column_name: 'city', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Frf Visit',
     id_pattern: 'prompt',
     columns: [{ column_name: 'depot', column_type: 'Reference', label: 'Depot', reference_table: 'Frf Depot' }],

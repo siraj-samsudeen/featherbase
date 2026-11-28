@@ -105,7 +105,7 @@ beforeAll(async () => {
   })
   await areq('/api/table_def', {
     method: 'POST',
-    body: JSON.stringify({
+    body: JSON.stringify({ row_rule: { kind: 'all' },
       name: DT,
       columns: [
         { column_name: 'title', column_type: 'Data' },
@@ -115,7 +115,7 @@ beforeAll(async () => {
   })
   await areq('/api/table_def', {
     method: 'POST',
-    body: JSON.stringify({ name: SECRET_DT, columns: [{ column_name: 'code', column_type: 'Data' }] }),
+    body: JSON.stringify({ row_rule: { kind: 'all' }, name: SECRET_DT, columns: [{ column_name: 'code', column_type: 'Data' }] }),
   })
   await areq('/api/save_row', {
     method: 'POST',

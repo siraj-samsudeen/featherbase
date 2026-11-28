@@ -25,7 +25,7 @@ const REVERT = `/api/table/${encodeURIComponent(DT)}:import-revert`
 const ROLE = 'Revert Tester Role'
 
 async function setup(admin: TestClient, extra: Record<string, unknown> = {}) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: 'RVT-.###',
     columns: [
@@ -203,7 +203,7 @@ describe('RVT-R2/R3: the revert boundary restores and deletes', () => {
 
   test('RVT-R2: Settings Tables cannot revert imports', async ({ admin }) => {
     const table = 'Revert Settings Target'
-    await admin.post('/api/table_def', { name: table, kind: 'settings', columns: [{ column_name: 'label', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: table, kind: 'settings', columns: [{ column_name: 'label', column_type: 'Data' }] })
     await expectApiError(admin.post(`/api/table/${encodeURIComponent(table)}:import-revert`, { run_id: 'not-a-run' }), {
       status: 417, type: 'ValidationError', message: '417 ValidationError: Cannot revert an import on a settings Table',
     })
@@ -380,7 +380,7 @@ describe('RVT: rows a revert cannot act on are named, and the rest still revert'
     await sql`update column_def set column_type = 'Choice', choices = ${'Low\nHigh'} where parent = ${DT} and column_name = 'pop'`
     invalidateMeta(DT)
     const fresh = await rowsByZone(admin)
-    await admin.post('/api/table_def', { name: 'Revert Pointer', columns: [{ column_name: 'target', column_type: 'Reference', reference_table: DT }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Revert Pointer', columns: [{ column_name: 'target', column_type: 'Reference', reference_table: DT }] })
     await admin.post('/api/save_row', { table: 'Revert Pointer', row: { target: Charlie.row_id } })
     const res = await admin.post<RevertRes>(REVERT, { run_id: runId, override: [String(Alpha.row_id)] })
     expect(res.restored).toBe(0)

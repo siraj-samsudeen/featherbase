@@ -28,7 +28,7 @@ type Admin = Parameters<typeof renderApp>[1]
 type Stored = { settings: { sort?: { field: string; dir: string } | null; hiddenCols?: string[] } }
 
 async function seedList(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true },

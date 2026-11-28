@@ -14,7 +14,7 @@ const DT = 'WF Srv Msg'
 // Each test builds the Table + both web forms inside its own sandbox
 // transaction.
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     columns: [
       { column_name: 'full_name', column_type: 'Data', reqd: true },
@@ -158,7 +158,7 @@ describe('web form: field whitelist parsing', () => {
     admin,
   }) => {
     const DT = 'Cov Webform Note'
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: DT,
       columns: [{ column_name: 'title', column_type: 'Data' }],
     })

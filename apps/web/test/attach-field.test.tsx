@@ -15,7 +15,7 @@ const PATH = '/featherbase/admin/table/ui-attach-dt/row/attach-1'
 afterEach(() => vi.unstubAllGlobals())
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: 'prompt',
     columns: [

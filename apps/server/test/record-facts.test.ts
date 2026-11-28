@@ -40,6 +40,7 @@ async function describing(records: unknown, { gate = false }: { gate?: boolean }
     { column_name: 'note', column_type: 'Reference', reference_table: NOTE }, { column_name: 'secret', column_type: 'Reference', reference_table: SECRET }] })
   manifest.permissions.push({ table: LINK, role: 'Bar Describer', can_read: true }, { table: LINK, role: 'Bar Reader', can_read: true })
   manifest.reads.tables = [NOTE, SECRET, LINK]
+  manifest.rowRules = { ...manifest.rowRules, [SECRET]: { kind: 'all' }, [LINK]: { kind: 'all' } }
   manifest.reads.operations = { ...manifest.reads.operations, describe_notes: tableRead, preview_tidy: tableRead }
   manifest.actions = { version: 2, tables: [NOTE], operations: { tidy: tableRead } }
   manifest.records = records

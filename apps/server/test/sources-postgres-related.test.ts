@@ -57,7 +57,7 @@ async function connect(admin: TestClient) {
       { column_name: 'kind', column_type: 'Data' },
     ]],
   ] as const) {
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name, data_source: 'related-786', external_schema: SCHEMA,
       external_table: relation, external_pk: 'code', columns,
     })

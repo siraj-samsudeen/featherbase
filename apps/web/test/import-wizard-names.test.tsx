@@ -38,7 +38,7 @@ test('a file named only with digits makes a Table called Imported Table', async 
 test('a sheet sent back to New Table from a digits-only file is called Imported Table', async ({ admin }) => {
   clearSession()
   const user = userEvent.setup()
-  await admin.post('/api/table_def', { name: 'Iwn Stock', columns: [{ column_name: 'iwn_sku', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Iwn Stock', columns: [{ column_name: 'iwn_sku', column_type: 'Data' }] })
   await renderApp('/featherbase/admin/import', admin)
   await drop(csvFile('iwn_sku\nA-1\n', '2024.csv'))
   const target = await screen.findByTestId('iw-target-0', undefined, { timeout: 8000 })
@@ -53,7 +53,7 @@ test('a sheet sent back to New Table from a digits-only file is called Imported 
 test("a workbook's sheet sent back to New Table is named for its sheet", async ({ admin }) => {
   clearSession()
   const user = userEvent.setup()
-  await admin.post('/api/table_def', { name: 'Iwn Stock', columns: [{ column_name: 'iwn_sku', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Iwn Stock', columns: [{ column_name: 'iwn_sku', column_type: 'Data' }] })
   await renderApp('/featherbase/admin/import', admin)
   await drop(workbook({ 'Iwn Shelves': [['iwn_sku'], ['A-1']], Other: [['iwn_other'], ['x']] }))
   await user.click(await screen.findByTestId('iw-ov-sheet-0', undefined, { timeout: 8000 }))

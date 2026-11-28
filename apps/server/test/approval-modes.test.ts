@@ -31,7 +31,7 @@ const APPROVE_FIRST = 'Approve first'
 async function setUp(admin: TestClient, createUser: CreateUserFn) {
   expect(await discoverPackages([directory])).toEqual([])
   await admin.post('/api/install_app', { name: 'proposalproof' })
-  await admin.post('/api/table_def', { name: 'Placement', id_pattern: 'field:placement_id', track_changes: true, columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Placement', id_pattern: 'field:placement_id', track_changes: true, columns: [
     { column_name: 'placement_id', column_type: 'Data', reqd: true },
     { column_name: 'label', column_type: 'Data' }, { column_name: 'site', column_type: 'Data' },
     { column_name: 'starts_on', column_type: 'Date' }, { column_name: 'ends_on', column_type: 'Date' },
@@ -316,7 +316,7 @@ describe('undo puts the rows back as they were', () => {
 
   test('refused while a row in use still links to the added row; allowed once that link is retired', async ({ admin, createUser }) => {
     const { maker, manager } = await setUp(admin, createUser)
-    await admin.post('/api/table_def', { name: 'Placement Note', columns: [{ column_name: 'placement', column_type: 'Reference', reference_table: 'Placement' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Placement Note', columns: [{ column_name: 'placement', column_type: 'Reference', reference_table: 'Placement' }] })
     await setMode(admin, 'label_change', APPLY_NOW)
     const proposal = await probe(maker, ask(manager.user))
     const note = await admin.post<any>('/api/save_row', { table: 'Placement Note', row: { placement: 'P-2' } })
@@ -349,9 +349,9 @@ describe('undo puts the rows back as they were', () => {
 
   test('links that count: a child line holds the added row; a settings Table, which has no rows to hold it, does not', async ({ admin, createUser }) => {
     const { maker, manager } = await setUp(admin, createUser)
-    await admin.post('/api/table_def', { name: 'Placement Defaults', kind: 'settings', columns: [{ column_name: 'placement', column_type: 'Reference', reference_table: 'Placement' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Placement Defaults', kind: 'settings', columns: [{ column_name: 'placement', column_type: 'Reference', reference_table: 'Placement' }] })
     await admin.post('/api/table_def', { name: 'Placement Line', kind: 'sub_table', columns: [{ column_name: 'placement', column_type: 'Reference', reference_table: 'Placement' }] })
-    await admin.post('/api/table_def', { name: 'Placement Sheet', columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Placement Line' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Placement Sheet', columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Placement Line' }] })
     await setMode(admin, 'label_change', APPLY_NOW)
     const proposal = await probe(maker, ask(manager.user))
     const sheet = await admin.post<any>('/api/save_row', { table: 'Placement Sheet', row: { lines: [{ placement: 'P-2' }] } })

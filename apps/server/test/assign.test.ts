@@ -18,7 +18,7 @@ let ASSIGNEE = ''
 // Each test builds its Table, assignee user, and document inside its own
 // sandbox transaction.
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: DT,
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data' }],
@@ -94,7 +94,7 @@ describe('EML-006: assignment', () => {
 describe('assignment + RPC edges', () => {
   test('createAssignment defaults its description', async ({ admin, createUser }) => {
     const DT = 'Cov Assign Note'
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: DT,
       columns: [{ column_name: 'title', column_type: 'Data' }],
     })
@@ -110,7 +110,7 @@ describe('assignment + RPC edges', () => {
 
 describe('Assign a row to someone', () => {
   async function world(admin: TestClient) {
-    await admin.post('/api/table_def', { name: 'Asg Req Doc', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Asg Req Doc', columns: [{ column_name: 'title', column_type: 'Data' }] })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Asg Req Reader' } })
     await grantRole(admin, { table: 'Asg Req Doc', role: 'Asg Req Reader', can_read: true })
     // Assigning writes the assignee's to-do, so a role that assigns also holds

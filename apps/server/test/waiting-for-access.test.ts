@@ -203,7 +203,7 @@ describe('opening something without access is the request', () => {
 describe('the waiting list', () => {
   test('a request goes once the person can open that app, and their other requests stay', async ({ admin, createUser }) => {
     await installOther(admin)
-    await admin.post('/api/table_def', { name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Back Office Clerk' } })
     await grantRole(admin, { table: 'Back Office', role: 'Back Office Clerk', can_read: true })
     const priya = await createUser({ email: 'priya.two@example.com', roles: [] })

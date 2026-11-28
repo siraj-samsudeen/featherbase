@@ -29,7 +29,7 @@ class Catalogue {
   constructor(readonly admin: TestClient) {}
 
   async prepare() {
-    await this.admin.post('/api/table_def', {
+    await this.admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: this.table,
       columns: [{ column_name: 'category', column_type: 'Data', label: 'Category' }],
     })
@@ -130,7 +130,7 @@ describe('metadata-override-validation', () => {
     let c!: Catalogue
     await step(GIVEN, async () => { c = await new Catalogue(admin).prepare() })
     await step('another catalogue has a supplier column', () =>
-      admin.post('/api/table_def', { name: `${c.table} Suppliers`, columns: [{ column_name: 'supplier', column_type: 'Data' }] }))
+      admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: `${c.table} Suppliers`, columns: [{ column_name: 'supplier', column_type: 'Data' }] }))
     await step('the user saves a supplier customization on the category catalogue', async () => {
       c.missing = 'supplier'
       await c.save({ column_name: c.missing, property: 'label', value: 'Supplier' })

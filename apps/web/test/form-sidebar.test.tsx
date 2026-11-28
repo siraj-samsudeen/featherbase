@@ -24,7 +24,7 @@ afterEach(async () => {
 })
 
 async function seedRow(admin: Admin, features: string[]): Promise<string> {
-  await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: DT, columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   for (const property of features)
     await admin.post('/api/save_row', { table: 'Metadata Override', row: { table_name: DT, property, value: 'true' } })
   const row = await admin.post<{ row_id: string }>('/api/save_row', { table: DT, row: { title: 'sidebar row' } })

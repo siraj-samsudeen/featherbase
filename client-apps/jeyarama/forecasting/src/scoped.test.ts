@@ -60,11 +60,12 @@ function orgChart(jobs: Row[], assignments: Row[] = []): Documents {
 }
 const placesOf = async (jobs: Row[], assignments: Row[] = []) => (await reachOf(orgChart(jobs, assignments), 'me', ON)).places as Place[]
 
-/** How each Table is narrowed, as the manifest declares it: a copy by its dataset's filters, a review Table by scopedTables. */
+/** How each Table is narrowed, as the manifest declares it: a copy by its dataset's filters, a review Table by its row rule `places` (rowRules, #1459). */
 type Dataset = { name: string; filters?: Record<string, string>; unscoped?: boolean; store?: string }
 const MAPPING: Record<string, Record<string, string> | null> = {
   ...Object.fromEntries((manifest.datasets as Dataset[]).map(d => [`forecasting.${d.name}`, d.unscoped ? null : d.filters ?? null])),
-  ...Object.fromEntries(((manifest as { scopedTables?: { table: string; filters: Record<string, string> }[] }).scopedTables ?? []).map(t => [t.table, t.filters])),
+  ...Object.fromEntries(Object.entries((manifest as { rowRules?: Record<string, { kind: string; columns?: Record<string, string> }> }).rowRules ?? {})
+    .flatMap(([table, rule]) => (rule.kind === 'places' ? [[table, rule.columns!]] : []))),
 }
 
 /** The month's lines: store × subcategory. A line merged from several subcategories carries no code. */

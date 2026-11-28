@@ -132,7 +132,7 @@ describe('invalid route arguments leave stored state alone', () => {
   })
 
   test('metadata route shape checks preserve the existing definition and values', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Route Shape', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Route Shape', columns: [{ column_name: 'title', column_type: 'Data' }] })
     const row = await admin.post<{ row_id: string }>('/api/table/Route%20Shape', { title: 'kept' })
     for (const [method, path, body, message] of [
       ['POST', '/api/table_def/Route%20Shape/rename_column', { from: 'title', to: 7 }, 'Expected { from, to }'],
@@ -259,7 +259,7 @@ describe('signed URLs for files', () => {
 
 describe('customizations export and import', () => {
   test('a System Manager exports a Table’s custom fields and imports them back; anyone else is refused', async ({ admin, createUser }) => {
-    await admin.post('/api/table_def', { name: 'Routes Cust', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Routes Cust', columns: [{ column_name: 'title', column_type: 'Data' }] })
     await admin.post('/api/save_row', {
       table: 'Custom Field',
       row: { row_id: 'Routes Cust-tag', dt: 'Routes Cust', column_name: 'tag', label: 'Tag', column_type: 'Data' },

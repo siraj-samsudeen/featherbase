@@ -14,7 +14,7 @@ import { invalidateSources } from '../src/sources/registry'
 import { invalidateMeta } from '../src/meta'
 import { registerController, unregisterController } from '../src/controllers'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
-import { expectRefused, grantRole } from './fixtures'
+import { expectRefused, grantRole, readWhole } from './fixtures'
 
 let dir: string
 beforeAll(async () => { dir = await buildStandin(); overrideVariable('MOTHERDUCK_STANDIN', dir); overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.reader) })
@@ -553,6 +553,7 @@ describe('Copy a warehouse table into Featherbase', () => {
   test('copy actions require System Manager even with native source and target read/write rights', async ({ admin, createUser }) => {
     await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-guard', databases: ['sales'] })
     await admin.post(`${SOURCES}/tc-guard:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Guarded Copy', key: 'code', columns: STORES })
+    await readWhole(admin, 'Guarded Copy')
     await grantRole(admin, { role: 'Copy Editor', table: ['Data Source', 'Guarded Copy'], can_read: true, can_write: true, can_create: true })
     const user = await createUser({ roles: ['Copy Editor'] })
     expect(await user.get(`${SOURCES}/tc-guard`)).toMatchObject({ row_id: 'tc-guard' })
@@ -643,7 +644,7 @@ describe('Copy a warehouse table into Featherbase', () => {
   })
 
   test('a Table that is not copied may rename a column of the marker\'s name', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Marker Plain', columns: [{ column_name: 'deleted_at_source', column_type: 'Check' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Marker Plain', columns: [{ column_name: 'deleted_at_source', column_type: 'Check' }] })
     await admin.post('/api/table_def/Marker%20Plain/rename_column', { from: 'deleted_at_source', to: 'gone' })
     const meta = await admin.get<{ columns: { column_name: string }[] }>('/api/table/Marker%20Plain:meta')
     expect(meta.columns.map(c => c.column_name)).toContain('gone')

@@ -22,12 +22,12 @@ test("Ctrl-click on a list's link is left to the browser, a new tab", async ({ a
 })
 
 test("a nested row's link to a row the viewer cannot read shows no name and no id", async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', { name: 'Lln Customer', id_pattern: 'prompt', title_column: 'customer_name',
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Lln Customer', id_pattern: 'prompt', title_column: 'customer_name',
     columns: [{ column_name: 'customer_name', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Lln Customer', row: { row_id: 'C-7', customer_name: 'Acme Traders' } })
   await admin.post('/api/table_def', { name: 'Lln Line', kind: 'sub_table',
     columns: [{ column_name: 'customer', column_type: 'Reference', reference_table: 'Lln Customer', label: 'Customer' }] })
-  await admin.post('/api/table_def', { name: 'Lln Order', id_pattern: 'prompt', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Lln Order', id_pattern: 'prompt', columns: [
     { column_name: 'label', column_type: 'Data', label: 'Label', in_list_view: true },
     { column_name: 'lines', column_type: 'Sub-table', row_table: 'Lln Line', label: 'Lines' },
   ] })

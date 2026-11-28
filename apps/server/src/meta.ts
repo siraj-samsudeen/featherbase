@@ -141,6 +141,9 @@ export interface TableMeta {
   // and whether a person with no Data Scope on them sees no rows at all.
   scope_on?: string[] | null
   scope_required?: boolean
+  /** #1459: who reads which rows (shared/row-rule.ts). On an app's Table, the instance's own rule, which wins over
+   *  the app's; null leaves the app's. Read through rowRuleOf (row-rule.ts), never directly. */
+  row_rule?: unknown
   /** #1259: a queue's lists open on cards (List And Record) until a person chooses. */
   queue?: boolean
   /** #1273: where a feed row is corrected: an address in the instance, {column} for the row's value. */

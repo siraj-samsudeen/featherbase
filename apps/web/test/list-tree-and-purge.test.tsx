@@ -77,9 +77,9 @@ test("a list's Delete With History removes the selected rows and clears the sele
 
 // Codex review (admin-lists 4): a list may lead with a link, but Tree of all names each line by the row's own title.
 test("Tree of all names a line by its title even where the list leads with a link", async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Ltp Store', id_pattern: 'prompt', title_column: 'store_name', columns: [{ column_name: 'store_name', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Ltp Store', id_pattern: 'prompt', title_column: 'store_name', columns: [{ column_name: 'store_name', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Ltp Store', row: { row_id: 'st-1', store_name: 'Lakeside' } })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Ltp Shelf', id_pattern: 'field:shelf_code', title_column: 'shelf_code',
     columns: [{ column_name: 'shelf_code', column_type: 'Data' }, { column_name: 'store', column_type: 'Reference', reference_table: 'Ltp Store' }],
   })
@@ -92,7 +92,7 @@ test("Tree of all names a line by its title even where the list leads with a lin
 
 // Codex review: the tree asks for a row's title only where the viewer may read that column.
 test('Tree of all opens for someone who may not read the title column', async ({ admin, createUser }) => {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Ltp Secret', title_column: 'codename',
     columns: [{ column_name: 'codename', column_type: 'Data', tier: 'restricted' }, { column_name: 'note', column_type: 'Data', in_list_view: true }],
   })

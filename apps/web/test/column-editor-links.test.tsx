@@ -15,11 +15,11 @@ const ZONE = 'Cel Zone'
 const T = { timeout: 10_000 }
 
 async function seed(admin: Admin, floor: { column_type: string; reference_table?: string } = { column_type: 'Data' }) {
-  await admin.post('/api/table_def', { name: FLOOR, id_pattern: 'prompt', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: FLOOR, id_pattern: 'prompt', columns: [
     { column_name: 'floor_name', label: 'Floor name', column_type: 'Data' },
     { column_name: 'upper', label: 'Upper', column_type: 'Check' },
   ] })
-  await admin.post('/api/table_def', { name: ZONE, columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: ZONE, columns: [
     { column_name: 'zone_name', label: 'Zone name', column_type: 'Data' },
     { column_name: 'floor', label: 'Floor', ...floor },
   ] })

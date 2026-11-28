@@ -30,11 +30,11 @@ function unnamedControls(root: ParentNode = document): string[] {
 }
 
 async function seed(admin: Admin) {
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Named Parent',
     columns: [{ column_name: 'label', column_type: 'Data', label: 'Label' }],
   })
-  await admin.post('/api/table_def', {
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' },
     name: 'Named Thing',
     columns: [
       { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true, reqd: true },

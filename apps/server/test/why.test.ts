@@ -141,7 +141,7 @@ describe('Why: who is offered it', () => {
 
   test('a Table no app explains offers nothing', async ({ admin }) => {
     await install(admin)
-    await admin.post('/api/table_def', { name: 'Why Other', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Why Other', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
     await admin.post('/api/save_row', { table: 'Why Other', row: { row_id: 'o1', title: 'Other' } })
     expect(await (await offer(admin, 'Why Other', 'o1')).json()).toEqual({ offer: null })
   })

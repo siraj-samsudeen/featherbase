@@ -171,7 +171,7 @@ describe('Connecting Postgres tables: names and column types', () => {
 
   test('a table whose proposed name is taken by another Table is skipped, naming the clash', async ({ admin }) => {
     await makeSource(admin)
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Ext Gadget',
       columns: [{ column_name: 'title', column_type: 'Data' }],
     })
@@ -533,7 +533,7 @@ describe('Saving a Data Source', () => {
     await makeSource(admin)
     const res = await admin.fetch('/api/table_def', {
       method: 'POST',
-      body: JSON.stringify({
+      body: JSON.stringify({ row_rule: { kind: 'all' },
         name: 'Missing Source Columns', data_source: 'ext-extra', external_schema: 'ext_extra',
         external_table: 'plain', external_pk: 'missing_id', external_modified: 'missing_revision',
         columns: [{ column_name: 'note', column_type: 'Data', source_column: 'missing_note' }],
@@ -555,7 +555,7 @@ describe('Saving a Data Source', () => {
 
   test('a binding that names no schema and a relation the source lacks names the relation alone', async ({ admin }) => {
     await makeSource(admin)
-    await expectRefused(admin.post('/api/table_def', {
+    await expectRefused(admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'No Such Relation', data_source: 'ext-extra', external_table: 'nowhere', external_pk: 'id',
       columns: [{ column_name: 'note', column_type: 'Data' }],
     }), 417, 'Unknown source relation')
@@ -564,7 +564,7 @@ describe('Saving a Data Source', () => {
 
   test('a binding that names no schema reads the source default schema', async ({ admin }) => {
     await makeSource(admin)
-    await admin.post('/api/table_def', {
+    await admin.post('/api/table_def', { row_rule: { kind: 'all' },
       name: 'Plain No Schema', data_source: 'ext-extra', external_table: 'plain', external_pk: 'id',
       columns: [{ column_name: 'note', column_type: 'Data' }],
     })

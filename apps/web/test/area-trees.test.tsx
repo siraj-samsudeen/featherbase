@@ -42,12 +42,12 @@ async function seed(admin: Client, extra: unknown[] = []) {
   await admin.post('/api/install_app', { name: 'barproof' })
 
   const data = (column_name: string) => ({ column_name, column_type: 'Data', in_list_view: true })
-  await admin.post('/api/table_def', { name: CLUSTER, id_pattern: 'prompt', title_column: 'name', columns: [data('name')] })
-  await admin.post('/api/table_def', { name: SITE, id_pattern: 'prompt', title_column: 'name', columns: [data('name'),
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: CLUSTER, id_pattern: 'prompt', title_column: 'name', columns: [data('name')] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: SITE, id_pattern: 'prompt', title_column: 'name', columns: [data('name'),
     { column_name: 'cluster', column_type: 'Reference', reference_table: CLUSTER }, { column_name: 'is_store', column_type: 'Check' }] })
-  await admin.post('/api/table_def', { name: MEMBER, id_pattern: 'prompt', title_column: 'name', columns: [data('name')] })
-  await admin.post('/api/table_def', { name: ROLE, id_pattern: 'prompt', title_column: 'name', columns: [data('name')] })
-  await admin.post('/api/table_def', { name: GIVEN, id_pattern: 'hash', columns: [
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: MEMBER, id_pattern: 'prompt', title_column: 'name', columns: [data('name')] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: ROLE, id_pattern: 'prompt', title_column: 'name', columns: [data('name')] })
+  await admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: GIVEN, id_pattern: 'hash', columns: [
     { column_name: 'member', column_type: 'Reference', reference_table: MEMBER, label: 'Member', in_list_view: true },
     { column_name: 'role', column_type: 'Reference', reference_table: ROLE, label: 'Role', in_list_view: true },
     { column_name: 'site', column_type: 'Reference', reference_table: SITE, label: 'Area' },
