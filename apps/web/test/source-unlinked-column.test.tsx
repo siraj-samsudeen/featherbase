@@ -70,6 +70,8 @@ test('asking for a table already connected chooses nothing', async ({ admin }) =
 test('someone who may only read crates is told, but not offered to connect', async ({ admin, createUser }) => {
   await crateAlone(admin)
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Crate Reader' } })
+  // #1459: a reflected Table has no row rule, so only System Managers read it until one is said
+  await admin.fetch('/api/table_def/Crate/row_rule', { method: 'PUT', body: JSON.stringify({ row_rule: { kind: 'all' } }) })
   await grantRole(admin, { table: 'Crate', role: 'Crate Reader', can_read: true })
   const reader = await createUser({ email: 'crate-reader@example.test', roles: ['Crate Reader'] })
   await renderApp(`${tableHref('Crate')}/row/5`, reader)
