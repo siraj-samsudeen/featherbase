@@ -1,6 +1,6 @@
 // #1453: the `chartproof` app (a role the org chart gives) and the place provider, for the org-chart role tests and
 // their spec scenarios. Every person and place is made up.
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
@@ -21,10 +21,10 @@ export const manifest = (more: Record<string, unknown> = {}) => ({
 const folders: string[] = []
 /** Remove the app folders written so far (call from afterEach). */
 export async function removeChartFolders() { for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true }) }
-export async function writeApp(more: Record<string, unknown> = {}) {
+export async function writeApp(more: Record<string, unknown> = {}, version = '1.0.0') {
   const dir = await mkdtemp(resolve('test/.chart-proof-'))
   folders.push(dir)
-  await writeFile(join(dir, 'package.json'), JSON.stringify({ name: `featherbase-${APP}`, version: '1.0.0', type: 'module' }))
+  await writeFile(join(dir, 'package.json'), JSON.stringify({ name: `featherbase-${APP}`, version, type: 'module' }))
   await writeFile(join(dir, 'featherbase.json'), JSON.stringify(manifest(more)))
   // a server module only where the test declares one (a scope provider needs one)
   if (more.server) await writeFile(join(dir, 'server.mjs'), "export const platformVersion = '2026-10'\nexport const scopeProviders = { x: async () => [] }\n")
@@ -45,6 +45,15 @@ export async function installed(admin: TestClient, createUser: CreateUserFn) {
 }
 export const position = (admin: TestClient, person: string, place: string, store: string, section: string) =>
   admin.post('/api/save_row', { table: 'placeroster.position', row: { row_id: `${person}-${section}`, person, place, store, section } })
+/** A copy of the place provider that declares an identifier system the instance lacks: it is "not set up yet". */
+export async function notSetUpProvider(): Promise<string> {
+  const copy = await mkdtemp(resolve('test/.chart-proof-roster-'))
+  folders.push(copy)
+  await cp(provider, copy, { recursive: true })
+  const declared = JSON.parse(await readFile(join(copy, 'featherbase.json'), 'utf8'))
+  await writeFile(join(copy, 'featherbase.json'), JSON.stringify({ ...declared, scopeProvider: { ...declared.scopeProvider, identifiers: ['missing-badge'] } }))
+  return copy
+}
 /** On by itself at install (ships on); a System Manager turns it off by removing the rule row. */
 export async function turnOn(_admin: TestClient, on = true) {
   if (!on) await sql`delete from org_chart_role_rule where app = ${APP}`

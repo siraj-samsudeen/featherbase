@@ -8,7 +8,7 @@ import { test } from './pg-test'
 import { discoverPackages } from '../src/runtime-packages'
 import { expectRefused } from './fixtures'
 import { eventVisibleTo } from '../src/realtime'
-import { ANSWER, NORTH_AND_SOUTH_KIDS, REASON, ids, installed, list, removeScopedFolders, withPlaces, writeApp } from './scoped-proof-app'
+import { ANSWER, APP, NORTH_AND_SOUTH_KIDS, REASON, ids, installed, list, notSetUpProvider, removeScopedFolders, withPlaces, writeApp } from './scoped-proof-app'
 
 afterEach(removeScopedFolders)
 describe('a Table about places', () => {
@@ -96,6 +96,16 @@ describe('a Table about places', () => {
       expect(await eventVisibleTo(reader.user!, event('updated', 'a4'))).toBe(false)
       expect(await eventVisibleTo(reader.user!, event('deleted', 'a3'))).toBe(false)
     })
+  })
+
+  test('a scope provider not set up yet gives nobody places: they read only their own rows', async ({ admin, createUser }) => {
+    expect(await discoverPackages([await writeApp(), await notSetUpProvider()])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    await admin.post('/api/install_app', { name: 'placeroster' })
+    await admin.post('/api/save_row', { table: ANSWER, row: { row_id: 'a1', store: 'N1', section: 'kids', body: 'north kids' } })
+    const reader = await createUser({ roles: ['Answer Reader'] })
+    await reader.post('/api/save_row', { table: ANSWER, row: { row_id: 'mine', store: 'N1', section: 'kids', body: 'my own' } })
+    expect(ids(await list(reader))).toEqual(['mine'])
   })
 
   test('a System Manager is not narrowed, as Data Scope does not narrow them', async ({ admin, createUser }) => {

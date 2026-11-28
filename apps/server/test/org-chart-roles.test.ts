@@ -7,8 +7,8 @@ import { test } from './pg-test'
 import { discoverPackages } from '../src/runtime-packages'
 import { getRoles } from '../src/permissions'
 import { sql } from '../src/db'
-import { syncOrgChartRoles } from '../src/org-chart-roles'
-import { APP, installed, position, provider, removeChartFolders, roster, turnOn, writeApp } from './chart-proof-app'
+import { syncOrgChartRoles, syncSummary } from '../src/org-chart-roles'
+import { APP, installed, notSetUpProvider, position, provider, removeChartFolders, roster, turnOn, writeApp } from './chart-proof-app'
 
 afterEach(removeChartFolders)
 
@@ -57,6 +57,33 @@ describe('an app role from the org chart', () => {
       await expect(syncOrgChartRoles()).rejects.toThrow(/could not say where .* people work; the last holders stand/)
     } finally { delete places.faults.provider }
     expect(await getRoles(leader)).toContain('Chart Reader')
+  })
+
+  test('a scope provider not set up yet writes nothing, and the run says so', async ({ admin, createUser }) => {
+    expect(await discoverPackages([await writeApp(), await notSetUpProvider()])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    await admin.post('/api/install_app', { name: 'placeroster' })
+    await createUser({ email: 'leader@example.test' })
+    await expect(syncOrgChartRoles()).rejects.toThrow(/is not set up yet, so nobody can be found on the org chart; the last holders stand/)
+    expect(await sql`select 1 from app_role_from_org_chart_rebuild`).toEqual([])
+  })
+
+  test('an upgrade turns on a role it first declares, and lists one it stops declaring', async ({ admin, createUser }) => {
+    await installed(admin, createUser)
+    const next = await writeApp({ orgChartRoles: ['Chart Admin'], migrations: [{ id: 'admins_from_the_chart', fromVersion: '1.0.0', toVersion: '2.0.0', operations: [] }] }, '2.0.0')
+    expect(await discoverPackages([await writeApp(), next, provider])).toEqual([])
+    const plan = await admin.post<{ planId: string; orgChartRoles: { added: string[]; removed: string[] } }>('/api/preview_app_upgrade', { name: APP, version: '2.0.0' })
+    expect(plan.orgChartRoles).toEqual({ added: ['Chart Admin'], removed: ['Chart Reader'] })
+    await admin.post('/api/upgrade_app', { name: APP, version: '2.0.0', planId: plan.planId })
+    expect((await sql`select app_role from org_chart_role_rule where app = ${APP} order by app_role`).map((r) => r.app_role)).toEqual(['Chart Admin', 'Chart Reader'])
+    expect((await sql`select 1 from activity_log where operation = ${`app_org_chart_role_added ${APP}@2.0.0: Chart Admin`}`).length).toBe(1)
+  })
+
+  test('the job’s result line says what the run did', () => {
+    const report = { people: 3, holders: 2, roles: [`${APP}: Chart Reader`], gained: 2, lost: 0, published: true }
+    expect(syncSummary(report)).toBe(`2 of 3 people have a place on the org chart and hold ${APP}: Chart Reader: 2 gained, 0 lost`)
+    expect(syncSummary({ ...report, roles: [] })).toMatch(/^No app role is turned on/)
+    expect(syncSummary({ ...report, published: false })).toMatch(/^A newer run was already on show/)
   })
 
   test('a role the app only adopted (an instance role of the same name) is never given', async ({ admin, createUser }) => {
