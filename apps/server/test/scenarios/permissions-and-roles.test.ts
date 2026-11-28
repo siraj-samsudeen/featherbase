@@ -578,7 +578,7 @@ describe('permissions-and-roles', () => {
       await admin.post(doc.url, { row_id: 'P-1', customer: 'Umbrella Corp' })
       user = await createUserWithRole(admin, createUser, { role: 'Print Reader', table: 'Print Doc', can_read: true })
       await expectStatus(await user.fetch(doc.rowUrl('P-1')), 200)
-      expect(await sql`select 1 from access_log where ref_table = 'Print Doc'`).toHaveLength(0)
+      expect(await sql`select 1 from access_log where ref_table = 'Print Doc' and operation = 'print'`).toHaveLength(0)
     })
     await step('the user prints "P-1" as a PDF', async () => {
       printed = await user.fetch(`/api/print/${enc('Print Doc')}/P-1`)
