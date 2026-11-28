@@ -580,1474 +580,6 @@
         {
           "kind": "addTable",
           "table": {
-            "name": "forecasting.forecast_run",
-            "label": "Forecast Run",
-            "module": "Forecasting",
-            "description": "One run of Feather Forecast for a month and region; the screens read the official one. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-            "columns": [
-              {
-                "column_name": "run_id",
-                "label": "Run",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The Feather Forecast run this row belongs to: the official run for the month.",
-                "read_only": true
-              },
-              {
-                "column_name": "model",
-                "label": "Model",
-                "column_type": "Data",
-                "description": "The forecasting model that made the run.",
-                "read_only": true
-              },
-              {
-                "column_name": "purpose",
-                "label": "Purpose",
-                "column_type": "Data",
-                "in_list_view": true,
-                "description": "Official is the run people review; others are trials.",
-                "read_only": true
-              },
-              {
-                "column_name": "status",
-                "label": "Status",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "origin_date",
-                "label": "Sales Up To",
-                "column_type": "Date",
-                "in_list_view": true,
-                "description": "The last day of sales the run knew about.",
-                "read_only": true
-              },
-              {
-                "column_name": "horizon_from",
-                "label": "Forecast From",
-                "column_type": "Date",
-                "reqd": true,
-                "description": "The first day the run forecasts.",
-                "read_only": true
-              },
-              {
-                "column_name": "horizon_to",
-                "label": "Forecast To",
-                "column_type": "Date",
-                "reqd": true,
-                "description": "The last day the run forecasts.",
-                "read_only": true
-              }
-            ],
-            "title_column": "run_id"
-          }
-        },
-        {
-          "kind": "addTable",
-          "table": {
-            "name": "forecasting.forecast_line_month",
-            "label": "Forecast Line Month",
-            "module": "Forecasting",
-            "description": "One line (run × store × subcategory) for the month: Feather Forecast, its six bases and four parts, the growth and the seasonal step. The one table the review screens list from; built by the copy job from the daily forecast and its explanation. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-            "columns": [
-              {
-                "column_name": "run_id",
-                "label": "Run",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The Feather Forecast run this row belongs to: the official run for the month.",
-                "read_only": true
-              },
-              {
-                "column_name": "store_code",
-                "label": "Store Code",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The store, by its SAP code.",
-                "read_only": true
-              },
-              {
-                "column_name": "division_name",
-                "label": "Division",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "subdivision_name",
-                "label": "Subdivision",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "category_name",
-                "label": "Category",
-                "column_type": "Data",
-                "reqd": true,
-                "read_only": true
-              },
-              {
-                "column_name": "subcategory_name",
-                "label": "Subcategory",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "read_only": true
-              },
-              {
-                "column_name": "store_name",
-                "label": "Store",
-                "column_type": "Data",
-                "in_list_view": true,
-                "read_only": true
-              },
-              {
-                "column_name": "section_name",
-                "label": "Section",
-                "column_type": "Data",
-                "in_list_view": true,
-                "description": "The section of the store the org chart places the subcategory in; its Team Leader reviews it.",
-                "read_only": true
-              },
-              {
-                "column_name": "forecast_value_before_tax",
-                "label": "Feather Forecast (Before Tax)",
-                "column_type": "Currency",
-                "in_list_view": true,
-                "description": "Feather Forecast for the month, in rupees before tax.",
-                "read_only": true
-              },
-              {
-                "column_name": "forecast_qty",
-                "label": "Feather Forecast Quantity",
-                "column_type": "Float",
-                "description": "Feather Forecast for the month, in pieces.",
-                "read_only": true
-              },
-              {
-                "column_name": "own_value_b1",
-                "label": "Same Date Last Year (B1): Own Month",
-                "column_type": "Currency",
-                "description": "What base B1 alone says the month will sell: the same date last year, × the growth. Rupees before tax.",
-                "read_only": true
-              },
-              {
-                "column_name": "own_value_b2",
-                "label": "Same Festival Day Last Year (B2): Own Month",
-                "column_type": "Currency",
-                "description": "What base B2 alone says the month will sell: the same festival day last year, × the growth. Rupees before tax.",
-                "read_only": true
-              },
-              {
-                "column_name": "own_value_b3",
-                "label": "Last 28 Days (B3): Own Month",
-                "column_type": "Currency",
-                "description": "What base B3 alone says the month will sell: the last 28 days, as a rate per day × the month's days. Rupees before tax.",
-                "read_only": true
-              },
-              {
-                "column_name": "own_value_b4",
-                "label": "Last Four Same Weekdays (B4): Own Month",
-                "column_type": "Currency",
-                "description": "What base B4 alone says the month will sell: the last four of the same weekday. Rupees before tax.",
-                "read_only": true
-              },
-              {
-                "column_name": "own_value_b5",
-                "label": "Same Date Last Month (B5): Own Month",
-                "column_type": "Currency",
-                "description": "What base B5 alone says the month will sell: the same date last month. Rupees before tax.",
-                "read_only": true
-              },
-              {
-                "column_name": "own_value_b6",
-                "label": "Seasonal Step (B6): Own Month",
-                "column_type": "Currency",
-                "description": "What base B6 alone says the month will sell: the last 28 days × the month's usual seasonal step. Rupees before tax.",
-                "read_only": true
-              },
-              {
-                "column_name": "adds_value_b1",
-                "label": "Same Date Last Year (B1): Adds",
-                "column_type": "Currency",
-                "description": "What base B1 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
-                "read_only": true
-              },
-              {
-                "column_name": "adds_value_b2",
-                "label": "Same Festival Day Last Year (B2): Adds",
-                "column_type": "Currency",
-                "description": "What base B2 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
-                "read_only": true
-              },
-              {
-                "column_name": "adds_value_b3",
-                "label": "Last 28 Days (B3): Adds",
-                "column_type": "Currency",
-                "description": "What base B3 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
-                "read_only": true
-              },
-              {
-                "column_name": "adds_value_b4",
-                "label": "Last Four Same Weekdays (B4): Adds",
-                "column_type": "Currency",
-                "description": "What base B4 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
-                "read_only": true
-              },
-              {
-                "column_name": "adds_value_b5",
-                "label": "Same Date Last Month (B5): Adds",
-                "column_type": "Currency",
-                "description": "What base B5 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
-                "read_only": true
-              },
-              {
-                "column_name": "adds_value_b6",
-                "label": "Seasonal Step (B6): Adds",
-                "column_type": "Currency",
-                "description": "What base B6 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
-                "read_only": true
-              },
-              {
-                "column_name": "seasonal_factor",
-                "label": "Seasonal Step",
-                "column_type": "Float",
-                "description": "How much more this subcategory usually sells in the month than in the four weeks before it (×).",
-                "read_only": true
-              },
-              {
-                "column_name": "growth_factor",
-                "label": "Growth",
-                "column_type": "Float",
-                "description": "How much faster or slower the subcategory sells now than a year ago (×), applied to last year's sales.",
-                "read_only": true
-              },
-              {
-                "column_name": "from_recent_selling",
-                "label": "From Recent Selling",
-                "column_type": "Currency",
-                "description": "The part of Feather Forecast that comes from what the subcategory sold in the last weeks.",
-                "read_only": true
-              },
-              {
-                "column_name": "december_step_on_top",
-                "label": "Step On Top",
-                "column_type": "Currency",
-                "description": "The seasonal step's extra on top of recent selling.",
-                "read_only": true
-              },
-              {
-                "column_name": "from_last_year",
-                "label": "From Last Year × Growth",
-                "column_type": "Currency",
-                "description": "The part of Feather Forecast that comes from last year's sales of the month, × the growth.",
-                "read_only": true
-              },
-              {
-                "column_name": "adjustments",
-                "label": "Adjustments",
-                "column_type": "Currency",
-                "description": "What the steps after the blend add: Rebalanced Within Category plus Price And Rounding.",
-                "read_only": true
-              },
-              {
-                "column_name": "rebalanced_within_category",
-                "label": "Rebalanced Within Category",
-                "column_type": "Currency",
-                "description": "Moved to or from this subcategory so each slower-selling subcategory in its category gets its share of the last 28 days' sales; the category total is unchanged. Includes the December-only lines that follow last December instead.",
-                "read_only": true
-              },
-              {
-                "column_name": "price_and_rounding",
-                "label": "Price And Rounding",
-                "column_type": "Currency",
-                "description": "Re-pricing at the last 28 days' selling price where it changed, rounding every day to whole rupees, and a month below zero set to zero.",
-                "read_only": true
-              },
-              {
-                "column_name": "material_group_code",
-                "label": "Subcategory Code",
-                "column_type": "Data",
-                "description": "The subcategory's SAP code (material group).",
-                "read_only": true
-              },
-              {
-                "column_name": "floor_name",
-                "label": "Floor",
-                "column_type": "Data",
-                "description": "The floor of the store the section is on, from the org chart.",
-                "read_only": true
-              },
-              {
-                "column_name": "floor_order",
-                "label": "Floor Order",
-                "column_type": "Int",
-                "description": "Where the floor comes in the building, bottom first.",
-                "read_only": true
-              },
-              {
-                "column_name": "suggested_section",
-                "label": "Suggested Section",
-                "column_type": "Data",
-                "description": "For a subcategory in no section: the section it most likely belongs to, from its history on the org chart (a Section row id).",
-                "read_only": true
-              },
-              {
-                "column_name": "suggested_section_note",
-                "label": "Why That Section",
-                "column_type": "Text",
-                "description": "Why that section is suggested, in words.",
-                "read_only": true
-              },
-              {
-                "column_name": "section_row_ids",
-                "label": "Section Subcategory Rows",
-                "column_type": "Text",
-                "description": "The org chart's Section Subcategory row ids already used for this subcategory at the store, one a line, so a new row takes a free one.",
-                "read_only": true
-              },
-              {
-                "column_name": "weight_b1",
-                "label": "Same Date Last Year (B1): Weight",
-                "column_type": "Float",
-                "description": "Feather Forecast's fitted weight for base B1 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
-                "read_only": true
-              },
-              {
-                "column_name": "weight_b2",
-                "label": "Same Festival Day Last Year (B2): Weight",
-                "column_type": "Float",
-                "description": "Feather Forecast's fitted weight for base B2 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
-                "read_only": true
-              },
-              {
-                "column_name": "weight_b3",
-                "label": "Last 28 Days (B3): Weight",
-                "column_type": "Float",
-                "description": "Feather Forecast's fitted weight for base B3 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
-                "read_only": true
-              },
-              {
-                "column_name": "weight_b4",
-                "label": "Last Four Same Weekdays (B4): Weight",
-                "column_type": "Float",
-                "description": "Feather Forecast's fitted weight for base B4 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
-                "read_only": true
-              },
-              {
-                "column_name": "weight_b5",
-                "label": "Same Date Last Month (B5): Weight",
-                "column_type": "Float",
-                "description": "Feather Forecast's fitted weight for base B5 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
-                "read_only": true
-              },
-              {
-                "column_name": "weight_b6",
-                "label": "Seasonal Step (B6): Weight",
-                "column_type": "Float",
-                "description": "Feather Forecast's fitted weight for base B6 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
-                "read_only": true
-              }
-            ],
-            "title_column": "subcategory_name"
-          }
-        },
-        {
-          "kind": "addTable",
-          "table": {
-            "name": "forecasting.sales_reference",
-            "label": "Sales Reference",
-            "module": "Forecasting",
-            "description": "What a line sold in the windows the screens compare with (last 28 days, the same days last year, last December, last 91 days and the same days last year), before tax. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-            "columns": [
-              {
-                "column_name": "store_code",
-                "label": "Store Code",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The store, by its SAP code.",
-                "read_only": true
-              },
-              {
-                "column_name": "division_name",
-                "label": "Division",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "subdivision_name",
-                "label": "Subdivision",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "category_name",
-                "label": "Category",
-                "column_type": "Data",
-                "reqd": true,
-                "read_only": true
-              },
-              {
-                "column_name": "subcategory_name",
-                "label": "Subcategory",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "read_only": true
-              },
-              {
-                "column_name": "window_name",
-                "label": "Window",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "Which stretch of sales: last 28 days, the same days last year, last year's month, last 91 days, or the same days last year.",
-                "read_only": true
-              },
-              {
-                "column_name": "date_from",
-                "label": "From",
-                "column_type": "Date",
-                "read_only": true
-              },
-              {
-                "column_name": "date_to",
-                "label": "To",
-                "column_type": "Date",
-                "read_only": true
-              },
-              {
-                "column_name": "sales_value_before_tax",
-                "label": "Sales (Before Tax)",
-                "column_type": "Currency",
-                "read_only": true
-              },
-              {
-                "column_name": "sales_qty",
-                "label": "Quantity",
-                "column_type": "Float",
-                "description": "Pieces sold.",
-                "read_only": true
-              }
-            ],
-            "title_column": "subcategory_name"
-          }
-        },
-        {
-          "kind": "addTable",
-          "table": {
-            "name": "forecasting.annual_plan_line",
-            "label": "Annual Plan Line",
-            "module": "Forecasting",
-            "description": "The annual plan (AOP, revision 1) for a line's month, before tax. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-            "columns": [
-              {
-                "column_name": "store_code",
-                "label": "Store Code",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The store, by its SAP code.",
-                "read_only": true
-              },
-              {
-                "column_name": "division_name",
-                "label": "Division",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "subdivision_name",
-                "label": "Subdivision",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "category_name",
-                "label": "Category",
-                "column_type": "Data",
-                "reqd": true,
-                "read_only": true
-              },
-              {
-                "column_name": "subcategory_name",
-                "label": "Subcategory",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "read_only": true
-              },
-              {
-                "column_name": "calendar_year",
-                "label": "Year",
-                "column_type": "Int",
-                "read_only": true
-              },
-              {
-                "column_name": "calendar_month",
-                "label": "Month",
-                "column_type": "Int",
-                "read_only": true
-              },
-              {
-                "column_name": "revision_id",
-                "label": "Revision",
-                "column_type": "Int",
-                "description": "The plan's revision; 1 is the approved plan.",
-                "read_only": true
-              },
-              {
-                "column_name": "plan_value_before_tax",
-                "label": "Plan (Before Tax)",
-                "column_type": "Currency",
-                "description": "The annual plan (AOP) for the month, in rupees before tax.",
-                "read_only": true
-              },
-              {
-                "column_name": "plan_qty",
-                "label": "Plan Quantity",
-                "column_type": "Float",
-                "description": "The annual plan for the month, in pieces.",
-                "read_only": true
-              }
-            ],
-            "title_column": "subcategory_name"
-          }
-        },
-        {
-          "kind": "addTable",
-          "table": {
-            "name": "forecasting.other_model_line",
-            "label": "Other Model Line",
-            "module": "Forecasting",
-            "description": "Another model's forecast for a line's month, before tax, read beside Feather Forecast: XGBoost and LightGBM, the warehouse's baseline Runs (data-warehouse #4965) from the same sales as the official Run, as month totals. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-            "columns": [
-              {
-                "column_name": "model",
-                "label": "Model",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "Another model read beside Feather Forecast: XGBoost or LightGBM.",
-                "read_only": true
-              },
-              {
-                "column_name": "store_code",
-                "label": "Store Code",
-                "column_type": "Data",
-                "reqd": true,
-                "description": "The store, by its SAP code.",
-                "read_only": true
-              },
-              {
-                "column_name": "subcategory_name",
-                "label": "Subcategory",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "read_only": true
-              },
-              {
-                "column_name": "month_from",
-                "label": "Month",
-                "column_type": "Date",
-                "description": "The first day of the month forecast.",
-                "read_only": true
-              },
-              {
-                "column_name": "forecast_value_before_tax",
-                "label": "Forecast (Before Tax)",
-                "column_type": "Currency",
-                "description": "That model's forecast for the month, in rupees before tax. A stand-in until the model lands as a run.",
-                "read_only": true
-              }
-            ],
-            "title_column": "subcategory_name"
-          }
-        },
-        {
-          "kind": "addTable",
-          "table": {
-            "name": "forecasting.price_band_mix",
-            "label": "Price Band Mix",
-            "module": "Forecasting",
-            "description": "What each price band of a subcategory sold in the last 28 days before the Run, and its share: the split the screens apply to Feather Forecast (value by value share, pieces by piece share). Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-            "columns": [
-              {
-                "column_name": "run_id",
-                "label": "Run",
-                "column_type": "Data",
-                "reqd": true,
-                "description": "The official Run whose sales window (the 28 days to its Sales Up To) this split is read over.",
-                "read_only": true
-              },
-              {
-                "column_name": "store_code",
-                "label": "Store Code",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The store, by its SAP code.",
-                "read_only": true
-              },
-              {
-                "column_name": "division_name",
-                "label": "Division",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "subdivision_name",
-                "label": "Subdivision",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "category_name",
-                "label": "Category",
-                "column_type": "Data",
-                "reqd": true,
-                "read_only": true
-              },
-              {
-                "column_name": "subcategory_name",
-                "label": "Subcategory",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "read_only": true
-              },
-              {
-                "column_name": "price_band",
-                "label": "Price Band",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The warehouse's own price band for the subcategory at this store (its 90-day selling price against the band edges), or Never Sold (90 d), or No Band for an item sold but not on the board.",
-                "read_only": true
-              },
-              {
-                "column_name": "price_band_order",
-                "label": "Band Order",
-                "column_type": "Int",
-                "description": "Where the band comes in the subcategory's list, cheapest first.",
-                "read_only": true
-              },
-              {
-                "column_name": "sales_value_before_tax",
-                "label": "Sales, Last 28 Days",
-                "column_type": "Currency",
-                "description": "What the band sold in the 28 days, before tax.",
-                "read_only": true
-              },
-              {
-                "column_name": "sales_qty",
-                "label": "Pieces, Last 28 Days",
-                "column_type": "Float",
-                "description": "Pieces the band sold in the 28 days.",
-                "read_only": true
-              },
-              {
-                "column_name": "items_sold",
-                "label": "Items Sold",
-                "column_type": "Int",
-                "description": "Items that sold at least one piece in the 28 days.",
-                "read_only": true
-              },
-              {
-                "column_name": "value_share",
-                "label": "Share of Sales",
-                "column_type": "Float",
-                "description": "The band's share of the subcategory's sales value in the 28 days, 0 to 1.",
-                "read_only": true
-              },
-              {
-                "column_name": "qty_share",
-                "label": "Share of Pieces",
-                "column_type": "Float",
-                "description": "The band's share of the subcategory's pieces in the 28 days, 0 to 1.",
-                "read_only": true
-              },
-              {
-                "column_name": "items_to_50_pct",
-                "label": "Items Making 50%",
-                "column_type": "Int",
-                "description": "How many of the band's best-selling items make half its sales.",
-                "read_only": true
-              },
-              {
-                "column_name": "items_to_70_pct",
-                "label": "Items Making 70%",
-                "column_type": "Int",
-                "description": "How many of the band's best-selling items make 70% of its sales.",
-                "read_only": true
-              }
-            ],
-            "title_column": "subcategory_name"
-          }
-        },
-        {
-          "kind": "addTable",
-          "table": {
-            "name": "forecasting.stock_band",
-            "label": "Stock by Price Band",
-            "module": "Forecasting",
-            "description": "The stock a subcategory holds today in each price band, in pieces and at cost. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-            "columns": [
-              {
-                "column_name": "store_code",
-                "label": "Store Code",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The store, by its SAP code.",
-                "read_only": true
-              },
-              {
-                "column_name": "division_name",
-                "label": "Division",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "subdivision_name",
-                "label": "Subdivision",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "category_name",
-                "label": "Category",
-                "column_type": "Data",
-                "reqd": true,
-                "read_only": true
-              },
-              {
-                "column_name": "subcategory_name",
-                "label": "Subcategory",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "read_only": true
-              },
-              {
-                "column_name": "price_band",
-                "label": "Price Band",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The warehouse's own price band for the subcategory at this store (its 90-day selling price against the band edges), or Never Sold (90 d), or No Band for an item sold but not on the board.",
-                "read_only": true
-              },
-              {
-                "column_name": "price_band_order",
-                "label": "Band Order",
-                "column_type": "Int",
-                "description": "Where the band comes in the subcategory's list, cheapest first.",
-                "read_only": true
-              },
-              {
-                "column_name": "stock_qty",
-                "label": "Stock, Pieces",
-                "column_type": "Float",
-                "description": "Pieces on hand.",
-                "read_only": true
-              },
-              {
-                "column_name": "stock_value_at_cost",
-                "label": "Stock at Cost",
-                "column_type": "Currency",
-                "description": "The stock on hand at cost.",
-                "read_only": true
-              },
-              {
-                "column_name": "items_in_stock",
-                "label": "Items in Stock",
-                "column_type": "Int",
-                "description": "Items with at least one piece on hand.",
-                "read_only": true
-              },
-              {
-                "column_name": "stock_as_of",
-                "label": "Stock As Of",
-                "column_type": "Date",
-                "in_list_view": true,
-                "description": "The day the stock was counted.",
-                "read_only": true
-              }
-            ],
-            "title_column": "subcategory_name"
-          }
-        },
-        {
-          "kind": "addTable",
-          "table": {
-            "name": "forecasting.price_band_top_item",
-            "label": "Price Band Top Item",
-            "module": "Forecasting",
-            "description": "A price band's five best-selling items in the last 28 days before the Run, with their stock today. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-            "columns": [
-              {
-                "column_name": "run_id",
-                "label": "Run",
-                "column_type": "Data",
-                "reqd": true,
-                "description": "The official Run whose sales window (the 28 days to its Sales Up To) this split is read over.",
-                "read_only": true
-              },
-              {
-                "column_name": "store_code",
-                "label": "Store Code",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The store, by its SAP code.",
-                "read_only": true
-              },
-              {
-                "column_name": "division_name",
-                "label": "Division",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "subdivision_name",
-                "label": "Subdivision",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "category_name",
-                "label": "Category",
-                "column_type": "Data",
-                "reqd": true,
-                "read_only": true
-              },
-              {
-                "column_name": "subcategory_name",
-                "label": "Subcategory",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "read_only": true
-              },
-              {
-                "column_name": "price_band",
-                "label": "Price Band",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The warehouse's own price band for the subcategory at this store (its 90-day selling price against the band edges), or Never Sold (90 d), or No Band for an item sold but not on the board.",
-                "read_only": true
-              },
-              {
-                "column_name": "price_band_order",
-                "label": "Band Order",
-                "column_type": "Int",
-                "description": "Where the band comes in the subcategory's list, cheapest first.",
-                "read_only": true
-              },
-              {
-                "column_name": "item_rank",
-                "label": "Rank",
-                "column_type": "Int",
-                "reqd": true,
-                "description": "1 is the band's best seller by value.",
-                "read_only": true
-              },
-              {
-                "column_name": "item_code",
-                "label": "Item Code",
-                "column_type": "Data",
-                "in_list_view": true,
-                "description": "The item's SAP code.",
-                "read_only": true
-              },
-              {
-                "column_name": "item_name",
-                "label": "Item",
-                "column_type": "Data",
-                "in_list_view": true,
-                "description": "The item's name.",
-                "read_only": true
-              },
-              {
-                "column_name": "sales_qty",
-                "label": "Pieces, Last 28 Days",
-                "column_type": "Float",
-                "description": "Pieces sold in the 28 days.",
-                "read_only": true
-              },
-              {
-                "column_name": "sales_value_before_tax",
-                "label": "Sales, Last 28 Days",
-                "column_type": "Currency",
-                "description": "What it sold in the 28 days, before tax.",
-                "read_only": true
-              },
-              {
-                "column_name": "stock_qty",
-                "label": "Stock, Pieces",
-                "column_type": "Float",
-                "description": "Pieces on hand today.",
-                "read_only": true
-              }
-            ],
-            "title_column": "item_name"
-          }
-        },
-        {
-          "kind": "addTable",
-          "table": {
-            "name": "forecasting.item_health",
-            "label": "Item Health",
-            "module": "Forecasting",
-            "description": "One row per item of a subcategory at a store that holds stock now or sold in the last 28 days: its stock here and in the warehouse, how it sold here over the 7, 14 and 28 days to the store's last complete day, and how the same item sold at the region's other stores. Needs Your Attention reads it. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-            "columns": [
-              {
-                "column_name": "store_code",
-                "label": "Store Code",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The store, by its SAP code.",
-                "read_only": true
-              },
-              {
-                "column_name": "division_name",
-                "label": "Division",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "subdivision_name",
-                "label": "Subdivision",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "category_name",
-                "label": "Category",
-                "column_type": "Data",
-                "reqd": true,
-                "read_only": true
-              },
-              {
-                "column_name": "subcategory_name",
-                "label": "Subcategory",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "read_only": true
-              },
-              {
-                "column_name": "price_band",
-                "label": "Price Band",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The warehouse's own price band for the subcategory at this store (its 90-day selling price against the band edges), or Never Sold (90 d), or No Band for an item sold but not on the board.",
-                "read_only": true
-              },
-              {
-                "column_name": "price_band_order",
-                "label": "Band Order",
-                "column_type": "Int",
-                "description": "Where the band comes in the subcategory's list, cheapest first.",
-                "read_only": true
-              },
-              {
-                "column_name": "item_code",
-                "label": "Item Code",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The item's SAP code.",
-                "read_only": true
-              },
-              {
-                "column_name": "item_name",
-                "label": "Item",
-                "column_type": "Data",
-                "in_list_view": true,
-                "description": "The item's name.",
-                "read_only": true
-              },
-              {
-                "column_name": "stock_qty",
-                "label": "Stock, Pieces",
-                "column_type": "Float",
-                "description": "Pieces on hand at the store.",
-                "read_only": true
-              },
-              {
-                "column_name": "warehouse_qty",
-                "label": "Warehouse Stock",
-                "column_type": "Float",
-                "description": "Pieces available in the warehouse.",
-                "read_only": true
-              },
-              {
-                "column_name": "last_sold_date",
-                "label": "Last Sold",
-                "column_type": "Date",
-                "description": "The last day it sold at the store.",
-                "read_only": true
-              },
-              {
-                "column_name": "days_since_movement",
-                "label": "Days Since Movement",
-                "column_type": "Int",
-                "description": "Days since it last sold or was received at the store.",
-                "read_only": true
-              },
-              {
-                "column_name": "is_dead",
-                "label": "Dead Stock",
-                "column_type": "Check",
-                "description": "The warehouse counts it as dead stock at the store.",
-                "read_only": true
-              },
-              {
-                "column_name": "sales_qty_7_days",
-                "label": "Pieces, Last 7 Days",
-                "column_type": "Float",
-                "description": "Pieces sold in the last 7 days.",
-                "read_only": true
-              },
-              {
-                "column_name": "sales_value_7_days",
-                "label": "Sales, Last 7 Days",
-                "column_type": "Currency",
-                "description": "What it sold in the last 7 days, before tax.",
-                "read_only": true
-              },
-              {
-                "column_name": "sales_qty_14_days",
-                "label": "Pieces, Last 14 Days",
-                "column_type": "Float",
-                "description": "Pieces sold in the last 14 days.",
-                "read_only": true
-              },
-              {
-                "column_name": "sales_qty",
-                "label": "Pieces, Last 28 Days",
-                "column_type": "Float",
-                "description": "Pieces sold in the last 28 days.",
-                "read_only": true
-              },
-              {
-                "column_name": "sales_value_before_tax",
-                "label": "Sales, Last 28 Days",
-                "column_type": "Currency",
-                "description": "What it sold in the last 28 days, before tax.",
-                "read_only": true
-              },
-              {
-                "column_name": "selling_price",
-                "label": "Selling Price",
-                "column_type": "Currency",
-                "description": "Its realised selling price over 90 days, for an item that did not sell in the 28 days.",
-                "read_only": true
-              },
-              {
-                "column_name": "other_stores_selling",
-                "label": "Other Stores Selling",
-                "column_type": "Int",
-                "description": "Other stores in the region where it sold in the 28 days.",
-                "read_only": true
-              },
-              {
-                "column_name": "other_stores_qty",
-                "label": "Pieces at Other Stores",
-                "column_type": "Float",
-                "description": "Pieces it sold at the region's other stores in the 28 days.",
-                "read_only": true
-              },
-              {
-                "column_name": "other_stores_qty_14_days",
-                "label": "Pieces at Other Stores, 14 Days",
-                "column_type": "Float",
-                "description": "Pieces it sold at the region's other stores in the last 14 days.",
-                "read_only": true
-              },
-              {
-                "column_name": "best_store_code",
-                "label": "Best Store",
-                "column_type": "Data",
-                "description": "The other store in the region where it sold most in the 28 days, by its SAP code.",
-                "read_only": true
-              },
-              {
-                "column_name": "best_store_short_code",
-                "label": "Best Store Code",
-                "column_type": "Data",
-                "description": "That store's short code, such as MOT.",
-                "read_only": true
-              },
-              {
-                "column_name": "best_store_name",
-                "label": "Best Store Name",
-                "column_type": "Data",
-                "description": "That store's name.",
-                "read_only": true
-              },
-              {
-                "column_name": "best_store_qty",
-                "label": "Pieces at Best Store",
-                "column_type": "Float",
-                "description": "Pieces it sold there in the 28 days.",
-                "read_only": true
-              },
-              {
-                "column_name": "stock_as_of",
-                "label": "Stock As Of",
-                "column_type": "Date",
-                "description": "The day the stock was counted.",
-                "read_only": true
-              },
-              {
-                "column_name": "sales_as_of_date",
-                "label": "Sales Up To",
-                "column_type": "Date",
-                "description": "The last complete day of sales the 7, 14 and 28 days end on (the store's, refreshed each morning).",
-                "read_only": true
-              }
-            ],
-            "title_column": "item_name"
-          }
-        },
-        {
-          "kind": "addTable",
-          "table": {
-            "name": "forecasting.merchandise_people",
-            "label": "Merchandise People",
-            "module": "Forecasting",
-            "description": "Who to ask about a subcategory: its buyer and its category head, as Merchandise Assignment names them today in the store's region. Needs Your Attention puts them in its actions. Copied from Merchandise Assignment; people only read it here.",
-            "columns": [
-              {
-                "column_name": "operating_region",
-                "label": "Region",
-                "column_type": "Data",
-                "reqd": true,
-                "description": "Kerala or Tamil Nadu.",
-                "read_only": true
-              },
-              {
-                "column_name": "subcategory_code",
-                "label": "Subcategory Code",
-                "column_type": "Data",
-                "reqd": true,
-                "description": "The subcategory's SAP code (material group).",
-                "read_only": true
-              },
-              {
-                "column_name": "subcategory_name",
-                "label": "Subcategory",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "read_only": true
-              },
-              {
-                "column_name": "category_head_code",
-                "label": "Category Head Code",
-                "column_type": "Data",
-                "description": "The category head's employee code.",
-                "read_only": true
-              },
-              {
-                "column_name": "category_head",
-                "label": "Category Head",
-                "column_type": "Data",
-                "in_list_view": true,
-                "description": "The category head's name.",
-                "read_only": true
-              },
-              {
-                "column_name": "buyer_code",
-                "label": "Buyer Code",
-                "column_type": "Data",
-                "description": "The buyer's employee code.",
-                "read_only": true
-              },
-              {
-                "column_name": "buyer",
-                "label": "Buyer",
-                "column_type": "Data",
-                "in_list_view": true,
-                "description": "The buyer's name.",
-                "read_only": true
-              },
-              {
-                "column_name": "source_key",
-                "label": "Source",
-                "column_type": "Data",
-                "description": "Where and when the names were read, such as Merchandise Assignment on 28-Nov-2026.",
-                "read_only": true
-              }
-            ],
-            "title_column": "subcategory_name"
-          }
-        },
-        {
-          "kind": "addTable",
-          "table": {
-            "name": "forecasting.item_other_stores",
-            "label": "Item at Other Stores",
-            "module": "Forecasting",
-            "description": "The same items at the region's other stores: stock on hand today (every store, refreshed daily) and pieces sold over the last 28 days to the store's last complete day. One row per item and other store that holds it or sold it. Needs Your Attention reads it for transfers. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-            "columns": [
-              {
-                "column_name": "store_code",
-                "label": "Store Code",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The store being reviewed, by its SAP code.",
-                "read_only": true
-              },
-              {
-                "column_name": "subcategory_name",
-                "label": "Subcategory",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "read_only": true
-              },
-              {
-                "column_name": "item_code",
-                "label": "Item Code",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The item's SAP code.",
-                "read_only": true
-              },
-              {
-                "column_name": "other_store_code",
-                "label": "Other Store",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The other store, by its SAP code.",
-                "read_only": true
-              },
-              {
-                "column_name": "other_store_short_code",
-                "label": "Other Store Code",
-                "column_type": "Data",
-                "description": "Its short code, such as MOT.",
-                "read_only": true
-              },
-              {
-                "column_name": "other_store_name",
-                "label": "Other Store Name",
-                "column_type": "Data",
-                "in_list_view": true,
-                "description": "Its name.",
-                "read_only": true
-              },
-              {
-                "column_name": "other_stock_qty",
-                "label": "Stock There",
-                "column_type": "Float",
-                "description": "Pieces on hand there today.",
-                "read_only": true
-              },
-              {
-                "column_name": "other_sales_qty",
-                "label": "Sold There, 28 Days",
-                "column_type": "Float",
-                "description": "Pieces sold there in the last 28 days.",
-                "read_only": true
-              },
-              {
-                "column_name": "stock_as_of",
-                "label": "Stock As Of",
-                "column_type": "Date",
-                "description": "The day the stock was counted.",
-                "read_only": true
-              }
-            ],
-            "title_column": "item_code"
-          }
-        },
-        {
-          "kind": "addTable",
-          "table": {
-            "name": "forecasting.forecast_line_day",
-            "label": "Forecast Line Day",
-            "module": "Forecasting",
-            "description": "Feather Forecast for one line on one day of the Run's month, before tax: what the day review compares each day's sales with. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-            "columns": [
-              {
-                "column_name": "run_id",
-                "label": "Run",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The Feather Forecast run this row belongs to: the official run for the month.",
-                "read_only": true
-              },
-              {
-                "column_name": "store_code",
-                "label": "Store Code",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The store, by its SAP code.",
-                "read_only": true
-              },
-              {
-                "column_name": "division_name",
-                "label": "Division",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "subdivision_name",
-                "label": "Subdivision",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "category_name",
-                "label": "Category",
-                "column_type": "Data",
-                "reqd": true,
-                "read_only": true
-              },
-              {
-                "column_name": "subcategory_name",
-                "label": "Subcategory",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "read_only": true
-              },
-              {
-                "column_name": "forecast_date",
-                "label": "Day",
-                "column_type": "Date",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The day.",
-                "read_only": true
-              },
-              {
-                "column_name": "forecast_value_before_tax",
-                "label": "Feather Forecast",
-                "column_type": "Currency",
-                "in_list_view": true,
-                "description": "Feather Forecast for the day, before tax.",
-                "read_only": true
-              },
-              {
-                "column_name": "forecast_qty",
-                "label": "Feather Forecast Quantity",
-                "column_type": "Float",
-                "description": "Feather Forecast for the day, in pieces.",
-                "read_only": true
-              }
-            ],
-            "title_column": "subcategory_name"
-          }
-        },
-        {
-          "kind": "addTable",
-          "table": {
-            "name": "forecasting.actuals_day",
-            "label": "Actuals Day",
-            "module": "Forecasting",
-            "description": "What one line sold on one day of the Run's month so far, before tax, to the warehouse's last complete day. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-            "columns": [
-              {
-                "column_name": "run_id",
-                "label": "Run",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The official Run whose month these sales are read against.",
-                "read_only": true
-              },
-              {
-                "column_name": "store_code",
-                "label": "Store Code",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The store, by its SAP code.",
-                "read_only": true
-              },
-              {
-                "column_name": "division_name",
-                "label": "Division",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "subdivision_name",
-                "label": "Subdivision",
-                "column_type": "Data",
-                "read_only": true
-              },
-              {
-                "column_name": "category_name",
-                "label": "Category",
-                "column_type": "Data",
-                "reqd": true,
-                "read_only": true
-              },
-              {
-                "column_name": "subcategory_name",
-                "label": "Subcategory",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true,
-                "read_only": true
-              },
-              {
-                "column_name": "sales_date",
-                "label": "Day",
-                "column_type": "Date",
-                "reqd": true,
-                "in_list_view": true,
-                "description": "The day.",
-                "read_only": true
-              },
-              {
-                "column_name": "sales_value_before_tax",
-                "label": "Sold",
-                "column_type": "Currency",
-                "in_list_view": true,
-                "description": "What it sold that day, before tax.",
-                "read_only": true
-              },
-              {
-                "column_name": "sales_qty",
-                "label": "Pieces Sold",
-                "column_type": "Float",
-                "description": "Pieces sold that day.",
-                "read_only": true
-              },
-              {
-                "column_name": "actuals_as_of_date",
-                "label": "Sales Up To",
-                "column_type": "Date",
-                "description": "The last complete day of sales the warehouse had.",
-                "read_only": true
-              }
-            ],
-            "title_column": "subcategory_name"
-          }
-        },
-        {
-          "kind": "addTable",
-          "table": {
             "name": "forecasting.day_explanation",
             "label": "Day Explanation",
             "module": "Forecasting",
@@ -3301,1435 +1833,6 @@
       ]
     },
     {
-      "name": "forecasting.forecast_run",
-      "label": "Forecast Run",
-      "module": "Forecasting",
-      "description": "One run of Feather Forecast for a month and region; the screens read the official one. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-      "columns": [
-        {
-          "column_name": "run_id",
-          "label": "Run",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The Feather Forecast run this row belongs to: the official run for the month.",
-          "read_only": true
-        },
-        {
-          "column_name": "model",
-          "label": "Model",
-          "column_type": "Data",
-          "description": "The forecasting model that made the run.",
-          "read_only": true
-        },
-        {
-          "column_name": "purpose",
-          "label": "Purpose",
-          "column_type": "Data",
-          "in_list_view": true,
-          "description": "Official is the run people review; others are trials.",
-          "read_only": true
-        },
-        {
-          "column_name": "status",
-          "label": "Status",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "origin_date",
-          "label": "Sales Up To",
-          "column_type": "Date",
-          "in_list_view": true,
-          "description": "The last day of sales the run knew about.",
-          "read_only": true
-        },
-        {
-          "column_name": "horizon_from",
-          "label": "Forecast From",
-          "column_type": "Date",
-          "reqd": true,
-          "description": "The first day the run forecasts.",
-          "read_only": true
-        },
-        {
-          "column_name": "horizon_to",
-          "label": "Forecast To",
-          "column_type": "Date",
-          "reqd": true,
-          "description": "The last day the run forecasts.",
-          "read_only": true
-        }
-      ],
-      "title_column": "run_id"
-    },
-    {
-      "name": "forecasting.forecast_line_month",
-      "label": "Forecast Line Month",
-      "module": "Forecasting",
-      "description": "One line (run × store × subcategory) for the month: Feather Forecast, its six bases and four parts, the growth and the seasonal step. The one table the review screens list from; built by the copy job from the daily forecast and its explanation. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-      "columns": [
-        {
-          "column_name": "run_id",
-          "label": "Run",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The Feather Forecast run this row belongs to: the official run for the month.",
-          "read_only": true
-        },
-        {
-          "column_name": "store_code",
-          "label": "Store Code",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The store, by its SAP code.",
-          "read_only": true
-        },
-        {
-          "column_name": "division_name",
-          "label": "Division",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "subdivision_name",
-          "label": "Subdivision",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "category_name",
-          "label": "Category",
-          "column_type": "Data",
-          "reqd": true,
-          "read_only": true
-        },
-        {
-          "column_name": "subcategory_name",
-          "label": "Subcategory",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "read_only": true
-        },
-        {
-          "column_name": "store_name",
-          "label": "Store",
-          "column_type": "Data",
-          "in_list_view": true,
-          "read_only": true
-        },
-        {
-          "column_name": "section_name",
-          "label": "Section",
-          "column_type": "Data",
-          "in_list_view": true,
-          "description": "The section of the store the org chart places the subcategory in; its Team Leader reviews it.",
-          "read_only": true
-        },
-        {
-          "column_name": "forecast_value_before_tax",
-          "label": "Feather Forecast (Before Tax)",
-          "column_type": "Currency",
-          "in_list_view": true,
-          "description": "Feather Forecast for the month, in rupees before tax.",
-          "read_only": true
-        },
-        {
-          "column_name": "forecast_qty",
-          "label": "Feather Forecast Quantity",
-          "column_type": "Float",
-          "description": "Feather Forecast for the month, in pieces.",
-          "read_only": true
-        },
-        {
-          "column_name": "own_value_b1",
-          "label": "Same Date Last Year (B1): Own Month",
-          "column_type": "Currency",
-          "description": "What base B1 alone says the month will sell: the same date last year, × the growth. Rupees before tax.",
-          "read_only": true
-        },
-        {
-          "column_name": "own_value_b2",
-          "label": "Same Festival Day Last Year (B2): Own Month",
-          "column_type": "Currency",
-          "description": "What base B2 alone says the month will sell: the same festival day last year, × the growth. Rupees before tax.",
-          "read_only": true
-        },
-        {
-          "column_name": "own_value_b3",
-          "label": "Last 28 Days (B3): Own Month",
-          "column_type": "Currency",
-          "description": "What base B3 alone says the month will sell: the last 28 days, as a rate per day × the month's days. Rupees before tax.",
-          "read_only": true
-        },
-        {
-          "column_name": "own_value_b4",
-          "label": "Last Four Same Weekdays (B4): Own Month",
-          "column_type": "Currency",
-          "description": "What base B4 alone says the month will sell: the last four of the same weekday. Rupees before tax.",
-          "read_only": true
-        },
-        {
-          "column_name": "own_value_b5",
-          "label": "Same Date Last Month (B5): Own Month",
-          "column_type": "Currency",
-          "description": "What base B5 alone says the month will sell: the same date last month. Rupees before tax.",
-          "read_only": true
-        },
-        {
-          "column_name": "own_value_b6",
-          "label": "Seasonal Step (B6): Own Month",
-          "column_type": "Currency",
-          "description": "What base B6 alone says the month will sell: the last 28 days × the month's usual seasonal step. Rupees before tax.",
-          "read_only": true
-        },
-        {
-          "column_name": "adds_value_b1",
-          "label": "Same Date Last Year (B1): Adds",
-          "column_type": "Currency",
-          "description": "What base B1 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
-          "read_only": true
-        },
-        {
-          "column_name": "adds_value_b2",
-          "label": "Same Festival Day Last Year (B2): Adds",
-          "column_type": "Currency",
-          "description": "What base B2 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
-          "read_only": true
-        },
-        {
-          "column_name": "adds_value_b3",
-          "label": "Last 28 Days (B3): Adds",
-          "column_type": "Currency",
-          "description": "What base B3 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
-          "read_only": true
-        },
-        {
-          "column_name": "adds_value_b4",
-          "label": "Last Four Same Weekdays (B4): Adds",
-          "column_type": "Currency",
-          "description": "What base B4 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
-          "read_only": true
-        },
-        {
-          "column_name": "adds_value_b5",
-          "label": "Same Date Last Month (B5): Adds",
-          "column_type": "Currency",
-          "description": "What base B5 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
-          "read_only": true
-        },
-        {
-          "column_name": "adds_value_b6",
-          "label": "Seasonal Step (B6): Adds",
-          "column_type": "Currency",
-          "description": "What base B6 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
-          "read_only": true
-        },
-        {
-          "column_name": "seasonal_factor",
-          "label": "Seasonal Step",
-          "column_type": "Float",
-          "description": "How much more this subcategory usually sells in the month than in the four weeks before it (×).",
-          "read_only": true
-        },
-        {
-          "column_name": "growth_factor",
-          "label": "Growth",
-          "column_type": "Float",
-          "description": "How much faster or slower the subcategory sells now than a year ago (×), applied to last year's sales.",
-          "read_only": true
-        },
-        {
-          "column_name": "from_recent_selling",
-          "label": "From Recent Selling",
-          "column_type": "Currency",
-          "description": "The part of Feather Forecast that comes from what the subcategory sold in the last weeks.",
-          "read_only": true
-        },
-        {
-          "column_name": "december_step_on_top",
-          "label": "Step On Top",
-          "column_type": "Currency",
-          "description": "The seasonal step's extra on top of recent selling.",
-          "read_only": true
-        },
-        {
-          "column_name": "from_last_year",
-          "label": "From Last Year × Growth",
-          "column_type": "Currency",
-          "description": "The part of Feather Forecast that comes from last year's sales of the month, × the growth.",
-          "read_only": true
-        },
-        {
-          "column_name": "adjustments",
-          "label": "Adjustments",
-          "column_type": "Currency",
-          "description": "What the steps after the blend add: Rebalanced Within Category plus Price And Rounding.",
-          "read_only": true
-        },
-        {
-          "column_name": "rebalanced_within_category",
-          "label": "Rebalanced Within Category",
-          "column_type": "Currency",
-          "description": "Moved to or from this subcategory so each slower-selling subcategory in its category gets its share of the last 28 days' sales; the category total is unchanged. Includes the December-only lines that follow last December instead.",
-          "read_only": true
-        },
-        {
-          "column_name": "price_and_rounding",
-          "label": "Price And Rounding",
-          "column_type": "Currency",
-          "description": "Re-pricing at the last 28 days' selling price where it changed, rounding every day to whole rupees, and a month below zero set to zero.",
-          "read_only": true
-        },
-        {
-          "column_name": "material_group_code",
-          "label": "Subcategory Code",
-          "column_type": "Data",
-          "description": "The subcategory's SAP code (material group).",
-          "read_only": true
-        },
-        {
-          "column_name": "floor_name",
-          "label": "Floor",
-          "column_type": "Data",
-          "description": "The floor of the store the section is on, from the org chart.",
-          "read_only": true
-        },
-        {
-          "column_name": "floor_order",
-          "label": "Floor Order",
-          "column_type": "Int",
-          "description": "Where the floor comes in the building, bottom first.",
-          "read_only": true
-        },
-        {
-          "column_name": "suggested_section",
-          "label": "Suggested Section",
-          "column_type": "Data",
-          "description": "For a subcategory in no section: the section it most likely belongs to, from its history on the org chart (a Section row id).",
-          "read_only": true
-        },
-        {
-          "column_name": "suggested_section_note",
-          "label": "Why That Section",
-          "column_type": "Text",
-          "description": "Why that section is suggested, in words.",
-          "read_only": true
-        },
-        {
-          "column_name": "section_row_ids",
-          "label": "Section Subcategory Rows",
-          "column_type": "Text",
-          "description": "The org chart's Section Subcategory row ids already used for this subcategory at the store, one a line, so a new row takes a free one.",
-          "read_only": true
-        },
-        {
-          "column_name": "weight_b1",
-          "label": "Same Date Last Year (B1): Weight",
-          "column_type": "Float",
-          "description": "Feather Forecast's fitted weight for base B1 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
-          "read_only": true
-        },
-        {
-          "column_name": "weight_b2",
-          "label": "Same Festival Day Last Year (B2): Weight",
-          "column_type": "Float",
-          "description": "Feather Forecast's fitted weight for base B2 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
-          "read_only": true
-        },
-        {
-          "column_name": "weight_b3",
-          "label": "Last 28 Days (B3): Weight",
-          "column_type": "Float",
-          "description": "Feather Forecast's fitted weight for base B3 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
-          "read_only": true
-        },
-        {
-          "column_name": "weight_b4",
-          "label": "Last Four Same Weekdays (B4): Weight",
-          "column_type": "Float",
-          "description": "Feather Forecast's fitted weight for base B4 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
-          "read_only": true
-        },
-        {
-          "column_name": "weight_b5",
-          "label": "Same Date Last Month (B5): Weight",
-          "column_type": "Float",
-          "description": "Feather Forecast's fitted weight for base B5 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
-          "read_only": true
-        },
-        {
-          "column_name": "weight_b6",
-          "label": "Seasonal Step (B6): Weight",
-          "column_type": "Float",
-          "description": "Feather Forecast's fitted weight for base B6 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
-          "read_only": true
-        }
-      ],
-      "title_column": "subcategory_name"
-    },
-    {
-      "name": "forecasting.sales_reference",
-      "label": "Sales Reference",
-      "module": "Forecasting",
-      "description": "What a line sold in the windows the screens compare with (last 28 days, the same days last year, last December, last 91 days and the same days last year), before tax. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-      "columns": [
-        {
-          "column_name": "store_code",
-          "label": "Store Code",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The store, by its SAP code.",
-          "read_only": true
-        },
-        {
-          "column_name": "division_name",
-          "label": "Division",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "subdivision_name",
-          "label": "Subdivision",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "category_name",
-          "label": "Category",
-          "column_type": "Data",
-          "reqd": true,
-          "read_only": true
-        },
-        {
-          "column_name": "subcategory_name",
-          "label": "Subcategory",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "read_only": true
-        },
-        {
-          "column_name": "window_name",
-          "label": "Window",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "Which stretch of sales: last 28 days, the same days last year, last year's month, last 91 days, or the same days last year.",
-          "read_only": true
-        },
-        {
-          "column_name": "date_from",
-          "label": "From",
-          "column_type": "Date",
-          "read_only": true
-        },
-        {
-          "column_name": "date_to",
-          "label": "To",
-          "column_type": "Date",
-          "read_only": true
-        },
-        {
-          "column_name": "sales_value_before_tax",
-          "label": "Sales (Before Tax)",
-          "column_type": "Currency",
-          "read_only": true
-        },
-        {
-          "column_name": "sales_qty",
-          "label": "Quantity",
-          "column_type": "Float",
-          "description": "Pieces sold.",
-          "read_only": true
-        }
-      ],
-      "title_column": "subcategory_name"
-    },
-    {
-      "name": "forecasting.annual_plan_line",
-      "label": "Annual Plan Line",
-      "module": "Forecasting",
-      "description": "The annual plan (AOP, revision 1) for a line's month, before tax. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-      "columns": [
-        {
-          "column_name": "store_code",
-          "label": "Store Code",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The store, by its SAP code.",
-          "read_only": true
-        },
-        {
-          "column_name": "division_name",
-          "label": "Division",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "subdivision_name",
-          "label": "Subdivision",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "category_name",
-          "label": "Category",
-          "column_type": "Data",
-          "reqd": true,
-          "read_only": true
-        },
-        {
-          "column_name": "subcategory_name",
-          "label": "Subcategory",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "read_only": true
-        },
-        {
-          "column_name": "calendar_year",
-          "label": "Year",
-          "column_type": "Int",
-          "read_only": true
-        },
-        {
-          "column_name": "calendar_month",
-          "label": "Month",
-          "column_type": "Int",
-          "read_only": true
-        },
-        {
-          "column_name": "revision_id",
-          "label": "Revision",
-          "column_type": "Int",
-          "description": "The plan's revision; 1 is the approved plan.",
-          "read_only": true
-        },
-        {
-          "column_name": "plan_value_before_tax",
-          "label": "Plan (Before Tax)",
-          "column_type": "Currency",
-          "description": "The annual plan (AOP) for the month, in rupees before tax.",
-          "read_only": true
-        },
-        {
-          "column_name": "plan_qty",
-          "label": "Plan Quantity",
-          "column_type": "Float",
-          "description": "The annual plan for the month, in pieces.",
-          "read_only": true
-        }
-      ],
-      "title_column": "subcategory_name"
-    },
-    {
-      "name": "forecasting.other_model_line",
-      "label": "Other Model Line",
-      "module": "Forecasting",
-      "description": "Another model's forecast for a line's month, before tax, read beside Feather Forecast: XGBoost and LightGBM, the warehouse's baseline Runs (data-warehouse #4965) from the same sales as the official Run, as month totals. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-      "columns": [
-        {
-          "column_name": "model",
-          "label": "Model",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "Another model read beside Feather Forecast: XGBoost or LightGBM.",
-          "read_only": true
-        },
-        {
-          "column_name": "store_code",
-          "label": "Store Code",
-          "column_type": "Data",
-          "reqd": true,
-          "description": "The store, by its SAP code.",
-          "read_only": true
-        },
-        {
-          "column_name": "subcategory_name",
-          "label": "Subcategory",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "read_only": true
-        },
-        {
-          "column_name": "month_from",
-          "label": "Month",
-          "column_type": "Date",
-          "description": "The first day of the month forecast.",
-          "read_only": true
-        },
-        {
-          "column_name": "forecast_value_before_tax",
-          "label": "Forecast (Before Tax)",
-          "column_type": "Currency",
-          "description": "That model's forecast for the month, in rupees before tax. A stand-in until the model lands as a run.",
-          "read_only": true
-        }
-      ],
-      "title_column": "subcategory_name"
-    },
-    {
-      "name": "forecasting.price_band_mix",
-      "label": "Price Band Mix",
-      "module": "Forecasting",
-      "description": "What each price band of a subcategory sold in the last 28 days before the Run, and its share: the split the screens apply to Feather Forecast (value by value share, pieces by piece share). Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-      "columns": [
-        {
-          "column_name": "run_id",
-          "label": "Run",
-          "column_type": "Data",
-          "reqd": true,
-          "description": "The official Run whose sales window (the 28 days to its Sales Up To) this split is read over.",
-          "read_only": true
-        },
-        {
-          "column_name": "store_code",
-          "label": "Store Code",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The store, by its SAP code.",
-          "read_only": true
-        },
-        {
-          "column_name": "division_name",
-          "label": "Division",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "subdivision_name",
-          "label": "Subdivision",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "category_name",
-          "label": "Category",
-          "column_type": "Data",
-          "reqd": true,
-          "read_only": true
-        },
-        {
-          "column_name": "subcategory_name",
-          "label": "Subcategory",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "read_only": true
-        },
-        {
-          "column_name": "price_band",
-          "label": "Price Band",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The warehouse's own price band for the subcategory at this store (its 90-day selling price against the band edges), or Never Sold (90 d), or No Band for an item sold but not on the board.",
-          "read_only": true
-        },
-        {
-          "column_name": "price_band_order",
-          "label": "Band Order",
-          "column_type": "Int",
-          "description": "Where the band comes in the subcategory's list, cheapest first.",
-          "read_only": true
-        },
-        {
-          "column_name": "sales_value_before_tax",
-          "label": "Sales, Last 28 Days",
-          "column_type": "Currency",
-          "description": "What the band sold in the 28 days, before tax.",
-          "read_only": true
-        },
-        {
-          "column_name": "sales_qty",
-          "label": "Pieces, Last 28 Days",
-          "column_type": "Float",
-          "description": "Pieces the band sold in the 28 days.",
-          "read_only": true
-        },
-        {
-          "column_name": "items_sold",
-          "label": "Items Sold",
-          "column_type": "Int",
-          "description": "Items that sold at least one piece in the 28 days.",
-          "read_only": true
-        },
-        {
-          "column_name": "value_share",
-          "label": "Share of Sales",
-          "column_type": "Float",
-          "description": "The band's share of the subcategory's sales value in the 28 days, 0 to 1.",
-          "read_only": true
-        },
-        {
-          "column_name": "qty_share",
-          "label": "Share of Pieces",
-          "column_type": "Float",
-          "description": "The band's share of the subcategory's pieces in the 28 days, 0 to 1.",
-          "read_only": true
-        },
-        {
-          "column_name": "items_to_50_pct",
-          "label": "Items Making 50%",
-          "column_type": "Int",
-          "description": "How many of the band's best-selling items make half its sales.",
-          "read_only": true
-        },
-        {
-          "column_name": "items_to_70_pct",
-          "label": "Items Making 70%",
-          "column_type": "Int",
-          "description": "How many of the band's best-selling items make 70% of its sales.",
-          "read_only": true
-        }
-      ],
-      "title_column": "subcategory_name"
-    },
-    {
-      "name": "forecasting.stock_band",
-      "label": "Stock by Price Band",
-      "module": "Forecasting",
-      "description": "The stock a subcategory holds today in each price band, in pieces and at cost. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-      "columns": [
-        {
-          "column_name": "store_code",
-          "label": "Store Code",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The store, by its SAP code.",
-          "read_only": true
-        },
-        {
-          "column_name": "division_name",
-          "label": "Division",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "subdivision_name",
-          "label": "Subdivision",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "category_name",
-          "label": "Category",
-          "column_type": "Data",
-          "reqd": true,
-          "read_only": true
-        },
-        {
-          "column_name": "subcategory_name",
-          "label": "Subcategory",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "read_only": true
-        },
-        {
-          "column_name": "price_band",
-          "label": "Price Band",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The warehouse's own price band for the subcategory at this store (its 90-day selling price against the band edges), or Never Sold (90 d), or No Band for an item sold but not on the board.",
-          "read_only": true
-        },
-        {
-          "column_name": "price_band_order",
-          "label": "Band Order",
-          "column_type": "Int",
-          "description": "Where the band comes in the subcategory's list, cheapest first.",
-          "read_only": true
-        },
-        {
-          "column_name": "stock_qty",
-          "label": "Stock, Pieces",
-          "column_type": "Float",
-          "description": "Pieces on hand.",
-          "read_only": true
-        },
-        {
-          "column_name": "stock_value_at_cost",
-          "label": "Stock at Cost",
-          "column_type": "Currency",
-          "description": "The stock on hand at cost.",
-          "read_only": true
-        },
-        {
-          "column_name": "items_in_stock",
-          "label": "Items in Stock",
-          "column_type": "Int",
-          "description": "Items with at least one piece on hand.",
-          "read_only": true
-        },
-        {
-          "column_name": "stock_as_of",
-          "label": "Stock As Of",
-          "column_type": "Date",
-          "in_list_view": true,
-          "description": "The day the stock was counted.",
-          "read_only": true
-        }
-      ],
-      "title_column": "subcategory_name"
-    },
-    {
-      "name": "forecasting.price_band_top_item",
-      "label": "Price Band Top Item",
-      "module": "Forecasting",
-      "description": "A price band's five best-selling items in the last 28 days before the Run, with their stock today. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-      "columns": [
-        {
-          "column_name": "run_id",
-          "label": "Run",
-          "column_type": "Data",
-          "reqd": true,
-          "description": "The official Run whose sales window (the 28 days to its Sales Up To) this split is read over.",
-          "read_only": true
-        },
-        {
-          "column_name": "store_code",
-          "label": "Store Code",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The store, by its SAP code.",
-          "read_only": true
-        },
-        {
-          "column_name": "division_name",
-          "label": "Division",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "subdivision_name",
-          "label": "Subdivision",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "category_name",
-          "label": "Category",
-          "column_type": "Data",
-          "reqd": true,
-          "read_only": true
-        },
-        {
-          "column_name": "subcategory_name",
-          "label": "Subcategory",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "read_only": true
-        },
-        {
-          "column_name": "price_band",
-          "label": "Price Band",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The warehouse's own price band for the subcategory at this store (its 90-day selling price against the band edges), or Never Sold (90 d), or No Band for an item sold but not on the board.",
-          "read_only": true
-        },
-        {
-          "column_name": "price_band_order",
-          "label": "Band Order",
-          "column_type": "Int",
-          "description": "Where the band comes in the subcategory's list, cheapest first.",
-          "read_only": true
-        },
-        {
-          "column_name": "item_rank",
-          "label": "Rank",
-          "column_type": "Int",
-          "reqd": true,
-          "description": "1 is the band's best seller by value.",
-          "read_only": true
-        },
-        {
-          "column_name": "item_code",
-          "label": "Item Code",
-          "column_type": "Data",
-          "in_list_view": true,
-          "description": "The item's SAP code.",
-          "read_only": true
-        },
-        {
-          "column_name": "item_name",
-          "label": "Item",
-          "column_type": "Data",
-          "in_list_view": true,
-          "description": "The item's name.",
-          "read_only": true
-        },
-        {
-          "column_name": "sales_qty",
-          "label": "Pieces, Last 28 Days",
-          "column_type": "Float",
-          "description": "Pieces sold in the 28 days.",
-          "read_only": true
-        },
-        {
-          "column_name": "sales_value_before_tax",
-          "label": "Sales, Last 28 Days",
-          "column_type": "Currency",
-          "description": "What it sold in the 28 days, before tax.",
-          "read_only": true
-        },
-        {
-          "column_name": "stock_qty",
-          "label": "Stock, Pieces",
-          "column_type": "Float",
-          "description": "Pieces on hand today.",
-          "read_only": true
-        }
-      ],
-      "title_column": "item_name"
-    },
-    {
-      "name": "forecasting.item_health",
-      "label": "Item Health",
-      "module": "Forecasting",
-      "description": "One row per item of a subcategory at a store that holds stock now or sold in the last 28 days: its stock here and in the warehouse, how it sold here over the 7, 14 and 28 days to the store's last complete day, and how the same item sold at the region's other stores. Needs Your Attention reads it. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-      "columns": [
-        {
-          "column_name": "store_code",
-          "label": "Store Code",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The store, by its SAP code.",
-          "read_only": true
-        },
-        {
-          "column_name": "division_name",
-          "label": "Division",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "subdivision_name",
-          "label": "Subdivision",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "category_name",
-          "label": "Category",
-          "column_type": "Data",
-          "reqd": true,
-          "read_only": true
-        },
-        {
-          "column_name": "subcategory_name",
-          "label": "Subcategory",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "read_only": true
-        },
-        {
-          "column_name": "price_band",
-          "label": "Price Band",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The warehouse's own price band for the subcategory at this store (its 90-day selling price against the band edges), or Never Sold (90 d), or No Band for an item sold but not on the board.",
-          "read_only": true
-        },
-        {
-          "column_name": "price_band_order",
-          "label": "Band Order",
-          "column_type": "Int",
-          "description": "Where the band comes in the subcategory's list, cheapest first.",
-          "read_only": true
-        },
-        {
-          "column_name": "item_code",
-          "label": "Item Code",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The item's SAP code.",
-          "read_only": true
-        },
-        {
-          "column_name": "item_name",
-          "label": "Item",
-          "column_type": "Data",
-          "in_list_view": true,
-          "description": "The item's name.",
-          "read_only": true
-        },
-        {
-          "column_name": "stock_qty",
-          "label": "Stock, Pieces",
-          "column_type": "Float",
-          "description": "Pieces on hand at the store.",
-          "read_only": true
-        },
-        {
-          "column_name": "warehouse_qty",
-          "label": "Warehouse Stock",
-          "column_type": "Float",
-          "description": "Pieces available in the warehouse.",
-          "read_only": true
-        },
-        {
-          "column_name": "last_sold_date",
-          "label": "Last Sold",
-          "column_type": "Date",
-          "description": "The last day it sold at the store.",
-          "read_only": true
-        },
-        {
-          "column_name": "days_since_movement",
-          "label": "Days Since Movement",
-          "column_type": "Int",
-          "description": "Days since it last sold or was received at the store.",
-          "read_only": true
-        },
-        {
-          "column_name": "is_dead",
-          "label": "Dead Stock",
-          "column_type": "Check",
-          "description": "The warehouse counts it as dead stock at the store.",
-          "read_only": true
-        },
-        {
-          "column_name": "sales_qty_7_days",
-          "label": "Pieces, Last 7 Days",
-          "column_type": "Float",
-          "description": "Pieces sold in the last 7 days.",
-          "read_only": true
-        },
-        {
-          "column_name": "sales_value_7_days",
-          "label": "Sales, Last 7 Days",
-          "column_type": "Currency",
-          "description": "What it sold in the last 7 days, before tax.",
-          "read_only": true
-        },
-        {
-          "column_name": "sales_qty_14_days",
-          "label": "Pieces, Last 14 Days",
-          "column_type": "Float",
-          "description": "Pieces sold in the last 14 days.",
-          "read_only": true
-        },
-        {
-          "column_name": "sales_qty",
-          "label": "Pieces, Last 28 Days",
-          "column_type": "Float",
-          "description": "Pieces sold in the last 28 days.",
-          "read_only": true
-        },
-        {
-          "column_name": "sales_value_before_tax",
-          "label": "Sales, Last 28 Days",
-          "column_type": "Currency",
-          "description": "What it sold in the last 28 days, before tax.",
-          "read_only": true
-        },
-        {
-          "column_name": "selling_price",
-          "label": "Selling Price",
-          "column_type": "Currency",
-          "description": "Its realised selling price over 90 days, for an item that did not sell in the 28 days.",
-          "read_only": true
-        },
-        {
-          "column_name": "other_stores_selling",
-          "label": "Other Stores Selling",
-          "column_type": "Int",
-          "description": "Other stores in the region where it sold in the 28 days.",
-          "read_only": true
-        },
-        {
-          "column_name": "other_stores_qty",
-          "label": "Pieces at Other Stores",
-          "column_type": "Float",
-          "description": "Pieces it sold at the region's other stores in the 28 days.",
-          "read_only": true
-        },
-        {
-          "column_name": "other_stores_qty_14_days",
-          "label": "Pieces at Other Stores, 14 Days",
-          "column_type": "Float",
-          "description": "Pieces it sold at the region's other stores in the last 14 days.",
-          "read_only": true
-        },
-        {
-          "column_name": "best_store_code",
-          "label": "Best Store",
-          "column_type": "Data",
-          "description": "The other store in the region where it sold most in the 28 days, by its SAP code.",
-          "read_only": true
-        },
-        {
-          "column_name": "best_store_short_code",
-          "label": "Best Store Code",
-          "column_type": "Data",
-          "description": "That store's short code, such as MOT.",
-          "read_only": true
-        },
-        {
-          "column_name": "best_store_name",
-          "label": "Best Store Name",
-          "column_type": "Data",
-          "description": "That store's name.",
-          "read_only": true
-        },
-        {
-          "column_name": "best_store_qty",
-          "label": "Pieces at Best Store",
-          "column_type": "Float",
-          "description": "Pieces it sold there in the 28 days.",
-          "read_only": true
-        },
-        {
-          "column_name": "stock_as_of",
-          "label": "Stock As Of",
-          "column_type": "Date",
-          "description": "The day the stock was counted.",
-          "read_only": true
-        },
-        {
-          "column_name": "sales_as_of_date",
-          "label": "Sales Up To",
-          "column_type": "Date",
-          "description": "The last complete day of sales the 7, 14 and 28 days end on (the store's, refreshed each morning).",
-          "read_only": true
-        }
-      ],
-      "title_column": "item_name"
-    },
-    {
-      "name": "forecasting.merchandise_people",
-      "label": "Merchandise People",
-      "module": "Forecasting",
-      "description": "Who to ask about a subcategory: its buyer and its category head, as Merchandise Assignment names them today in the store's region. Needs Your Attention puts them in its actions. Copied from Merchandise Assignment; people only read it here.",
-      "columns": [
-        {
-          "column_name": "operating_region",
-          "label": "Region",
-          "column_type": "Data",
-          "reqd": true,
-          "description": "Kerala or Tamil Nadu.",
-          "read_only": true
-        },
-        {
-          "column_name": "subcategory_code",
-          "label": "Subcategory Code",
-          "column_type": "Data",
-          "reqd": true,
-          "description": "The subcategory's SAP code (material group).",
-          "read_only": true
-        },
-        {
-          "column_name": "subcategory_name",
-          "label": "Subcategory",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "read_only": true
-        },
-        {
-          "column_name": "category_head_code",
-          "label": "Category Head Code",
-          "column_type": "Data",
-          "description": "The category head's employee code.",
-          "read_only": true
-        },
-        {
-          "column_name": "category_head",
-          "label": "Category Head",
-          "column_type": "Data",
-          "in_list_view": true,
-          "description": "The category head's name.",
-          "read_only": true
-        },
-        {
-          "column_name": "buyer_code",
-          "label": "Buyer Code",
-          "column_type": "Data",
-          "description": "The buyer's employee code.",
-          "read_only": true
-        },
-        {
-          "column_name": "buyer",
-          "label": "Buyer",
-          "column_type": "Data",
-          "in_list_view": true,
-          "description": "The buyer's name.",
-          "read_only": true
-        },
-        {
-          "column_name": "source_key",
-          "label": "Source",
-          "column_type": "Data",
-          "description": "Where and when the names were read, such as Merchandise Assignment on 28-Nov-2026.",
-          "read_only": true
-        }
-      ],
-      "title_column": "subcategory_name"
-    },
-    {
-      "name": "forecasting.item_other_stores",
-      "label": "Item at Other Stores",
-      "module": "Forecasting",
-      "description": "The same items at the region's other stores: stock on hand today (every store, refreshed daily) and pieces sold over the last 28 days to the store's last complete day. One row per item and other store that holds it or sold it. Needs Your Attention reads it for transfers. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-      "columns": [
-        {
-          "column_name": "store_code",
-          "label": "Store Code",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The store being reviewed, by its SAP code.",
-          "read_only": true
-        },
-        {
-          "column_name": "subcategory_name",
-          "label": "Subcategory",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "read_only": true
-        },
-        {
-          "column_name": "item_code",
-          "label": "Item Code",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The item's SAP code.",
-          "read_only": true
-        },
-        {
-          "column_name": "other_store_code",
-          "label": "Other Store",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The other store, by its SAP code.",
-          "read_only": true
-        },
-        {
-          "column_name": "other_store_short_code",
-          "label": "Other Store Code",
-          "column_type": "Data",
-          "description": "Its short code, such as MOT.",
-          "read_only": true
-        },
-        {
-          "column_name": "other_store_name",
-          "label": "Other Store Name",
-          "column_type": "Data",
-          "in_list_view": true,
-          "description": "Its name.",
-          "read_only": true
-        },
-        {
-          "column_name": "other_stock_qty",
-          "label": "Stock There",
-          "column_type": "Float",
-          "description": "Pieces on hand there today.",
-          "read_only": true
-        },
-        {
-          "column_name": "other_sales_qty",
-          "label": "Sold There, 28 Days",
-          "column_type": "Float",
-          "description": "Pieces sold there in the last 28 days.",
-          "read_only": true
-        },
-        {
-          "column_name": "stock_as_of",
-          "label": "Stock As Of",
-          "column_type": "Date",
-          "description": "The day the stock was counted.",
-          "read_only": true
-        }
-      ],
-      "title_column": "item_code"
-    },
-    {
-      "name": "forecasting.forecast_line_day",
-      "label": "Forecast Line Day",
-      "module": "Forecasting",
-      "description": "Feather Forecast for one line on one day of the Run's month, before tax: what the day review compares each day's sales with. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-      "columns": [
-        {
-          "column_name": "run_id",
-          "label": "Run",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The Feather Forecast run this row belongs to: the official run for the month.",
-          "read_only": true
-        },
-        {
-          "column_name": "store_code",
-          "label": "Store Code",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The store, by its SAP code.",
-          "read_only": true
-        },
-        {
-          "column_name": "division_name",
-          "label": "Division",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "subdivision_name",
-          "label": "Subdivision",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "category_name",
-          "label": "Category",
-          "column_type": "Data",
-          "reqd": true,
-          "read_only": true
-        },
-        {
-          "column_name": "subcategory_name",
-          "label": "Subcategory",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "read_only": true
-        },
-        {
-          "column_name": "forecast_date",
-          "label": "Day",
-          "column_type": "Date",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The day.",
-          "read_only": true
-        },
-        {
-          "column_name": "forecast_value_before_tax",
-          "label": "Feather Forecast",
-          "column_type": "Currency",
-          "in_list_view": true,
-          "description": "Feather Forecast for the day, before tax.",
-          "read_only": true
-        },
-        {
-          "column_name": "forecast_qty",
-          "label": "Feather Forecast Quantity",
-          "column_type": "Float",
-          "description": "Feather Forecast for the day, in pieces.",
-          "read_only": true
-        }
-      ],
-      "title_column": "subcategory_name"
-    },
-    {
-      "name": "forecasting.actuals_day",
-      "label": "Actuals Day",
-      "module": "Forecasting",
-      "description": "What one line sold on one day of the Run's month so far, before tax, to the warehouse's last complete day. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
-      "columns": [
-        {
-          "column_name": "run_id",
-          "label": "Run",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The official Run whose month these sales are read against.",
-          "read_only": true
-        },
-        {
-          "column_name": "store_code",
-          "label": "Store Code",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The store, by its SAP code.",
-          "read_only": true
-        },
-        {
-          "column_name": "division_name",
-          "label": "Division",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "subdivision_name",
-          "label": "Subdivision",
-          "column_type": "Data",
-          "read_only": true
-        },
-        {
-          "column_name": "category_name",
-          "label": "Category",
-          "column_type": "Data",
-          "reqd": true,
-          "read_only": true
-        },
-        {
-          "column_name": "subcategory_name",
-          "label": "Subcategory",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "read_only": true
-        },
-        {
-          "column_name": "sales_date",
-          "label": "Day",
-          "column_type": "Date",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The day.",
-          "read_only": true
-        },
-        {
-          "column_name": "sales_value_before_tax",
-          "label": "Sold",
-          "column_type": "Currency",
-          "in_list_view": true,
-          "description": "What it sold that day, before tax.",
-          "read_only": true
-        },
-        {
-          "column_name": "sales_qty",
-          "label": "Pieces Sold",
-          "column_type": "Float",
-          "description": "Pieces sold that day.",
-          "read_only": true
-        },
-        {
-          "column_name": "actuals_as_of_date",
-          "label": "Sales Up To",
-          "column_type": "Date",
-          "description": "The last complete day of sales the warehouse had.",
-          "read_only": true
-        }
-      ],
-      "title_column": "subcategory_name"
-    },
-    {
       "name": "forecasting.day_explanation",
       "label": "Day Explanation",
       "module": "Forecasting",
@@ -5291,71 +2394,6 @@
       "can_create": true
     },
     {
-      "table": "forecasting.forecast_run",
-      "role": "All",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.forecast_line_month",
-      "role": "All",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.sales_reference",
-      "role": "All",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.annual_plan_line",
-      "role": "All",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.other_model_line",
-      "role": "All",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.price_band_mix",
-      "role": "All",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.stock_band",
-      "role": "All",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.price_band_top_item",
-      "role": "All",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.item_health",
-      "role": "All",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.merchandise_people",
-      "role": "All",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.item_other_stores",
-      "role": "All",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.forecast_line_day",
-      "role": "All",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.actuals_day",
-      "role": "All",
-      "can_read": true
-    },
-    {
       "table": "forecasting.day_explanation",
       "role": "All",
       "can_read": true,
@@ -5400,11 +2438,1322 @@
       "role": "All",
       "can_read": true,
       "can_create": true
+    },
+    {
+      "table": "forecasting.forecast_run",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.forecast_line_month",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.forecast_line_day",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.sales_reference",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.annual_plan_line",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.other_model_day",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.actuals_day",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.price_band_mix",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.stock_band",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.price_band_top_item",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.item_health",
+      "role": "All",
+      "can_read": true
     }
   ],
   "roles": [
     "Forecasting Member",
     "Forecast Creator",
     "Forecast Reviewer"
+  ],
+  "datasets": [
+    {
+      "name": "forecast_run",
+      "source": "warehouse",
+      "query": "select run_id, model, purpose, status, origin_date, horizon_from, horizon_to from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)",
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "text"
+        },
+        {
+          "name": "model",
+          "type": "text"
+        },
+        {
+          "name": "purpose",
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "type": "text"
+        },
+        {
+          "name": "origin_date",
+          "type": "date"
+        },
+        {
+          "name": "horizon_from",
+          "type": "date"
+        },
+        {
+          "name": "horizon_to",
+          "type": "date"
+        }
+      ],
+      "keys": [
+        "run_id"
+      ],
+      "rowKey": [
+        "run_id"
+      ],
+      "unscoped": true,
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)",
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "name": "forecast_line_month",
+      "source": "warehouse",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, forecast_month, forecast_value_before_tax, forecast_qty, own_value_b1, weight_b1, adds_value_b1, own_value_b2, weight_b2, adds_value_b2, own_value_b3, weight_b3, adds_value_b3, own_value_b4, weight_b4, adds_value_b4, own_value_b5, weight_b5, adds_value_b5, own_value_b6, weight_b6, adds_value_b6, growth_factor, seasonal_factor, from_recent_selling, seasonal_step_on_top, from_last_year, adjustments, rebalanced_within_category, price_and_rounding from marts_forecasting.main.fb_forecast_explanation_month where run_id in (select run_id from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date))",
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "forecast_month",
+          "type": "date"
+        },
+        {
+          "name": "forecast_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "forecast_qty",
+          "type": "number"
+        },
+        {
+          "name": "own_value_b1",
+          "type": "money"
+        },
+        {
+          "name": "weight_b1",
+          "type": "number"
+        },
+        {
+          "name": "adds_value_b1",
+          "type": "money"
+        },
+        {
+          "name": "own_value_b2",
+          "type": "money"
+        },
+        {
+          "name": "weight_b2",
+          "type": "number"
+        },
+        {
+          "name": "adds_value_b2",
+          "type": "money"
+        },
+        {
+          "name": "own_value_b3",
+          "type": "money"
+        },
+        {
+          "name": "weight_b3",
+          "type": "number"
+        },
+        {
+          "name": "adds_value_b3",
+          "type": "money"
+        },
+        {
+          "name": "own_value_b4",
+          "type": "money"
+        },
+        {
+          "name": "weight_b4",
+          "type": "number"
+        },
+        {
+          "name": "adds_value_b4",
+          "type": "money"
+        },
+        {
+          "name": "own_value_b5",
+          "type": "money"
+        },
+        {
+          "name": "weight_b5",
+          "type": "number"
+        },
+        {
+          "name": "adds_value_b5",
+          "type": "money"
+        },
+        {
+          "name": "own_value_b6",
+          "type": "money"
+        },
+        {
+          "name": "weight_b6",
+          "type": "number"
+        },
+        {
+          "name": "adds_value_b6",
+          "type": "money"
+        },
+        {
+          "name": "growth_factor",
+          "type": "number"
+        },
+        {
+          "name": "seasonal_factor",
+          "type": "number"
+        },
+        {
+          "name": "from_recent_selling",
+          "type": "money"
+        },
+        {
+          "name": "seasonal_step_on_top",
+          "type": "money"
+        },
+        {
+          "name": "from_last_year",
+          "type": "money"
+        },
+        {
+          "name": "adjustments",
+          "type": "money"
+        },
+        {
+          "name": "rebalanced_within_category",
+          "type": "money"
+        },
+        {
+          "name": "price_and_rounding",
+          "type": "money"
+        }
+      ],
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_code"
+      ],
+      "rowKey": [
+        "run_id",
+        "store_code",
+        "subcategory_code"
+      ],
+      "filters": {
+        "store": "store_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "forecast_value_before_tax"
+        }
+      ],
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)",
+      "onNewLoad": "carry_changes"
+    },
+    {
+      "name": "forecast_line_day",
+      "source": "warehouse",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, forecast_date, forecast_value_before_tax, forecast_qty, day_shape from marts_forecasting.main.fb_forecast_line_day where run_id in (select run_id from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date))",
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "forecast_date",
+          "type": "date"
+        },
+        {
+          "name": "forecast_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "forecast_qty",
+          "type": "number"
+        },
+        {
+          "name": "day_shape",
+          "type": "number"
+        }
+      ],
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_code",
+        "forecast_date"
+      ],
+      "rowKey": [
+        "run_id",
+        "store_code",
+        "subcategory_code",
+        "forecast_date"
+      ],
+      "filters": {
+        "store": "store_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "forecast_value_before_tax"
+        }
+      ],
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)"
+    },
+    {
+      "name": "sales_reference",
+      "source": "warehouse",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, window_name, date_from, date_to, sales_value_before_tax, sales_qty from marts_forecasting.main.fb_sales_reference where run_id in (select run_id from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date))",
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "window_name",
+          "type": "text"
+        },
+        {
+          "name": "date_from",
+          "type": "date"
+        },
+        {
+          "name": "date_to",
+          "type": "date"
+        },
+        {
+          "name": "sales_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "sales_qty",
+          "type": "number"
+        }
+      ],
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_code",
+        "window_name"
+      ],
+      "rowKey": [
+        "run_id",
+        "store_code",
+        "subcategory_code",
+        "window_name"
+      ],
+      "filters": {
+        "store": "store_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "sales_value_before_tax"
+        }
+      ],
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)"
+    },
+    {
+      "name": "annual_plan_line",
+      "source": "warehouse",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, plan_month, revision_id, plan_value_before_tax, plan_qty from marts_forecasting.main.fb_plan_line where run_id in (select run_id from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date))",
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "plan_month",
+          "type": "date"
+        },
+        {
+          "name": "revision_id",
+          "type": "integer"
+        },
+        {
+          "name": "plan_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "plan_qty",
+          "type": "number"
+        }
+      ],
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_code",
+        "plan_month",
+        "revision_id"
+      ],
+      "rowKey": [
+        "run_id",
+        "store_code",
+        "subcategory_code",
+        "plan_month",
+        "revision_id"
+      ],
+      "filters": {
+        "store": "store_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "plan_value_before_tax"
+        }
+      ],
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)"
+    },
+    {
+      "name": "other_model_day",
+      "source": "warehouse",
+      "query": "select official_run_id, model_run_id, model, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, forecast_date, forecast_value_before_tax, forecast_qty from marts_forecasting.main.fb_other_models",
+      "columns": [
+        {
+          "name": "official_run_id",
+          "type": "text"
+        },
+        {
+          "name": "model_run_id",
+          "type": "text"
+        },
+        {
+          "name": "model",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "forecast_date",
+          "type": "date"
+        },
+        {
+          "name": "forecast_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "forecast_qty",
+          "type": "number"
+        }
+      ],
+      "keys": [
+        "official_run_id",
+        "model",
+        "store_code",
+        "subcategory_code",
+        "forecast_date"
+      ],
+      "rowKey": [
+        "official_run_id",
+        "model",
+        "store_code",
+        "subcategory_code",
+        "forecast_date"
+      ],
+      "filters": {
+        "store": "store_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "forecast_value_before_tax"
+        }
+      ]
+    },
+    {
+      "name": "actuals_day",
+      "source": "warehouse",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, sales_date, sales_value_before_tax, sales_qty, actuals_as_of_date from marts_forecasting.main.fb_actuals_day",
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "sales_date",
+          "type": "date"
+        },
+        {
+          "name": "sales_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "sales_qty",
+          "type": "number"
+        },
+        {
+          "name": "actuals_as_of_date",
+          "type": "date"
+        }
+      ],
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_code",
+        "sales_date"
+      ],
+      "rowKey": [
+        "run_id",
+        "store_code",
+        "subcategory_code",
+        "sales_date"
+      ],
+      "filters": {
+        "store": "store_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "sales_value_before_tax"
+        }
+      ]
+    },
+    {
+      "name": "price_band_mix",
+      "source": "warehouse",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, price_band, price_band_order, date_from, date_to, sales_value_before_tax, sales_qty, items_sold, value_share, qty_share, items_to_50_pct, items_to_70_pct from marts_forecasting.main.fb_price_band_mix where run_id in (select run_id from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date))",
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "price_band",
+          "type": "text"
+        },
+        {
+          "name": "price_band_order",
+          "type": "integer"
+        },
+        {
+          "name": "date_from",
+          "type": "date"
+        },
+        {
+          "name": "date_to",
+          "type": "date"
+        },
+        {
+          "name": "sales_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "sales_qty",
+          "type": "number"
+        },
+        {
+          "name": "items_sold",
+          "type": "integer"
+        },
+        {
+          "name": "value_share",
+          "type": "number"
+        },
+        {
+          "name": "qty_share",
+          "type": "number"
+        },
+        {
+          "name": "items_to_50_pct",
+          "type": "integer"
+        },
+        {
+          "name": "items_to_70_pct",
+          "type": "integer"
+        }
+      ],
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_code",
+        "price_band"
+      ],
+      "rowKey": [
+        "run_id",
+        "store_code",
+        "subcategory_code",
+        "price_band"
+      ],
+      "filters": {
+        "store": "store_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "sales_value_before_tax"
+        }
+      ],
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)"
+    },
+    {
+      "name": "stock_band",
+      "source": "warehouse",
+      "query": "select region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, price_band, price_band_order, stock_qty, stock_value_at_cost, items_in_stock, stock_as_of, sales_value_before_tax_28d, sales_qty_28d, avg_daily_qty_28d, days_of_cover, sales_as_of_date from marts_forecasting.main.fb_stock_band",
+      "columns": [
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "price_band",
+          "type": "text"
+        },
+        {
+          "name": "price_band_order",
+          "type": "integer"
+        },
+        {
+          "name": "stock_qty",
+          "type": "number"
+        },
+        {
+          "name": "stock_value_at_cost",
+          "type": "money"
+        },
+        {
+          "name": "items_in_stock",
+          "type": "integer"
+        },
+        {
+          "name": "stock_as_of",
+          "type": "date"
+        },
+        {
+          "name": "sales_value_before_tax_28d",
+          "type": "money"
+        },
+        {
+          "name": "sales_qty_28d",
+          "type": "number"
+        },
+        {
+          "name": "avg_daily_qty_28d",
+          "type": "number"
+        },
+        {
+          "name": "days_of_cover",
+          "type": "number"
+        },
+        {
+          "name": "sales_as_of_date",
+          "type": "date"
+        }
+      ],
+      "keys": [
+        "store_code",
+        "subcategory_code",
+        "price_band"
+      ],
+      "rowKey": [
+        "store_code",
+        "subcategory_code",
+        "price_band"
+      ],
+      "filters": {
+        "store": "store_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        }
+      ]
+    },
+    {
+      "name": "price_band_top_item",
+      "source": "warehouse",
+      "query": "select run_id, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, price_band, price_band_order, item_rank, item_code, item_name, sales_qty, sales_value_before_tax, share_of_band_sales, stock_qty from marts_forecasting.main.fb_price_band_top_item where run_id in (select run_id from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date))",
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "price_band",
+          "type": "text"
+        },
+        {
+          "name": "price_band_order",
+          "type": "integer"
+        },
+        {
+          "name": "item_rank",
+          "type": "integer"
+        },
+        {
+          "name": "item_code",
+          "type": "text"
+        },
+        {
+          "name": "item_name",
+          "type": "text"
+        },
+        {
+          "name": "sales_qty",
+          "type": "number"
+        },
+        {
+          "name": "sales_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "share_of_band_sales",
+          "type": "number"
+        },
+        {
+          "name": "stock_qty",
+          "type": "number"
+        }
+      ],
+      "keys": [
+        "run_id",
+        "store_code",
+        "subcategory_code",
+        "price_band",
+        "item_rank"
+      ],
+      "rowKey": [
+        "run_id",
+        "store_code",
+        "subcategory_code",
+        "price_band",
+        "item_rank"
+      ],
+      "filters": {
+        "store": "store_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        }
+      ],
+      "runKey": "select string_agg(run_id, ',' order by run_id) as runs from marts_forecasting.main.forecast_run where purpose = 'official' and horizon_to >= date_trunc('month', current_date)"
+    },
+    {
+      "name": "item_health",
+      "source": "warehouse",
+      "query": "select region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, price_band, price_band_order, item_code, item_name, stock_qty, warehouse_stock_qty, can_pull_from_warehouse, last_sold_date, days_since_stock_movement, is_dead_stock, sales_qty_7d, sales_value_before_tax_7d, sales_qty_14d, sales_qty_28d, sales_value_before_tax_28d, sales_qty_90d, sales_value_before_tax_90d, selling_price_28d_before_tax, selling_price_90d_incl_tax, days_of_cover, other_stores_selling, other_stores_sales_qty_28d, other_stores_sales_qty_14d, other_stores_stock_qty, best_other_store_code, best_other_store_short_code, best_other_store_name, best_other_store_sales_qty_28d, best_other_store_stock_qty, stock_as_of, sales_as_of_date from marts_forecasting.main.fb_item_health",
+      "columns": [
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "price_band",
+          "type": "text"
+        },
+        {
+          "name": "price_band_order",
+          "type": "integer"
+        },
+        {
+          "name": "item_code",
+          "type": "text"
+        },
+        {
+          "name": "item_name",
+          "type": "text"
+        },
+        {
+          "name": "stock_qty",
+          "type": "number"
+        },
+        {
+          "name": "warehouse_stock_qty",
+          "type": "number"
+        },
+        {
+          "name": "can_pull_from_warehouse",
+          "type": "boolean"
+        },
+        {
+          "name": "last_sold_date",
+          "type": "date"
+        },
+        {
+          "name": "days_since_stock_movement",
+          "type": "integer"
+        },
+        {
+          "name": "is_dead_stock",
+          "type": "boolean"
+        },
+        {
+          "name": "sales_qty_7d",
+          "type": "number"
+        },
+        {
+          "name": "sales_value_before_tax_7d",
+          "type": "money"
+        },
+        {
+          "name": "sales_qty_14d",
+          "type": "number"
+        },
+        {
+          "name": "sales_qty_28d",
+          "type": "number"
+        },
+        {
+          "name": "sales_value_before_tax_28d",
+          "type": "money"
+        },
+        {
+          "name": "sales_qty_90d",
+          "type": "number"
+        },
+        {
+          "name": "sales_value_before_tax_90d",
+          "type": "money"
+        },
+        {
+          "name": "selling_price_28d_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "selling_price_90d_incl_tax",
+          "type": "money"
+        },
+        {
+          "name": "days_of_cover",
+          "type": "number"
+        },
+        {
+          "name": "other_stores_selling",
+          "type": "integer"
+        },
+        {
+          "name": "other_stores_sales_qty_28d",
+          "type": "number"
+        },
+        {
+          "name": "other_stores_sales_qty_14d",
+          "type": "number"
+        },
+        {
+          "name": "other_stores_stock_qty",
+          "type": "number"
+        },
+        {
+          "name": "best_other_store_code",
+          "type": "text"
+        },
+        {
+          "name": "best_other_store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "best_other_store_name",
+          "type": "text"
+        },
+        {
+          "name": "best_other_store_sales_qty_28d",
+          "type": "number"
+        },
+        {
+          "name": "best_other_store_stock_qty",
+          "type": "number"
+        },
+        {
+          "name": "stock_as_of",
+          "type": "date"
+        },
+        {
+          "name": "sales_as_of_date",
+          "type": "date"
+        }
+      ],
+      "keys": [
+        "store_code",
+        "item_code"
+      ],
+      "rowKey": [
+        "store_code",
+        "item_code"
+      ],
+      "filters": {
+        "store": "store_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "sales_value_before_tax_28d"
+        }
+      ]
+    }
+  ],
+  "jobs": [
+    {
+      "name": "carry_changes",
+      "title": "Carry Changes To A New Run",
+      "cadence": "daily",
+      "description": "After a new load of the Run's monthly forecast: carries the changes people sent or approved to the new Run, and sends a subcategory back for another look where Feather Forecast moved more than 10%. Does nothing on its daily run.",
+      "datasets": [
+        "forecast_line_month"
+      ]
+    }
   ]
 }

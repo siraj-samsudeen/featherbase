@@ -338,4 +338,13 @@ export const validators = { 'forecasting.number': prepareNumber, 'forecasting.de
   'forecasting.forecast_change': prepareChange, 'forecasting.forecast_line_review': prepareLineReview, 'forecasting.forecast_question': prepareQuestion, 'forecasting.day_explanation': prepareDayExplanation,
   ...Object.fromEntries(COPIES.map(t => [`forecasting.${t}`, copiedFromWarehouse])) }
 export const actions = {}
-export const jobs = {}
+/** After a new load of the forecast copy (#1418's onNewLoad): carries changes to the new Run and sends back a
+ *  subcategory that moved more than 10%. Waits for its design (owner Table, how the Team Leader is told); for now it
+ *  records what moved and changes nothing. */
+export const jobs = {
+  async carry_changes(ctx: { newLoad: { moves(o: { by: string[]; measure: string; threshold?: number }): Promise<unknown[]> } | null; setResult(s: string): void }) {
+    if (!ctx.newLoad) return
+    const moved = await ctx.newLoad.moves({ by: ['store_code', 'subcategory_code'], measure: 'forecast_value_before_tax', threshold: 10 })
+    ctx.setResult(`${moved.length} subcategories moved more than 10%`)
+  },
+}
