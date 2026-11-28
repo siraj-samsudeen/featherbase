@@ -5,7 +5,7 @@
 import { UNNAMED_TL, officialRuns } from './teamLeader/live'
 import { createElement, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Button, Card, EmptyState, Field, PersonLabel, Select, Skeleton } from '@featherbase/shop-floor'
-import { listAll, saveRow } from './api'
+import { listAll, readOp, saveRow } from './api'
 import { PEOPLE, person, type Person } from './madeUp'
 import { COPIES_ONLY, DATASET } from './dataset'
 import { MONTH_OPTIONS, monthOf, type Month } from './months'
@@ -18,7 +18,7 @@ import { SectionPage } from './teamLeader/SectionPage'
 import { StoreManagerReview } from './storeManager/StoreManagerReview'
 import { CategoryHeadReview } from './categoryHead/CategoryHeadReview'
 import { RbReview } from './rb/RbReview'
-import type { ChainPageProps } from './shared/chainPage'
+import { ownerOf, type ChainPageProps, type SignedIn } from './shared/chainPage'
 import { loadRealChain, type Chain } from './shared/chainData'
 import { madeUpChain } from './shared/madeUpChain'
 import { RecordPagesProvider } from '@featherbase/shop-floor'
@@ -218,20 +218,33 @@ const CHAIN_PAGES = { 'store-review': StoreManagerReview, 'category-review': Cat
 type ChainView = keyof typeof CHAIN_PAGES
 // the made-up chain only where the made-up fixture Run is installed (a development or stand-in instance, started with
 // --made-up-data); an instance with no Run loaded yet (production before the first copy) says so instead of inventing one
-let chainLoad: Promise<Chain | 'none'> | null = null
-const loadChain = () => (chainLoad ??= loadRealChain().then(async real => real
-  ?? ((await officialRuns()).some(r => r.model === 'made_up') ? madeUpChain() : 'none' as const), e => { chainLoad = null; throw e }))
+let chainLoad: Promise<{ chain: Chain | 'none'; me: SignedIn | null }> | null = null
+/** The Run and who is signed in (#1438): the page opens for that person, matched on the org chart by Employee row. */
+let meLoad: Promise<SignedIn | null> | null = null
+/** Who is signed in, or null when that couldn't be told: the page then opens for nobody (fails closed). */
+const loadMe = () => (meLoad ??= readOp<SignedIn>('signed_in').catch(() => { meLoad = null; return null }))
+const loadChain = () => (chainLoad ??= Promise.all([
+  loadRealChain().then(async real => real
+    ?? ((await officialRuns()).some(r => r.model === 'made_up') ? madeUpChain() : 'none' as const)),
+  loadMe(),
+]).then(([chain, me]) => ({ chain, me }), e => { chainLoad = null; throw e }))
 function ChainPage({ view }: { view: ChainView }) {
   const Page = CHAIN_PAGES[view]
-  const [chain, setChain] = useState<Chain | 'none' | null>(null)
+  const [loaded, setLoaded] = useState<{ chain: Chain | 'none'; me: SignedIn | null } | null>(null)
   const [failed, setFailed] = useState(false)
-  useEffect(() => { loadChain().then(setChain, () => setFailed(true)) }, [])
-  const line = new URLSearchParams(window.location.search).get('line')
-  if (failed) return <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => { setFailed(false); loadChain().then(setChain, () => setFailed(true)) }}>Try again</Button>} /></Card>
-  if (!chain) return <Skeleton label="Opening the review" lines={8} />
+  useEffect(() => { loadChain().then(setLoaded, () => setFailed(true)) }, [])
+  const q = new URLSearchParams(window.location.search), line = q.get('line')
+  if (failed) return <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => { setFailed(false); loadChain().then(setLoaded, () => setFailed(true)) }}>Try again</Button>} /></Card>
+  if (!loaded) return <Skeleton label="Opening the review" lines={8} />
+  const { chain, me } = loaded
   if (chain === 'none') return <Card><EmptyState title="No official Run is loaded yet" body="The month opens here once Feather Forecast's official Run is loaded." /></Card>
+  const retry = () => { setLoaded(null); chainLoad = null; loadChain().then(setLoaded, () => setFailed(true)) }
+  if (!me) return <Card><EmptyState title="We couldn't tell who you are" body="The review opens for your job on the org chart, and that couldn't be read just now. Try again in a moment." action={<Button onClick={retry}>Try again</Button>} /></Card>
+  // the signed-in person's own page; ?as=<Employee row> only for an administrator, as "view as"
+  const owner = ownerOf(view, chain, me, q.get('as'))
+  if ('missing' in owner) return <Card><EmptyState title={owner.missing.title} body={owner.missing.body} /></Card>
   const props: ChainPageProps = {
-    chain,
+    chain, person: owner.person, admin: me.admin,
     hrefFor: l => address(view, { line: l.rowId }),
     openLine: line,
     onOpenLine: rowId => {
@@ -309,7 +322,8 @@ export function ForecastingApp() {
     <div className="fc-shell">
       <Sidebar current={view} waiting={data ? waitingFor(data, viewer).length : 0} news={data ? unseenFor(data, viewer).length : 0} />
       <main key={moves} className="fc-page" data-testid={`page-${view}`}>
-        {offChart ? <Card><EmptyState title="You are not on the forecasting org chart" body={`${offChart} has no store, section or merchandise to review in this month's Run. If that is wrong, your job or merchandise assignment needs setting up in Featherbase.`} /></Card> : <>
+        {/* the managers' pages find the signed-in person on the live org chart themselves (#1438), not the made-up one */}
+        {offChart && !CHAIN_PAGES[view as ChainView] ? <Card><EmptyState title="You are not on the forecasting org chart" body={`${offChart} has no store, section or merchandise to review in this month's Run. If that is wrong, your job or merchandise assignment needs setting up in Featherbase.`} /></Card> : <>
         {/* My Section is the screen as agreed (#1419): no picker bar above it for the person it belongs to. */}
         {!(view === 'section' || view === 'attention' || view === 'days' || view === 'unassigned' || view === 'sections' || CHAIN_PAGES[view as ChainView]) && <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} signedIn={!!me} />}
         {failed ? <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => void reload()}>Try again</Button>} /></Card>

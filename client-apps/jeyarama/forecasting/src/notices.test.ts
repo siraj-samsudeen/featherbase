@@ -11,7 +11,7 @@ const move = (sub: string, before: number | null, after: number): Move => ({ sto
 
 describe('who carry_changes tells (#1419)', () => {
   it('tells whoever answered a subcategory now more than 10% from the figure they answered, and the Store Manager in their own words, once each', () => {
-    const notices = noticesFor([move('Girls Jean', 100000, 120000), move('Girls Capri', 50000, 40000)], answers, '2026-12-01', people, { '9001': ['Omar'] })
+    const notices = noticesFor([move('Girls Jean', 100000, 120000), move('Girls Capri', 50000, 40000)], answers, '2026-12-01', people, { '9001': ['omar@made.up'] })
     expect(notices.map(n => [n.person, n.subject])).toEqual([
       ['asha@made.up', 'Feather Forecast moved for 2 subcategories: answer again'],
       ['omar@made.up', 'Feather Forecast moved for 2 subcategories: your team answers again'],
@@ -27,9 +27,14 @@ describe('who carry_changes tells (#1419)', () => {
   })
 
   it('leaves out moves of 10% or less, answers from another month, names with no Person, and subcategories no one answered', () => {
-    expect(noticesFor([move('Girls Jean', 100000, 110000)], answers, '2026-12-01', people, { '9001': ['Omar'] })).toEqual([])
+    expect(noticesFor([move('Girls Jean', 100000, 110000)], answers, '2026-12-01', people, { '9001': ['omar@made.up'] })).toEqual([])
     expect(noticesFor([move('Girls Short', 100000, 200000)], answers, '2026-12-01', people, {})).toEqual([])
     expect(noticesFor([move('Girls Jean', 100000, 200000)], answers, '2026-12-01', { Omar: 'omar@made.up' }, {})).toEqual([])
-    expect(noticesFor([move('Girls Skirt', 100000, 200000)], answers, '2026-12-01', people, { '9001': ['Omar'] })).toEqual([])
+  })
+
+  it('tells each Store Manager by Person, so two who share a name are both told (#1438)', () => {
+    const told = noticesFor([move('Girls Jean', 100000, 200000)], answers, '2026-12-01', people, { '9001': ['omar-one@made.up', 'omar-two@made.up'] })
+    expect(told.map(n => n.person)).toEqual(['asha@made.up', 'omar-one@made.up', 'omar-two@made.up'])
+    expect(noticesFor([move('Girls Skirt', 100000, 200000)], answers, '2026-12-01', people, { '9001': ['omar@made.up'] })).toEqual([])
   })
 })

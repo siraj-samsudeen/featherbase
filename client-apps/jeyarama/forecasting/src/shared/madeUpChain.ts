@@ -123,10 +123,10 @@ export function madeUpChain(): Chain & { rows: CopiedRows } {
   })
   const kerala = STORES.filter(s => s.region === 'Kerala').map(s => s.code)
   const people: ChainPerson[] = [
-    { name: 'Selvi', role: 'Store Manager', place: 'Lakeside', places: [{ store: 'LKS', codes: null }] },
+    { id: 'made-up-selvi', name: 'Selvi', role: 'Store Manager', place: 'Lakeside', places: [{ store: 'LKS', codes: null }] },
     // a category head's merchandise: these subcategory codes at these stores (as a Merchandise Assignment gives them)
-    { name: 'Bina', role: 'Category Head', place: 'Women, Girls', places: kerala.map(store => ({ store, codes: MERCH.filter(([, sub]) => sub === 'Women' || sub === 'Girls').flatMap(([, , , subs]) => subs.map(([n]) => CODE.get(n)!)) })) },
-    { name: 'Kumar', role: 'Chief Executive', place: 'Head Office', places: STORES.map(s => ({ store: s.code, codes: null })) },
+    { id: 'made-up-bina', name: 'Bina', role: 'Category Head', place: 'Women, Girls', places: kerala.map(store => ({ store, codes: MERCH.filter(([, sub]) => sub === 'Women' || sub === 'Girls').flatMap(([, , , subs]) => subs.map(([n]) => CODE.get(n)!)) })) },
+    { id: 'made-up-kumar', name: 'Kumar', role: 'Chief Executive', place: 'Head Office', places: STORES.map(s => ({ store: s.code, codes: null })) },
   ]
   cache = { real: false, rows: copied, lines, sections, people, proposals: proposalsFor(lines, sections), cutOff: CUT_OFF, horizon: HORIZON }
   return cache

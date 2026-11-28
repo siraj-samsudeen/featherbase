@@ -3930,7 +3930,9 @@
         "ends_on"
       ],
       "Employee": [
-        "name"
+        "name",
+        "person",
+        "status"
       ],
       "Merchandise Assignment": [
         "employee",
@@ -3948,6 +3950,14 @@
     "tables": [],
     "operations": {
       "org_chart": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "signed_in": {
         "policy": {
           "kind": "table"
         },
