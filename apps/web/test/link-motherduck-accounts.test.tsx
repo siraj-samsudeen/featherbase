@@ -127,6 +127,9 @@ test('the Person picker links anyone else; a click or ↑ moves the highlight; a
   await userEvent.click(await waitFor(() => screen.getAllByTestId('link-option').find((o) => o.textContent?.includes('Done Person'))!))
   await waitFor(async () => expect((await sql`select person from motherduck_account where row_id = 'md-zed'`)[0].person).toBe(done))
 
+  // The list read again after that save has landed (the linked row is drawn), so it cannot land between the delete
+  // below and the click, taking priya's row away before it is clicked.
+  await within(page).findByTestId('md-linked-now')
   // The account is gone before its save: the page names it and keeps it to link.
   await sql`delete from motherduck_account where row_id = 'md-priya'`
   const priya = within(page).getAllByTestId('md-account').find((r) => r.getAttribute('data-username') === 'priya')!
