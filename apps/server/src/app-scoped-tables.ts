@@ -31,9 +31,11 @@ export function validateScopedTables(app: string, tables: readonly { name: strin
   for (const declaration of declarations ?? []) {
     const table = tables.find((t) => t.name === declaration.table)
     if (!table || !declaration.table.startsWith(`${app}.`)) throw new Error(`The scoped Table ${declaration.table} is not one of the app's own Tables`)
+    // a key is any plain column a read may filter on; a mapped column must compare as the same text in SQL and code
     for (const column of [...declaration.keys, ...Object.values(declaration.filters)]) {
       const found = table.columns.find((c) => c.column_name === column)
-      if (!found || !FILTERABLE.has(found.column_type))
+      const mapped = Object.values(declaration.filters).includes(column)
+      if (!found || (mapped ? !FILTERABLE.has(found.column_type) : ['Sub-table', 'Section Break', 'Column Break'].includes(found.column_type)))
         throw new Error(`The scoped Table ${declaration.table} cannot be filtered on ${column}: it is not one of its plain columns`)
     }
   }
