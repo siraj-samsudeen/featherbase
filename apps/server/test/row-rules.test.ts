@@ -17,7 +17,8 @@ import { getList } from '../src/query'
 import { getDoc, saveDoc } from '../src/document'
 import { runViewingAs } from '../src/view-as-context'
 import { sql } from '../src/db'
-import { invalidateMeta } from '../src/meta'
+import { getMeta, invalidateMeta } from '../src/meta'
+import { rowRuleOf } from '../src/row-rule'
 
 const PROJECT = tableRef('Rr Project')
 const TASK = tableRef('Rr Task')
@@ -291,6 +292,7 @@ describe('#1459 the edges of a rule', () => {
     await admin.post('/api/table_def', { name: 'Rr Open Projects', kind: 'view', view_of: PROJECT.name, view_filters: [['stage', '=', 'open']] })
     const view = tableRef('Rr Open Projects')
     expect(await ids(reader, view)).toEqual(['p1'])
+    expect(await rowRuleOf(await getMeta(view.name))).toEqual({ kind: 'own' })
     expect(await eventVisibleTo(reader.user!, event(view.name, 'p2'))).toBe(false)
     await expectRefused(admin.put(`${view.defUrl}/row_rule`, { row_rule: { kind: 'all' } }), 417)
     await expectRefused(admin.put(`${view.defUrl}/row_rule`, { row_rule: null }), 417)
