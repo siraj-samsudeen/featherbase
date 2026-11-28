@@ -97,7 +97,7 @@ describe('Needs Your Attention (#1419, approved 28-Nov-2026)', () => {
   })
 
   it("never puts dead stock above 100% of the subcategory's stock when an item is booked below zero", () => {
-    const f = find(line([]), [item('1', { stock_qty: 10, days_since_movement: 95 }), item('2', { stock_qty: -3, sales_qty: 2 })])
+    const f = find(line([]), [item('1', { stock_qty: 10, days_since_stock_movement: 95 }), item('2', { stock_qty: -3, sales_qty_28d: 2 })])
     expect(f.find(x => x.kind === 'dead')!.n.shareStock).toBe(100)
   })
 
