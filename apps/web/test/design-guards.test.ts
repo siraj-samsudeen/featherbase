@@ -462,6 +462,8 @@ describe('the Admin shell', () => {
   const defaults = source('src/components/SidebarDefaults.tsx')
   // #1385 (slice 3): the one sidebar frame, which the Admin, the account pages and every app draw.
   const frame = source('src/components/SidebarAside.tsx')
+  // #1385 (slice 4): the one way a sidebar section is drawn, the Admin's groups and every app's alike.
+  const sections = source('src/components/SidebarSections.tsx')
   test("#1253: a page with a sidebar has no top bar: the bar draws into the sidebar's top and foot", () => {
     expect(topBar).toMatch(/createPortal\([\s\S]{0,800}slots\.top/)
     expect(topBar).toMatch(/createPortal\([\s\S]{0,800}slots\.foot/)
@@ -509,9 +511,10 @@ describe('the Admin shell', () => {
     expect(heading).toMatch(/\btext-xs\b/)
     expect(heading).toMatch(/\btext-ink-muted\b/)
     expect(heading).not.toMatch(/\bfont-(?:semibold|bold|medium)\b|\buppercase\b/)
-    expect(tagWith(shell, 'sidebar-group-heading')).toMatch(/className=\{SIDEBAR_HEADING\}/)
+    expect(tagWith(sections, 'sidebar-group-heading')).toMatch(/className=\{SIDEBAR_HEADING\}/)
     expect(tagWith(defaults, 'sidebar-recents-heading')).toMatch(/className=\{SIDEBAR_HEADING\}/)
-    expect(tagWith(shell, 'sidebar-item-icon')).toMatch(/GROUP_TONE/)
+    expect(sections).toMatch(/GROUP_TONE\[section\.tone\]/)
+    expect(tagWith(sections, 'sidebar-item-icon')).toMatch(/\$\{tone\}/)
     expect(/ROW_SELECTED = '([^']+)'/.exec(rail)?.[1]).toMatch(/\bbg-surface\b.*\bshadow-sm\b/)
     expect(shell).not.toMatch(/border-t border-border px-2/)
     // Past imports is a nav item, no longer a small underlined link.

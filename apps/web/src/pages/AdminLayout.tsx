@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react'
-import { GROUP_TONE, RAIL_ROW, ROW_IDLE, ROW_SELECTED, RailRule, SIDEBAR_HEADING, useSidebarRail, type GroupTone } from '../components/SidebarRail'
+import { type GroupTone } from '../components/SidebarRail'
+import { SidebarSections, type ShownSection } from '../components/SidebarSections'
 import { SidebarAside } from '../components/SidebarAside'
-import { railMark, sidebarWords } from '../lib/sidebar-rail'
-import { Link, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
+import { sidebarWords } from '../lib/sidebar-rail'
+import { Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, JOBS_PATH, adminPageNeedsManage } from 'shared'
 import { ApiError, api, getSessionUser } from '../lib/api'
@@ -15,14 +16,13 @@ import { TopBar } from '../components/TopBar'
 import { SidebarRecall, SidebarSavedViews } from '../components/SidebarDefaults'
 import { metaQuery, type TableMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
-import { SIDEBAR_DRAWER_QUERY, useSidebar } from '../lib/sidebar-collapsed'
 import { DataSourcesSidebar } from '../components/DataSourcesSidebar'
 import { NoAccessPage, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PATH, SetupBanner, useSetupNeeded } from './InstanceHealth'
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
-import { StatusPill, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { StatusPill } from '@featherbase/shop-floor'
 import { BookOpen, Cable, CalendarClock, Plus, Search, Upload, Compass, Eye, History, Key, Link2, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 import { ADMIN_HOME_SHORTCUT_DEF, NEW_ROW_SHORTCUT_DEF, noteShortcutUse, useShortcut } from '../lib/shortcuts'
@@ -110,16 +110,6 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
       () => {},
     )
   }, [user?.row_id, location.href, navigationKey]) // eslint-disable-line react-hooks/exhaustive-deps
-  // UI-025: on narrow (mobile) widths the sidebar collapses into a drawer
-  // toggled from the navbar; on md+ it is always shown. #1018: on md+ it can
-  // be collapsed to give the page its width; a phone keeps its drawer,
-  // whatever was chosen on a wider window. #1227: the state, the controls and
-  // Ctrl/Cmd+B are the shared ones every app's sidebar uses (TopBar).
-  const { collapsed: collapsedChoice } = useSidebar(user?.row_id)
-  // #1248: collapsed (md+), the sidebar is an icon rail; each group draws its rail form.
-  const drawerWidth = useMediaQuery(SIDEBAR_DRAWER_QUERY)
-  const rail = collapsedChoice && !drawerWidth
-
   const caps = useCapabilities()
   const canManage = caps?.manage === true
   // #429: the count beside "Waiting for access"; asked only by a System Manager.
@@ -209,6 +199,44 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
   })()
 
 
+  // #1385 (slice 4): the Admin's own sections, declared as data the way an app declares its own.
+  // #80: the sidebar is Home Pages only; every table stays reachable through All tables below.
+  const modules: ShownSection = {
+    id: 'modules',
+    title: 'Modules',
+    tone: 'blue',
+    testid: 'sidebar-section-modules',
+    first: !account,
+    items: (homePages.data?.pages ?? []).map((p) => ({
+      label: p.label || p.row_id,
+      address: `/featherbase/admin/home/${encodeURIComponent(p.row_id)}`,
+      // The page's own emoji takes the icon's place; one with none shows its initials (#1248, #1253).
+      ...(p.icon && { glyph: p.icon }),
+      testid: `home-page-link-${p.row_id}`,
+      // #1242: the module of the Table open now is marked.
+      ...(p.row_id === openModulePage && { current: true }),
+    })),
+  }
+  // Under the Home Pages and the recents, headed like "Recently Opened". Visibility per item is unchanged.
+  const data: ShownSection = {
+    id: 'data',
+    title: sidebarWords('Data'),
+    tone: 'teal',
+    testid: 'sidebar-group-data',
+    items: [
+      { address: '/featherbase/admin/all-tables', label: 'All tables', icon: Table, testid: 'all-tables-link' },
+      // The owner's review (17-Nov): New table and Import data are two links here, not a "+ New" menu.
+      ...(canManage ? [
+        { address: '/featherbase/admin/new-table', label: 'New table', icon: Plus, testid: 'new-table-link' },
+        { address: '/featherbase/admin/import', label: 'Import data', icon: Upload, testid: 'import-data-link' },
+      ] : []),
+      // #629: everyone signed in reads the glossary.
+      { address: GLOSSARY_PATH, label: 'Glossary', icon: BookOpen, testid: 'glossary-link' },
+      // #206: an import is a thing you did, not just rows that appeared — so it has a place to be found again.
+      ...(canManage ? [{ address: '/featherbase/admin/imports', label: 'Past imports', icon: History, testid: 'past-imports-link' }] : []),
+    ].map((item) => ({ ...item, label: sidebarWords(item.label) })),
+  }
+
   return (
     <>
     <div className="flex h-full flex-col bg-canvas">
@@ -230,44 +258,10 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
               grouping and curation moved there, nothing is hidden. */}
           {/* The sidebar scrolls as ONE column: the Home Pages keep their full
               height whatever sits below them. */}
-          <nav className={`shrink-0 px-2 ${rail ? 'py-1' : 'pt-1'}`} data-testid="home-page-nav" aria-label="Modules">
-            {/* #1242 (admin-lists 8): headed and drawn like every other group. */}
-            {rail ? <RailRule heading="Modules" /> : (
-            <h2 className={SIDEBAR_HEADING} data-testid="sidebar-group-heading">Modules</h2>
-            )}
-            {homePages.isLoading && (
-              <p className="px-2 py-1 text-xs text-ink-subtle">Loading…</p>
-            )}
-            {(homePages.data?.pages ?? []).map((p) => {
-              const marked = p.row_id === openModulePage
-              const label = p.label || p.row_id
-              // #1248: a module with no emoji of its own shows its initials in the rail.
-              const mark = p.icon ? undefined : railMark(label)
-              return (
-                <Link
-                  key={p.row_id}
-                  to="/featherbase/admin/home/$name"
-                  params={{ name: p.row_id }}
-                  data-testid={`home-page-link-${p.row_id}`}
-                  data-rail-mark={mark}
-                  aria-current={marked ? 'page' : undefined}
-                  className={`${rail ? RAIL_ROW : touchRowClasses('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm')}${marked ? ` ${SIDEBAR_ROW_SELECTED}` : ''}`}
-                  inactiveProps={{ className: marked ? '' : SIDEBAR_ROW_IDLE }}
-                  activeProps={{ className: SIDEBAR_ROW_SELECTED, 'aria-current': 'page' }}
-                >
-                  {/* The page's own emoji takes the icon's place, unread. */}
-                  {/* #1253: a module with no emoji shows its initials, tinted in the group's hue. */}
-                  {rail
-                    ? (p.icon
-                        ? <span aria-hidden className="text-base leading-none">{p.icon}</span>
-                        : <span aria-hidden data-testid="rail-mark" className={`grid h-[26px] w-[26px] place-items-center rounded-[7px] bg-current/15 text-xs font-bold leading-none ${GROUP_TONE.blue}`}>{mark}</span>)
-                    : p.icon
-                      ? <span aria-hidden data-testid="sidebar-item-icon" className={`flex w-5 shrink-0 justify-center text-sm leading-none ${GROUP_TONE.blue}`}>{p.icon}</span>
-                      : <span aria-hidden data-testid="sidebar-item-icon" className={`grid h-5 w-5 shrink-0 place-items-center rounded-md bg-current/15 text-xs font-bold leading-none ${GROUP_TONE.blue}`}>{railMark(label)}</span>}
-                  <span className={rail ? 'sr-only' : 'min-w-0 flex-1 truncate'}>{label}</span>
-                </Link>
-              )
-            })}
+          {/* #1385 (slice 4): Modules is the Admin's declared section, drawn as every app's sections are. */}
+          <nav className="shrink-0" data-testid="home-page-nav" aria-label="Modules">
+            <SidebarSections links="router" sections={[modules]} />
+            {homePages.isLoading && <p className="px-4 py-1 text-xs text-ink-subtle">Loading…</p>}
           </nav>
           {/* #101 Phase 2: recall without a keystroke — the same per-user
               buffer the command bar reads. */}
@@ -277,24 +271,8 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
           {/* Two labelled groups under the Home Pages and the recents, headed
               like "Recently opened". Visibility per item is unchanged; a group
               with nothing visible for this person drops its heading too. */}
-          <SidebarGroup
-            heading="Data"
-            tone="teal"
-            testid="sidebar-group-data"
-            items={[
-              { to: '/featherbase/admin/all-tables', label: 'All tables', icon: Table, testid: 'all-tables-link' },
-              // The owner's review (17-Nov): New table and Import data are two links here, not a "+ New" menu.
-              ...(canManage ? [
-                { to: '/featherbase/admin/new-table', label: 'New table', icon: Plus, testid: 'new-table-link' },
-                { to: '/featherbase/admin/import', search: { table: undefined }, label: 'Import data', icon: Upload, testid: 'import-data-link' },
-              ] : []),
-              // #629: everyone signed in reads the glossary.
-              { to: GLOSSARY_PATH, label: 'Glossary', icon: BookOpen, testid: 'glossary-link' },
-              // #206: an import is a thing you did, not just rows that appeared —
-              // so it has a place to be found again.
-              ...(canManage ? [{ to: '/featherbase/admin/imports', label: 'Past imports', icon: History, testid: 'past-imports-link' }] : []),
-            ]}
-          />
+          {/* #1385 (slice 4): Data is the Admin's declared section too. */}
+          <SidebarSections links="router" sections={[data]} />
           {/* #772: each data source and the databases it reads; System Managers only. */}
           {canManage && <DataSourcesSidebar />}
           <SidebarGroup
@@ -356,10 +334,6 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
   )
 }
 
-/** A sidebar row's colours (#1253, Quiet Canvas): the open page is a white tile
- *  with a soft shadow on the grey canvas; a hover is a soft grey fill. */
-const SIDEBAR_ROW_IDLE = ROW_IDLE
-const SIDEBAR_ROW_SELECTED = ROW_SELECTED
 /** #1253: the page is one white panel on the canvas, set off by a soft shadow,
  *  8px from the window's edges; a phone shows it edge to edge. #1348: radius 14,
  *  padding 24/28, and a 16px gutter on a phone. */
@@ -367,16 +341,15 @@ export const PAGE_PANEL = 'min-w-0 flex-1 overflow-auto bg-surface p-4 sm:px-7 s
 
 interface SidebarItem {
   to: string
-  search?: Record<string, undefined>
   label: string
   icon: LucideIcon
   testid: string
   badge?: React.ReactNode
 }
 
-/** A labelled group of sidebar links: a muted sentence-case heading with a
- *  small icon (a heading, not a link), then each link with its grey icon.
- *  Renders nothing — heading included — when no item is visible. */
+/** A labelled group of sidebar links: a muted Title Case heading (a heading, not a link), then each link with
+ *  its icon in the group's hue. #1385 (slice 4): a declared section, drawn as an app's are. Renders nothing,
+ *  heading included, when no item is visible. */
 export function SidebarGroup({ heading, testid, items, first = false, tone = 'slate' }: {
   heading: string
   testid: string
@@ -386,33 +359,14 @@ export function SidebarGroup({ heading, testid, items, first = false, tone = 'sl
   /** The sidebar's first group: no rule above it. */
   first?: boolean
 }) {
-  const rail = useSidebarRail()
-  if (items.length === 0) return null
-  const base = rail ? RAIL_ROW : touchRowClasses('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm')
   return (
-    <div className={rail ? 'px-2 py-1' : `px-2 ${first ? 'pt-1' : 'pt-3'}`} data-testid={testid}>
-      {rail ? (!first && <RailRule heading={sidebarWords(heading)} />) : (
-      <h2 className={SIDEBAR_HEADING} data-testid="sidebar-group-heading">{sidebarWords(heading)}</h2>
-      )}
-      {items.map(({ to, search, label, icon: Icon, testid: id, badge }) => (
-        <Link
-          key={id}
-          to={to}
-          search={search as never}
-          data-testid={id}
-          // TanStack adds activeProps to className rather than replacing it, so
-          // the unselected colours live in inactiveProps: never both at once.
-          className={base}
-          inactiveProps={{ className: SIDEBAR_ROW_IDLE }}
-          activeProps={{ className: SIDEBAR_ROW_SELECTED, 'aria-current': 'page' }}
-        >
-          <Icon aria-hidden size={rail ? 18 : 14} className={`shrink-0 ${GROUP_TONE[tone]}`} data-testid="sidebar-item-icon" />
-          <span className={rail ? 'sr-only' : 'min-w-0 flex-1 truncate'}>{sidebarWords(label)}</span>
-          {/* #1248: in the rail a count that asks for action is a badge on the icon. */}
-          {badge && <span data-sidebar-count className={rail ? 'absolute -right-1.5 -top-1.5 [&>*]:px-1 [&>*]:py-0 [&>*]:text-xs' : 'contents'}>{badge}</span>}
-        </Link>
-      ))}
-    </div>
+    <SidebarSections
+      links="router"
+      sections={[{
+        id: testid, title: sidebarWords(heading), tone, testid, first,
+        items: items.map(({ to, label, icon, testid: id, badge }) => ({ address: to, label: sidebarWords(label), icon, testid: id, badge })),
+      }]}
+    />
   )
 }
 

@@ -1,7 +1,7 @@
 // #1235 item 7 / what-you-can-see 1 (UI standard §4): the account pages open in a
 // frame with the shared sidebar, an "Account" group (Sign-In Methods, Connected Apps
 // (#1207), What You Can See) at its top, and the page at the shared x (32px from the
-// sidebar, left-aligned, at most 880px wide; standard X1).
+// sidebar, left-aligned; #1385: filling the space after the sidebar, uncapped).
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
@@ -51,11 +51,11 @@ test('someone without Admin reads the account pages beside a sidebar of their ow
   expect(within(account).getByRole('link', { name: 'What You Can See' })).toHaveAttribute('aria-current', 'page')
 })
 
-test('the account page starts at the shared x (28px), left-aligned, at most 880px wide', async ({ createUser }) => {
+test('the account page starts at the shared x (28px), left-aligned, and fills the space after the sidebar (#1385)', async ({ createUser }) => {
   const me = await createUser({ roles: [] })
   await renderApp('/featherbase/account/sign-in-methods', me)
   const content = await screen.findByTestId('account-content', {}, WAIT)
-  expect(content.className).toContain('max-w-[880px]')
+  expect(content.className).not.toMatch(/max-w-/)
   expect(content.className).not.toContain('mx-auto')
   // #1348 board 2: the shared x is 28px from the panel's edge, with 24px above.
   expect(content.closest('main')!.className).toContain('sm:px-7')

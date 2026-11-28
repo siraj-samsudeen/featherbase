@@ -10,7 +10,7 @@ const pages: Root[] = []
 
 export function trackRoot(root: Root, container: Parameters<typeof createRoot>[0]): Root {
   // The shared bar (src/bar) mounts itself the same way, inside its host's shadow root.
-  if (container instanceof Element && (container.id === 'root' || container.getAttribute('data-testid') === 'bar-theme-root')) pages.push(root)
+  if (container instanceof Element && (container.id === 'root' || container.getAttribute('data-testid') === 'bar-theme-root' || container.getAttribute('data-testid') === 'app-sidebar-rows')) pages.push(root)
   return root
 }
 

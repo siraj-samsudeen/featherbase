@@ -113,6 +113,8 @@ export function useSidebar(user: string | undefined) {
 export interface SidebarSlots {
   top: HTMLElement
   foot: HTMLElement
+  /** #1385 (slice 4): where the platform draws an app's declared sections. */
+  sections?: HTMLElement
   /** #1385 (slice 2): below an app's own rows, where the platform draws its
    *  defaults (Recently Opened, Frequent, Saved Views). The Admin's sidebar
    *  draws its own, among its groups, so it offers none. */

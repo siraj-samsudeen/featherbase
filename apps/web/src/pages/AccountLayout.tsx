@@ -1,9 +1,10 @@
 import { Outlet } from '@tanstack/react-router'
 import { PagePickerSlot, TopBar, useOnAppAddress } from '../components/TopBar'
-import { useShellKind } from '../lib/session'
 import { AccountSidebarGroup, AdminShell, PAGE_PANEL } from './AdminLayout'
 import { SidebarAside } from '../components/SidebarAside'
 import { getSessionUser } from '../lib/api'
+import { useCapabilities, useShellKind } from '../lib/session'
+import { SidebarRecall } from '../components/SidebarDefaults'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
 
 // #489 item 13: the person's own account pages, outside the Admin screens.
@@ -25,6 +26,7 @@ export function AccountLayout() {
 export function PersonFrame({ account = false }: { account?: boolean }) {
   const kind = useShellKind()
   const onAppAddress = useOnAppAddress()
+  const caps = useCapabilities()
   if (kind === 'admin' && onAppAddress === false) return <AdminShell fillHeight={false} account={account} />
   // The page waits for the frame: swapping frames under it would remount it.
   const deciding = kind === 'loading' || onAppAddress === undefined
@@ -32,14 +34,18 @@ export function PersonFrame({ account = false }: { account?: boolean }) {
     <div className="flex h-screen flex-col bg-canvas" data-testid="account-layout">
       <TopBar forPerson />
       {/* #1235 item 7: the shared sidebar with the Account group, and the page at
-          the shared x (32px from the sidebar, left-aligned, at most 880px). */}
+          the shared x (32px from the sidebar, left-aligned). #1385: the page fills the
+          space after the sidebar, as every page does, with no cap of its own. */}
       <div className="relative flex min-h-0 flex-1">
         <SidebarAside testid="account-sidebar" user={getSessionUser()?.row_id}>
           {account && <AccountSidebarGroup />}
+          {/* #1385 (settled): the account pages show Recently Opened too. It lists Admin
+              destinations, so only for someone who can use the Admin, as everywhere. */}
+          {caps?.admin && <SidebarRecall />}
         </SidebarAside>
         <main className={PAGE_PANEL} data-testid="page-panel">
           <PagePickerSlot />
-          <div className="max-w-[880px]" data-testid="account-content">
+          <div data-testid="account-content">
             {!deciding && <Outlet />}
           </div>
         </main>

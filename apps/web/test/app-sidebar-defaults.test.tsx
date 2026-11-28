@@ -17,6 +17,7 @@ import { mountBar } from '../src/bar/mount'
 import { FeatherbaseSidebar } from '../src/bar/sidebar'
 import { test, expect, renderApp } from './pg-test'
 import { bridgeRealtime } from './realtime-bridge'
+import { setSidebarRows } from '@featherbase/shop-floor/sidebar'
 
 if (!customElements.get('featherbase-sidebar')) customElements.define('featherbase-sidebar', FeatherbaseSidebar)
 
@@ -60,7 +61,7 @@ function openAppPage(as: TestClient, leave: (href: string) => void = () => {}) {
   mounted = mountBar(host, { leave })
   const sidebar = document.createElement('featherbase-sidebar')
   sidebar.setAttribute('aria-label', 'Bar proof views')
-  sidebar.innerHTML = '<a href="/barproof/" aria-current="page">Notes</a>'
+  setSidebarRows({ sections: [{ id: 'notes', items: [{ label: 'Notes', address: '/barproof/', icon: 'list' }] }] })
   document.body.append(sidebar)
   return { sidebar, inside: within(sidebar.shadowRoot as unknown as HTMLElement) }
 }
@@ -102,8 +103,9 @@ test("an app's sidebar lists a Table the person opened under Recently Opened, be
   const recents = await inside.findByTestId('sidebar-recents', {}, WAIT)
   expect(within(recents).getByTestId('sidebar-recents-heading')).toHaveTextContent('Recently Opened')
   expect(await within(recents).findByRole('link', { name: /Person/ }, WAIT)).toHaveAttribute('href', tableHref('Person'))
-  // The platform's groups follow the app's own rows (its <slot>).
-  const rows = (recents.getRootNode() as ShadowRoot).querySelector('slot')!
+  // The platform's groups follow the app's own rows.
+  const rows = await inside.findByRole('link', { name: 'Notes' }, WAIT)
+  expect(rows).toHaveAttribute('aria-current', 'page')
   expect(rows.compareDocumentPosition(recents) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 })
 

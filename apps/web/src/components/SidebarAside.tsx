@@ -4,7 +4,6 @@ import { APP_ACCENT_ATTRIBUTE } from '@featherbase/shop-floor/theme'
 import { RAIL_ROW, ROW_IDLE, SidebarRailContext } from './SidebarRail'
 import { attachRailTips } from '../lib/sidebar-rail'
 import { SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, offerSidebarSlots, useRegisterSidebar, useSidebar } from '../lib/sidebar-collapsed'
-import { attachAppRows } from '../bar/app-rows'
 
 /** #1385 (slice 3): the frame drawn for an app, inside `<featherbase-sidebar>`'s
  *  shadow root (bar/sidebar.tsx). The element is the frame's box on the app's
@@ -29,11 +28,17 @@ export interface AppFrame {
  * between them scroll, so the menus that open from the top and foot are never
  * clipped.
  *
- * In an app (`app`) the links are the app's own rows, projected through the
- * children's `<slot>`, then the platform's defaults (#1385, slice 2); the
- * element's stylesheet places the frame on the app's page (bar/sidebar.tsx).
+ * In an app (`app`) the links are the app's declared sections (#1385, slice 4),
+ * then the platform's defaults (slice 2), both drawn into slots by the shared
+ * bar; the element's stylesheet places the frame on the app's page
+ * (bar/sidebar.tsx).
  */
-export function SidebarAside({ testid, user, app, children }: { testid: string; user: string | undefined; app?: AppFrame; children: ReactNode }) {
+
+/** The row a tooltip names: a link or button of the sidebar, not one in an open menu (the switcher's, the account's). */
+const rowOfTarget = (target: EventTarget | null) =>
+  (target instanceof Element && !target.closest('[role="menu"]') ? target.closest<HTMLElement>('a, button') : null) ?? null
+
+export function SidebarAside({ testid, user, app, children }: { testid: string; user: string | undefined; app?: AppFrame; children?: ReactNode }) {
   useRegisterSidebar(user)
   const { collapsed: choice, drawerOpen, setDrawerOpen, toggleCollapsed } = useSidebar(user)
   const isDrawer = useMediaQuery(SIDEBAR_DRAWER_QUERY)
@@ -47,29 +52,17 @@ export function SidebarAside({ testid, user, app, children }: { testid: string; 
   const layer = useRef<HTMLDivElement>(null)
   const railRef = useRef(collapsed)
   railRef.current = collapsed
-  const rows = useRef<ReturnType<typeof attachAppRows>>(undefined)
+  const sections = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     if (!app) return
-    // An app's rows are its light-DOM children: their rail marks, fold menus and
-    // tooltips are worked on the element, the tooltips drawn in its shadow root.
-    const appRows = attachAppRows(app.host, layer.current!)
-    rows.current = appRows
-    const untips = attachRailTips({ root: app.host, layer: layer.current!, active: () => railRef.current, rowOf: appRows.rowOf })
-    return () => {
-      untips()
-      appRows.detach()
-    }
+    // An app's rows are the platform's own, drawn in the element's shadow root: their tooltips are worked on the
+    // element (events from the shadow reach it) and drawn in its shadow root.
+    return attachRailTips({ root: app.host, layer: layer.current!, active: () => railRef.current, rowOf: rowOfTarget })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps -- an element keeps its frame for life
   useEffect(() => {
     if (app) return
     // The aside is always drawn by the time this runs.
-    const root = aside.current!
-    return attachRailTips({
-      root, layer: document.body,
-      active: () => railRef.current,
-      // A row of an open menu (the switcher's, the account's) needs no tooltip.
-      rowOf: (target) => (target instanceof Element && !target.closest('[role="menu"]') ? target.closest<HTMLElement>('a, button') : null) ?? null,
-    })
+    return attachRailTips({ root: aside.current!, layer: document.body, active: () => railRef.current, rowOf: rowOfTarget })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps -- as above
   useLayoutEffect(() => {
     if (!app) return
@@ -79,10 +72,9 @@ export function SidebarAside({ testid, user, app, children }: { testid: string; 
     app.host.inert = shut
     if (shut) app.host.setAttribute('aria-hidden', 'true')
     else app.host.removeAttribute('aria-hidden')
-    rows.current!.setRail(collapsed)
   })
   // Offered before the first paint, so the page never shows a top bar first.
-  useLayoutEffect(() => offerSidebarSlots({ top: top.current!, foot: foot.current!, ...(app ? { defaults: defaults.current! } : {}) }), []) // eslint-disable-line react-hooks/exhaustive-deps -- as above
+  useLayoutEffect(() => offerSidebarSlots({ top: top.current!, foot: foot.current!, ...(app ? { sections: sections.current!, defaults: defaults.current! } : {}) }), []) // eslint-disable-line react-hooks/exhaustive-deps -- as above
   const words = collapsed ? 'Expand sidebar' : 'Collapse sidebar'
   const Frame = app ? 'div' : 'aside'
   const edge = (
@@ -123,7 +115,9 @@ export function SidebarAside({ testid, user, app, children }: { testid: string; 
         <div ref={top} className="shrink-0" data-testid="sidebar-slot-top" />
         <div className={`min-h-0 flex-1 overflow-y-auto${collapsed ? ' md:overflow-x-hidden' : ''}${app ? ' flex flex-col px-2 py-1' : ''}`} data-testid="sidebar-links">
           {children}
-          {/* #1385 (slice 2): in an app, the platform's defaults follow the app's own rows. */}
+          {/* #1385 (slice 4): in an app, the app's declared sections, drawn by the shared bar (TopBar); then
+              (slice 2) the platform's defaults. */}
+          {app && <div ref={sections} className="-mx-2 shrink-0" data-testid="sidebar-slot-sections" />}
           {app && <div ref={defaults} className="sidebar-defaults -mx-2 shrink-0" data-testid="sidebar-slot-defaults" />}
         </div>
         <div className="shrink-0 p-2">

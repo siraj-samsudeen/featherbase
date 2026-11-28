@@ -12,13 +12,14 @@ import { setSession } from '../src/lib/api'
 import { mountBar } from '../src/bar/mount'
 import { FeatherbaseSidebar } from '../src/bar/sidebar'
 import { test, expect } from './pg-test'
+import { setSidebarRows } from '@featherbase/shop-floor/sidebar'
 
 if (!customElements.get('featherbase-sidebar')) customElements.define('featherbase-sidebar', FeatherbaseSidebar)
 
-/** Each app's sidebar as the app draws it: its name, label and first two rows. */
+/** Each app's sidebar as the app gives it (#1385: rows as data): its name, label and first two rows. */
 const APPS = [
-  { app: 'dash', title: 'Dash', label: 'Dash navigation', rows: ['Sales vs target', 'Your sections'] },
-  { app: 'tickets', title: 'Tickets', label: 'Ticket views', rows: ['Open', 'Waiting on me'] },
+  { app: 'dash', title: 'Dash', label: 'Dash navigation', rows: ['Sales Vs Target', 'Your Sections'] },
+  { app: 'tickets', title: 'Tickets', label: 'Ticket views', rows: ['Open', 'Waiting On Me'] },
   { app: 'tasker', title: 'Tasker', label: 'Task views', rows: ['Today', 'Upcoming'] },
   { app: 'equipment', title: 'Assets', label: 'Assets pages', rows: ['Assets', 'Jobs'] },
 ]
@@ -46,12 +47,7 @@ function openAppPage(as: TestClient, { app, title, label, rows }: (typeof APPS)[
   if (withSidebar) {
     const sidebar = document.createElement('featherbase-sidebar')
     sidebar.setAttribute('aria-label', label)
-    for (const row of rows) {
-      const link = document.createElement('a')
-      link.href = `#${row}`
-      link.textContent = row
-      sidebar.append(link)
-    }
+    setSidebarRows({ sections: [{ id: 'pages', items: rows.map((row) => ({ label: row, address: `#${row.replace(/ /g, '-')}`, icon: 'list' as const })) }] })
     shell.append(sidebar)
   }
   const search = document.createElement('input')
@@ -101,7 +97,7 @@ describe.each(APPS)("$title's sidebar", (page) => {
     await signedIn()
     expect(fireEvent.keyDown(document.body, { key: 'b', ctrlKey: true })).toBe(false)
     expect(collapsed()).toBe(true)
-    expect(fireEvent.keyDown(sidebar().querySelector('a')!, { key: 'b', metaKey: true })).toBe(false)
+    expect(fireEvent.keyDown(await within(sidebar().shadowRoot as unknown as HTMLElement).findByRole('link', { name: page.rows[0] }), { key: 'b', metaKey: true })).toBe(false)
     expect(collapsed()).toBe(false)
   })
 
@@ -166,7 +162,7 @@ describe('at phone width', () => {
     const { bar } = openAppPage(admin, APPS[2])
     const menu = await bar.findByTestId('sidebar-toggle')
     await userEvent.click(menu)
-    await userEvent.click(within(sidebar()).getByText('Upcoming'))
+    await userEvent.click(await within(sidebar().shadowRoot as unknown as HTMLElement).findByRole('link', { name: 'Upcoming' }))
     await waitFor(() => expect(sidebar().hasAttribute('data-open')).toBe(false))
 
     await userEvent.click(menu)

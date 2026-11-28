@@ -25,6 +25,7 @@ import { useCurrentPageTitle } from '../lib/page-title'
 import { CommandField, CommandPalette } from './CommandPalette'
 import { NotificationBell, SidebarRecall, SidebarSavedViews } from './SidebarDefaults'
 import { SidebarRailContext } from './SidebarRail'
+import { AppSidebarSections } from './AppSidebarSections'
 
 // #489 (design D3, "One top bar on every address"): one bar, drawn by the
 // platform, on every address and every shell — the Admin screens, an app's
@@ -276,8 +277,17 @@ export function TopBar({
           </div>,
           slots.top,
         )}
+        {/* #1385 (slice 4): an app's own sections, which it declares as data and never draws. */}
+        {caps && app && slots.sections && createPortal(
+          <SidebarRailContext.Provider value={rail}>
+            <AppSidebarSections app={app.name} />
+          </SidebarRailContext.Provider>,
+          slots.sections,
+        )}
         {/* #1385 (slice 2): below an app's own rows, the platform's recall, as in the Admin.
-            They list Admin destinations: only someone who can use the Admin gets them. */}
+            They list Admin destinations: only someone who can use the Admin gets them.
+            Settled on #1385: an app may not hide Recently Opened, Frequent or Saved Views; to let it,
+            gate these two on a `hide` list in the app's sidebar declaration, here. */}
         {canUseAdmin && slots.defaults && createPortal(
           <SidebarRailContext.Provider value={rail}>
             <SidebarRecall />

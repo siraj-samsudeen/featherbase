@@ -51,7 +51,7 @@ test('the sidebar shows a Home Page with its icon, and one stored with no label 
 test('the Home Pages are headed like every other sidebar group', async ({ admin }) => {
   await renderApp('/featherbase/admin/home/system', admin)
   const nav = await screen.findByTestId('home-page-nav', {}, WAIT)
-  expect(within(nav).getByTestId('sidebar-group-heading')).toHaveTextContent(/^Modules$/)
+  expect(await within(nav).findByTestId('sidebar-group-heading', {}, WAIT)).toHaveTextContent(/^Modules$/)
   expect(within(nav).getByTestId('sidebar-group-heading').tagName).toBe('H2')
 })
 
