@@ -121,6 +121,8 @@ describe('a day explanation (#1425)', () => {
     // the Run's lines, as the read-only copy holds them: no section (that comes live from the org chart)
     { run_id: 'r', store_code: '9001', store_short_code: 'North', subcategory_code: 'C1', subcategory_name: 'Kids Jean' },
     { run_id: 'r', store_code: '9001', store_short_code: 'North', subcategory_code: 'C3', subcategory_name: 'Kids Shirt' },
+    // a line the Run merged from several codes: it has none
+    { run_id: 'r', store_code: '9001', store_short_code: 'North', subcategory_code: null, subcategory_name: 'Kids Mixed' },
   ]
   const IDS: Record<string, string> = { u_tara: 'Tara', u_omar: 'Omar' }
   // the live org chart (#1428): Kids Jean (C1) sits in Kids, whose Team Leader is Tara; Kids Shirt (C3) in Tops
@@ -138,9 +140,9 @@ describe('a day explanation (#1425)', () => {
     const rows: Record<string, unknown>[] = table === 'forecasting.reach' ? REACH : table === 'forecasting.run_line' ? [{ row_id: 'x' }] : table === 'forecasting.forecast_line_month' ? LINES : []
     return rows.filter(r => (args.filters ?? []).every(([c, , v]) => r[c] === v))
   }
-  function call(user: string, row: Record<string, unknown>, old?: Record<string, unknown>) {
+  function call(user: string, row: Record<string, unknown>, old?: Record<string, unknown>, base: Context['baseTables'] | null = baseTables) {
     const ctx: Context = { user, roles: user === 'Administrator' ? ['System Manager'] : ['Forecasting Member'], isNew: !old, row, old,
-      documents: { members: async () => Object.entries(IDS).map(([row_id, full_name]) => ({ row_id, full_name })), list }, baseTables,
+      documents: { members: async () => Object.entries(IDS).map(([row_id, full_name]) => ({ row_id, full_name })), list }, baseTables: base ?? undefined,
       reject(message: string): never { throw new Error(message) } }
     return validators['forecasting.day_explanation'](ctx).then(() => row)
   }
@@ -159,6 +161,11 @@ describe('a day explanation (#1425)', () => {
   it("refuses another section's day, or a subcategory of another section, in the same store: the live org chart (#1428)", async () => {
     await expect(call('u_tara', { ...day, section_name: 'Tops' })).rejects.toThrow(/outside it/)
     await expect(call('u_tara', { ...day, subcategory_name: 'Kids Shirt' })).rejects.toThrow(/outside it/)
+  })
+  it("files a subcategory's day under its section today, whatever the page sent; refuses a merged line, and refuses without the org chart on a real instance", async () => {
+    await expect(call('u_tara', { ...day, subcategory_name: 'Kids Jean', section_name: 'Tops' })).resolves.toMatchObject({ section_name: 'Kids' })
+    await expect(call('u_tara', { ...day, subcategory_name: 'Kids Mixed' })).rejects.toThrow(/outside it/)
+    await expect(call('u_tara', day, undefined, null)).rejects.toThrow(/outside it/)
   })
   it('lets an administrator explain as the Team Leader, and keeps an edit to its writer', async () => {
     await expect(call('Administrator', { ...day, explained_by: 'Anisha' })).resolves.toMatchObject({ explained_by_role: 'Team Leader' })
