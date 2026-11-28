@@ -311,7 +311,7 @@ function copiedFromWarehouse(ctx: Context) {
   if (!ctx.isNew) ctx.reject('This is a copy of the official Run from the warehouse; it is read only. Ask for a change with a forecast change instead.')
   if (!isAdmin(ctx)) ctx.reject('Only the copy of the official Run adds rows here')
 }
-const COPIES = ['forecast_run', 'forecast_line_month', 'sales_reference', 'annual_plan_line', 'other_model_line']
+const COPIES = ['forecast_run', 'forecast_line_month', 'sales_reference', 'annual_plan_line', 'other_model_line', 'price_band_mix', 'stock_band', 'price_band_top_item', 'item_health', 'merchandise_people', 'item_other_stores']
 
 export const platformVersion = '2026-10'
 export const validators = { 'forecasting.number': prepareNumber, 'forecasting.decision': prepareDecision, 'forecasting.explanation': prepareExplanation,

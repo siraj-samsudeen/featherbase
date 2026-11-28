@@ -60,7 +60,9 @@ export interface ReviewActions {
 }
 
 /** Who the screen is for and what it covers (TL-4). */
-export interface Header { store: string; section: string; person: string; role: string; cutOff: string; month: { name: string; label: string; days: number; year: number } }
+export interface Header { store: string; section: string; person: string; role: string; cutOff: string; month: { name: string; label: string; days: number; year: number }
+  /** The day the price bands' stock was counted (YYYY-MM-DD); none when the Run has no bands. */
+  stockAsOf?: string | null }
 
 /** TL-30's reasons, in the agreed order, with their change_reason codes; the data model's day-only and month-only
  *  reasons show only for that kind of change. */

@@ -3,7 +3,9 @@
 // movers says (TL-24). Every sentence is the agreed prototype's.
 import { useState } from 'react'
 import { Chip, ChoiceChip } from '@featherbase/shop-floor'
-import { BASE_INFO, PARTS, baseWeight, count, decemberRise, inr, pc, pct0, prevMonth, signedShare, times, weightOf, type Group, type HelpTopic, type Line } from './model'
+import { BASE_INFO, count, decemberRise, inr, pc, times, type BasisCode, type Group, type HelpTopic, type Line } from './model'
+import { explain, shareText, weightText, weightUsed, weightsOf, type ExplainRow } from './explanation'
+import { Hover } from './Hover'
 import type { Header } from './review'
 
 export type Item = Line | Group
@@ -15,55 +17,54 @@ export function HelpMark({ topic, onHelp }: { topic: HelpTopic; onHelp: (t: Help
 }
 
 export function BuildUp({ l, month, storeStep, onHelp }: { l: Item; month: Header['month']; storeStep: number; onHelp: (t: HelpTopic) => void }) {
-  const [six, setSix] = useState(false)
-  // recent selling as Feather Forecast counts it: the engine's own B3 base (the last 28 days per day × the month's
-  // days); a Run without it falls back to the sales of the last 28 days, marked ≈
-  const b3 = l.bases.find(b => b.code === 'B3'), exactRecent = b3?.own != null
-  const st = l.step ?? storeStep, own = exactRecent ? b3!.own! : l.l28 / 28 * month.days
-  const lyOwn = l.bases.find(b => b.code === 'B1')?.own ?? 0
-  const wRec = weightOf(l, ['B3', 'B4', 'B5', 'B6']), wStep = weightOf(l, ['B6']), wLy = weightOf(l, ['B1', 'B2'])
-  const share = (v: number) => signedShare(v, l.fc)
-  const [recent, step, lastYear, adjust] = PARTS
-  const part = (p: typeof recent, from: string, ownText: string, w: number | null, adds: number) => (
-    <tr key={p.key}>
-      <td><span className="fr-part"><span className="fr-swatch" style={{ background: p.color }} />{p.label}<HelpMark topic={p.topic} onHelp={onHelp} /></span><div className="fr-from">{from}</div></td>
-      <td>{ownText}</td><td>{pct0(w)}</td><td className="fr-fc">{inr(adds)}</td><td>{share(adds)}</td>
+  // one table that can be checked by hand (Siraj, 28-Nov): its own value × weight used = adds, the adds summing to
+  // Feather Forecast exactly and the shares to exactly 100% (explanation.ts)
+  const st = l.step ?? storeStep, e = explain(l.bases, l.rebal, l.price, l.fc)
+  const rupees = (v: number) => `${v < 0 ? '−' : ''}₹${count(Math.abs(Math.round(v)))}`
+  const name: Record<BasisCode, string> = { ...BASE_INFO, B3: `Last 28 days, per day × ${month.days}`, B6: `Last 28 days × ${month.name} step${isGroup(l) ? '' : ` (×${st})`}`,
+    B1: `Same date last year × growth${isGroup(l) ? '' : ` (×${l.growth})`}` }
+  const weight = (r: ExplainRow) => {
+    const w = weightUsed(r)
+    if (w == null) return '—'
+    return r.fitted == null ? weightText(w)
+      : <Hover text={`Feather Forecast's fitted weight for the month: ${(r.fitted * 100).toFixed(1)}%; day weights differ on Sundays, salary days and Christmas`}><span className="fr-wtip">{weightText(w)}</span></Hover>
+  }
+  const baseRow = (r: ExplainRow) => (
+    <tr key={r.code} className="fr-brow">
+      <td><b>{r.code}</b> {name[r.code!]}{r.code === 'B6' && <HelpMark topic="step" onHelp={onHelp} />}</td>
+      <td>{r.own == null ? '—' : rupees(r.own)}</td><td>{weight(r)}</td><td className="fr-fc">{rupees(r.adds)}</td><td>{shareText(r.share)}</td>
     </tr>)
-  // the steps after the blend, each only when it is not zero; a share under 0.5% reads 0%, never −0%
-  const after = (v: number, name: string, topic: HelpTopic, from: string) => v !== 0 && (
-    <tr key={topic}>
-      <td className="fr-dim"><span className="fr-part" style={{ fontWeight: 500 }}><span className="fr-swatch" style={{ background: adjust.color }} />{name}<HelpMark topic={topic} onHelp={onHelp} /></span>
-        <div className="fr-from">{from}</div></td>
-      <td /><td /><td className="fr-fc fr-dim">{inr(v)}</td><td className="fr-dim">{share(v)}</td>
+  const head = (color: string, label: string, topic: HelpTopic, from: string, rows: ExplainRow[]) => rows.length > 0 && (
+    <tr key={label} className="fr-grow">
+      <td><span className="fr-part"><span className="fr-swatch" style={{ background: color }} />{label}<HelpMark topic={topic} onHelp={onHelp} /></span><div className="fr-from">{from}</div></td>
+      <td /><td className="fr-dim">≈ {weightText(weightsOf(rows))}</td><td className="fr-fc">{rupees(rows.reduce((t, r) => t + r.adds, 0))}</td>
+      <td className="fr-fc">{shareText(rows.reduce((t, r) => t + r.share, 0))}</td>
     </tr>)
+  const after = (r: ExplainRow) => {
+    const rebal = r.kind === 'rebal'
+    return (
+      <tr key={r.kind} className="fr-grow">
+        <td className="fr-dim"><span className="fr-part" style={{ fontWeight: 500 }}><span className="fr-swatch" style={{ background: 'var(--color-part-adjust)' }} />
+          {rebal ? 'Rebalanced within category' : 'Price and rounding'}<HelpMark topic={rebal ? 'adjust' : 'adjust-price'} onHelp={onHelp} /></span>
+          <div className="fr-from">{rebal ? `Moved ${r.adds < 0 ? 'from' : 'to'} this subcategory so each slower-selling subcategory in ${isGroup(l) ? 'the category' : l.category} gets its share of the last 28 days' sales; the category total is unchanged`
+            : 'Recent selling price where it changed, and rounding to whole rupees'}</div></td>
+        <td /><td /><td className="fr-fc fr-dim">{rupees(r.adds)}</td><td className="fr-dim">{shareText(r.share)}</td>
+      </tr>)
+  }
   return <>
-    <h4>How Feather Forecast got {inr(l.fc)}</h4>
-    <table className="fr-mini fr-build">
-      <thead><tr><th>Part</th><th>Its own {month.name}</th><th>Weight</th><th>Adds</th><th>Share</th></tr></thead>
+    <h4>How Feather Forecast got {rupees(e.total)}</h4>
+    <table className="fr-mini fr-build fr-one">
+      <thead><tr><th>Part</th><th>Its own value</th><th>Weight used</th><th>Adds</th><th>Share</th></tr></thead>
       <tbody>
-        {part(recent, `Last 28 days ${inr(l.l28)} (${count(l.l28q)} pcs) = ${inr(l.l28 / 28)} a day; carried into ${month.name} at ${month.name}'s day pattern${exactRecent ? `: ${inr(own)}` : ''}`, `${exactRecent ? '' : '≈ '}${inr(own)}`, wRec, l.fromRecent)}
-        {part(step, wStep === 0 ? 'Not used for this subcategory.'
-          : `${month.name} usually sells ×${st} the late-${prevMonth(month.name)} rate here: ${Math.round((st - 1) * 100)}% more on the part of recent selling that gets the step${wStep == null ? '' : ` (${pct0(wStep)} of the ${pct0(wRec)})`}`,
-          wStep === 0 ? '' : `≈ ${inr(own * (st - 1))}`, null, l.lift)}
-        {part(lastYear, `Last ${month.name} ${inr(l.ly)} (${count(l.lyq)} pcs)${isGroup(l) ? " × each subcategory's growth" : ` × growth ${l.growth}`}`, inr(lyOwn), wLy, l.lyg)}
-        {after(l.rebal, 'Rebalanced within category', 'adjust',
-          `Moved ${l.rebal < 0 ? 'from' : 'to'} this subcategory so each slower-selling subcategory in ${isGroup(l) ? 'the category' : l.category} gets its share of the last 28 days' sales; the category total is unchanged`)}
-        {after(l.price, 'Price and rounding', 'adjust-price', 'Recent selling price where it changed, and rounding to whole rupees')}
-        {six && (
-          <tr><td colSpan={5} style={{ padding: 0, background: 'transparent' }}>
-            <table className="fr-mini fr-six">
-              <thead><tr><th>Base</th><th>Its own {month.name}</th><th>Weight</th><th>Adds</th></tr></thead>
-              <tbody>{l.bases.map(b => (
-                <tr key={b.code}><td><b>{b.code}</b> {BASE_INFO[b.code]}</td><td>{b.own == null ? '—' : inr(b.own)}</td><td>{pct0(baseWeight(b))}</td><td>{inr(b.adds)}</td></tr>))}</tbody>
-            </table>
-          </td></tr>)}
+        {head('var(--color-part-last-year)', 'From last year', 'lastyear', `Last ${month.name} ${inr(l.ly)} (${count(l.lyq)} pcs)${isGroup(l) ? " × each subcategory's growth" : ` × growth ${l.growth}`}`, e.lastYear)}
+        {e.lastYear.map(baseRow)}
+        {head('var(--color-part-recent)', 'From last month', 'recent', `Last 28 days ${inr(l.l28)} (${count(l.l28q)} pcs) = ${inr(l.l28 / 28)} a day; carried into ${month.name} at ${month.name}'s day pattern${isGroup(l) ? '' : `; B6 adds the ${month.name} step ×${st}`}`, e.lastMonth)}
+        {e.lastMonth.map(baseRow)}
+        {e.after.map(after)}
       </tbody>
-      <tfoot><tr><td>Feather Forecast</td><td /><td /><td>{inr(l.fc)}</td><td>100%</td></tr></tfoot>
+      <tfoot><tr><td>Feather Forecast</td><td /><td>≈ {weightText(weightsOf([...e.lastYear, ...e.lastMonth]))}</td><td>{rupees(e.total)}</td><td>100%</td></tr></tfoot>
     </table>
-    <div style={{ marginTop: 8 }}>
-      <button type="button" className="fr-link" onClick={e => { e.stopPropagation(); setSix(s => !s) }}>{six ? 'Hide' : 'Show'} the six bases</button>
-      <span className="fr-dim" style={{ fontSize: 12 }}> · Weight is the month’s blend. On Sundays, salary days and Christmas the day’s weights differ, so a base at 0% can still add a little</span>
-    </div>
+    <p className="fr-dim fr-build-note">Each row: its own value × weight used = adds. Weights come to about 100%, not exactly: the blend shifts slightly on Sundays, salary days and Christmas. Adds and Share add up exactly. Hover a weight for Feather Forecast's fitted weight for the month.</p>
   </>
 }
 

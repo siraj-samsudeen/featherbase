@@ -4,6 +4,8 @@
 // (server.ts). The answer to a question is the newest Comment on it.
 import { getRow, listWhere, saveRow } from '../api'
 import { day, linesFrom, monthOfRun, type LineMonthRow, type OtherModelRow, type PlanRow, type RunRow, type SalesRow, type Line } from '../shared/model'
+import { ITEM_HEALTH_FIELDS, OTHER_STORE_FIELDS, PEOPLE_FIELDS, needsAttention, type Finding, type ItemHealthRow, type OtherStoreRow, type PeopleRow } from '../shared/findings'
+import { ITEM_FIELDS, MIX_FIELDS, STOCK_FIELDS, daysLeft, stockAsOf, type BandMixRow, type StockBandRow, type TopItemRow } from '../shared/bands'
 import type { Answer, Header, Proposal, Question, ReviewActions, ReviewState } from '../shared/review'
 
 export interface Viewer { name: string; role: string; place: string }
@@ -78,16 +80,41 @@ export async function loadSection(viewer: Viewer): Promise<Section | null> {
   if (!run) return null
   const mine = rows.filter(l => l.run_id === run.run_id), storeCode = mine[0].store_code, subs = mine.map(l => l.subcategory_name)
   const near = [['store_code', '=', storeCode], ['subcategory_name', 'in', subs]] as [string, string, unknown][]
-  const [sales, plans, others] = await Promise.all([
+  const ofRun = [...near, ['run_id', '=', run.run_id]] as [string, string, unknown][]
+  const [sales, plans, others, mix, stock, items] = await Promise.all([
     listWhere<SalesRow>('forecasting.sales_reference', ['store_code', 'subcategory_name', 'window_name', 'sales_value_before_tax', 'sales_qty'], near),
     listWhere<PlanRow>('forecasting.annual_plan_line', ['store_code', 'subcategory_name', 'plan_value_before_tax', 'plan_qty', 'calendar_year', 'calendar_month'],
       [...near, ['calendar_year', '=', Number(run.horizon_from.slice(0, 4))], ['calendar_month', '=', Number(run.horizon_from.slice(5, 7))]]),
     listWhere<OtherModelRow>('forecasting.other_model_line', ['model', 'store_code', 'subcategory_name', 'forecast_value_before_tax'], [...near, ['month_from', '=', run.horizon_from.slice(0, 10)]]),
+    // By Price Band: the split over this Run's 28 days, and today's stock
+    listWhere<BandMixRow>('forecasting.price_band_mix', MIX_FIELDS, ofRun),
+    listWhere<StockBandRow>('forecasting.stock_band', STOCK_FIELDS, near),
+    listWhere<TopItemRow>('forecasting.price_band_top_item', ITEM_FIELDS, ofRun),
   ])
-  const lines = linesFrom({ lines: mine, sales, plans, others }, storeCode)
-  const header: Header = { store: mine[0].store_name, section, person: viewer.name, role: viewer.role, cutOff: day(run.origin_date), month: monthOfRun(run.horizon_from) }
+  const lines = linesFrom({ lines: mine, sales, plans, others, bands: { mix, stock, items } }, storeCode)
+  const header: Header = { store: mine[0].store_name, section, person: viewer.name, role: viewer.role, cutOff: day(run.origin_date), month: monthOfRun(run.horizon_from), stockAsOf: stockAsOf(stock) }
   return { run, storeCode, header, lines, state: await loadState(run.run_id, storeCode, viewer.name) }
 }
+
+/** Needs Your Attention for a section: every item's health, who to ask, and the same items at the region's other
+ *  stores, read only for this page. None when the Run's copies carry no item health. */
+export async function loadFindings(section: Section): Promise<{ findings: Finding[]; othersAsOf: string | null; salesTo: string | null; stockAsOf: string | null } | null> {
+  const { storeCode, header, lines } = section
+  if (!header.stockAsOf) return null
+  // the items' 7/14/28 days end on the store's last complete day (refreshed each morning), not the Run's origin
+  const at = [['store_code', '=', storeCode], ['subcategory_name', 'in', lines.map(l => l.name)]] as [string, string, unknown][]
+  const [health, people, others] = await Promise.all([
+    listWhere<ItemHealthRow & { sales_as_of_date: string | null; stock_as_of: string | null }>('forecasting.item_health', [...ITEM_HEALTH_FIELDS, 'sales_as_of_date', 'stock_as_of'], at),
+    listWhere<PeopleRow>('forecasting.merchandise_people', PEOPLE_FIELDS, [['subcategory_name', 'in', lines.map(l => l.name)]]),
+    listWhere<OtherStoreRow & { stock_as_of: string | null }>('forecasting.item_other_stores', [...OTHER_STORE_FIELDS, 'stock_as_of'], at),
+  ])
+  if (!health.length) return null
+  const month = { name: header.month.name, days: header.month.days, left: daysLeft(header.stockAsOf, header.month) }
+  return { findings: needsAttention(lines, health, people, month, storeCode, others),
+    othersAsOf: newest(others.map(r => r.stock_as_of)), salesTo: newest(health.map(r => r.sales_as_of_date)), stockAsOf: newest(health.map(r => r.stock_as_of)) }
+}
+/** The newest of some dates, YYYY-MM-DD. */
+const newest = (dates: (string | null)[]) => dates.reduce<string | null>((a, d) => (d && (!a || d.slice(0, 10) > a) ? d.slice(0, 10) : a), null)
 
 /** The person's answers and questions on this Run at this store. */
 export async function loadState(runId: string, storeCode: string, person: string): Promise<ReviewState> {

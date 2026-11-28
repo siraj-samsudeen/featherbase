@@ -6,6 +6,7 @@ import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { paintTheme } from '@featherbase/shop-floor/theme'
 import fixture from '../../fixtures/team-leader-december.json'
+import { stockAsOf, type StockBandRow } from '../shared/bands'
 import { day, inr, linesFrom, monthOfRun, pc, shares, storeStepOf, times, type CopiedRows, type Line } from '../shared/model'
 import type { Answer, Header, Question, ReviewActions, ReviewState } from '../shared/review'
 import { TeamLeaderReview } from './TeamLeaderReview'
@@ -13,8 +14,10 @@ import '../style.css'
 
 paintTheme('light')
 const run = fixture.forecast_run[0]
-const lines = linesFrom({ lines: fixture.forecast_line_month, sales: fixture.sales_reference, plans: fixture.annual_plan_line, others: fixture.other_model_line } as unknown as CopiedRows, 'LKS')
-const header: Header = { store: 'Lakeside', section: 'Girls Bottoms', person: 'Asha', role: 'Team Leader', cutOff: day(run.origin_date), month: monthOfRun(run.horizon_from) }
+const lines = linesFrom({ lines: fixture.forecast_line_month, sales: fixture.sales_reference, plans: fixture.annual_plan_line, others: fixture.other_model_line,
+  bands: { mix: fixture.price_band_mix, stock: fixture.stock_band, items: fixture.price_band_top_item } } as unknown as CopiedRows, 'LKS')
+const header: Header = { store: 'Lakeside', section: 'Girls Bottoms', person: 'Asha', role: 'Team Leader', cutOff: day(run.origin_date), month: monthOfRun(run.horizon_from),
+  stockAsOf: stockAsOf(fixture.stock_band as unknown as StockBandRow[]) }
 
 /** What a Forecast Creator might answer, drawn from the line's own figures (the prototype's stand-in). */
 function reply(l: Line) {

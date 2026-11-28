@@ -22,6 +22,7 @@ import { loadRealChain, type Chain } from './shared/chainData'
 import { madeUpChain } from './shared/madeUpChain'
 import { RecordPagesProvider } from '@featherbase/shop-floor'
 import { UnassignedPage } from './unassigned/UnassignedPage'
+import { AttentionPage } from './attention/AttentionPage'
 import { StorePage } from './teamLeader/StorePage'
 
 export interface NumberRow {
@@ -54,6 +55,7 @@ export interface Ctx { data: Data; viewer: Person; month: Month; reload: () => P
 const VIEWS = [
   { key: 'sections', label: 'Sections', group: 'Forecasts', icon: 'M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1' },
   { key: 'section', label: 'My Section', group: 'Forecasts', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z' },
+  { key: 'attention', label: 'Needs Your Attention', group: 'Forecasts', icon: 'M12 9v4M12 17h.01M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z' },
   { key: 'unassigned', label: 'No Section', group: 'Forecasts', icon: 'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z' },
   { key: 'store-review', label: 'Store Manager Review', group: 'Forecasts', icon: 'M3 10 12 3l9 7v11H3zM9 21v-7h6v7' },
   { key: 'category-review', label: 'Category Review', group: 'Forecasts', icon: 'M3 3h18v18H3zM3 9h18M9 9v12' },
@@ -70,7 +72,7 @@ const VIEWS = [
 type View = typeof VIEWS[number]['key']
 
 /** The pages of the review, which follow the newest official Run, not the month picked for the older pages. */
-const RUN_VIEWS: string[] = ['sections', 'section', 'unassigned']
+const RUN_VIEWS: string[] = ['sections', 'section', 'attention', 'unassigned']
 
 export const address = (view: View, extra: Record<string, string> = {}) => {
   const q = new URLSearchParams(window.location.search)
@@ -115,13 +117,20 @@ function useMonth() {
 /** Waiting for this person: numbers whose next step is theirs. */
 export const waitingFor = (data: Data, viewer: Person) => data.numbers.filter(n => n.status === 'Waiting' && n.waiting_on === viewer.name)
 
+/** The section an administrator is looking at (?store&section&tl), which Needs Your Attention keeps: it is that section's. */
+const sectionInAddress = () => {
+  const q = new URLSearchParams(window.location.search), out: Record<string, string> = {}
+  for (const k of ['store', 'section', 'tl']) { const v = q.get(k); if (v) out[k] = v }
+  return out.store && out.section ? out : {}
+}
+
 function Sidebar({ current, waiting, news }: { current: View; waiting: number; news: number }) {
   const groups = ['Forecasts', 'Learning']
   return createElement('featherbase-sidebar', { 'aria-label': 'Forecasting navigation' },
     ...groups.flatMap(group => [
       <span key={group} className="fc-sidebar-group">{group}</span>,
       ...VIEWS.filter(v => v.group === group).map(v => (
-        <a key={v.key} href={address(v.key)} {...(current === v.key ? { 'aria-current': 'page' as const } : {})}>
+        <a key={v.key} href={v.key === 'attention' ? address(v.key, sectionInAddress()) : address(v.key)} {...(current === v.key ? { 'aria-current': 'page' as const } : {})}>
           <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d={v.icon} /></svg>
           <span data-testid={`nav-${v.key}`}>{v.label}{v.key === 'numbers' && waiting ? ` (${waiting})` : ''}{v.key === 'mine' && news ? ` (${news} new)` : ''}</span>
         </a>)),
@@ -292,18 +301,21 @@ export function ForecastingApp() {
       <main key={moves} className="fc-page" data-testid={`page-${view}`}>
         {offChart ? <Card><EmptyState title="You are not on the forecasting org chart" body={`${offChart} has no store, section or merchandise to review in this month's Run. If that is wrong, your job or merchandise assignment needs setting up in Featherbase.`} /></Card> : <>
         {/* My Section is the screen as agreed (#1419): no picker bar above it for the person it belongs to. */}
-        {!(view === 'section' || view === 'unassigned' || view === 'sections' || CHAIN_PAGES[view as ChainView]) && <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} signedIn={!!me} />}
+        {!(view === 'section' || view === 'attention' || view === 'unassigned' || view === 'sections' || CHAIN_PAGES[view as ChainView]) && <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} signedIn={!!me} />}
         {failed ? <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => void reload()}>Try again</Button>} /></Card>
           : !ctx ? <Skeleton label="Opening Forecasting" lines={6} />
             : CHAIN_PAGES[view as ChainView] ? <ChainPage view={view as ChainView} />
             : view === 'unassigned' ? <UnassignedPage store={params.get('store') || viewer.place.split(' · ')[0]} href={line => address('unassigned', { line, ...(params.get('store') ? { store: params.get('store')! } : {}) })} />
-            : view === 'sections' || (view === 'section' && !me && !asSection) ? <StorePage store={params.get('store')}
-              sectionHref={(store, s) => address('section', { store, section: s.section, ...(s.teamLeaders[0] ? { tl: s.teamLeaders[0] } : {}) })}
+            : view === 'sections' || ((view === 'section' || view === 'attention') && !me && !asSection) ? <StorePage store={params.get('store')}
+              sectionHref={(store, s) => address(view === 'attention' ? 'attention' : 'section', { store, section: s.section, ...(s.teamLeaders[0] ? { tl: s.teamLeaders[0] } : {}) })}
               noSectionHref={store => address('unassigned', { store })} onStore={store => { history.pushState(null, '', address('sections', { store })); window.dispatchEvent(new PopStateEvent('popstate')) }} />
             : view === 'section' ? <SectionPage key={asSection ? asSection.place : viewer.id} viewer={asSection ?? viewer}
               sectionHref={asSection ? (store, s) => address('section', { store, section: s.section, ...(s.teamLeaders[0] ? { tl: s.teamLeaders[0] } : {}) }) : undefined}
               storeHref={store => address('sections', { store })}
               href={line => address('section', { line, ...(asSection ? { store: params.get('store')!, section: params.get('section')!, ...(params.get('tl') ? { tl: params.get('tl')! } : {}) } : {}) })} />
+            : view === 'attention' ? <AttentionPage key={asSection ? asSection.place : viewer.id} viewer={asSection ?? viewer}
+              reviewHref={(line, band) => `${address('section', sectionInAddress())}#${new URLSearchParams({ open: line, ...(band ? { band } : {}) })}`}
+              onReview={href => { history.pushState(null, '', href); window.dispatchEvent(new PopStateEvent('popstate')) }} />
             : view === 'forecasts' ? (DATASET ? <ReviewMonthPage ctx={ctx} /> : <WorkspacePage ctx={ctx} />)
               : view === 'numbers' ? <NumbersPage ctx={ctx} />
               : view === 'mine' ? <MyNumbersPage key={viewer.id} ctx={ctx} onSeen={() => setSeen(t => t + 1)} />

@@ -1,4 +1,4 @@
-// The review table (TL-13..TL-19, TL-25): column blocks (Feather Forecast · Last month · Last year · AOP), each
+// The review table (TL-13..TL-19, TL-25): column blocks (Feather Forecast · Last year · Last month · AOP; Siraj's order, 28-Nov), each
 // with the measures Show picked, then Value vs and Built from. Rows come in already in order, one per visible
 // row (a subcategory, a group, a level of a tree; levels.ts turns a hierarchy into them); clicking a row opens
 // the page's own panel under it, as wide as the visible table. The look is Shop Floor's TableLook, written out
@@ -74,8 +74,8 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
 
   const blocks: Block[] = [
     ['fc', 'fq', 'Feather Forecast', `Feather Forecast for ${month.name}`],
-    ['r31', 'r31q', 'Last month', `Last 28 days to ${header.cutOff}, as a rate per day × ${month.name}'s ${month.days} days`],
     ['ly', 'lyq', 'Last year', `${month.name} ${month.year - 1}`],
+    ['r31', 'r31q', 'Last month', `Last 28 days to ${header.cutOff}, as a rate per day × ${month.name}'s ${month.days} days`],
     ...(view.aop || vsAop ? [['aop', 'aq', 'AOP', `The annual plan for ${month.label}`] as Block] : []),
   ]
   const sortable = (k: SortKey, text: ReactNode, tip: string) => onSort
@@ -83,15 +83,17 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
       onClick={() => onSort(k)}>{text}{sort === k && <span aria-hidden> ↓</span>}</button>
     : text
   const measures = ({ all: ['v', 'q', 'a'], vq: ['v', 'q'], v: ['v'], q: ['q'] } as const)[view.measure]
-  const columns = 1 + blocks.length * measures.length + 3 + (vsAop ? 1 : 0)
+  const showAop = view.aop || vsAop
+  const vs = showAop ? 3 : 2
+  const columns = 1 + blocks.length * measures.length + vs + 1
   const cell = (l: Item, [k, q]: Block, m: 'v' | 'q' | 'a', first: boolean, cls: string) => {
     const v = (l as unknown as Record<string, number>)[k], qty = (l as unknown as Record<string, number>)[q]
     return <td key={`${k}${m}`} className={`${first ? 'fr-b0 ' : ''}${cls}`}>{m === 'v' ? inr(v) : m === 'q' ? count(qty) : asp(v, qty)}</td>
   }
   const figures = (l: Item, strong: boolean) => <>
     {blocks.map((b, bi) => measures.map((m, mi) => cell(l, b, m, mi === 0, strong && bi === 0 ? 'fr-fc' : strong ? 'fr-dim' : '')))}
-    <td className="fr-b0">{pc(l.fc, l.r31)}</td><td>{pc(l.fc, l.ly)}</td>
-    {vsAop && <td><VsAop o={l} /></td>}
+    <td className="fr-b0">{pc(l.fc, l.ly)}</td><td>{pc(l.fc, l.r31)}</td>
+    {showAop && <td>{vsAop ? <VsAop o={l} /> : pc(l.fc, l.aop)}</td>}
     <td className="fr-b0"><PartsBar parts={shares(l)} shape={view.shape} /></td>
   </>
 
@@ -101,13 +103,13 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
         <thead>
           <tr className="fr-blocks"><th />
             {blocks.map((b, i) => <th key={b[2]} colSpan={measures.length} className="fr-b0">{i === 0 && onSort ? sortable('size', b[2], `${b[3]}, biggest first`) : <Hover text={b[3]}>{b[2]}</Hover>}</th>)}
-            <th colSpan={vsAop ? 3 : 2} className="fr-b0"><Hover text={`Feather Forecast's value against last month${vsAop ? ', last year and the annual plan' : ' and last year'}`}>Value vs</Hover></th>
+            <th colSpan={vs} className="fr-b0"><Hover text={`Feather Forecast's value against last year, last month${showAop ? ' and the AOP' : ''}`}>Value vs</Hover></th>
             <th className="fr-b0">Built from</th></tr>
           <tr><th><span className="fr-first" title={firstHeading}>{firstHeading}</span></th>
             {blocks.map(b => measures.map((m, i) => <th key={b[2] + m} className={i === 0 ? 'fr-b0' : ''}>{{ v: 'Value', q: 'Qty', a: 'ASP' }[m]}</th>))}
-            <th className="fr-b0"><Hover text={`Last 28 days at ${month.name}'s ${month.days} days`}>{vsAop ? <>Last<br />month</> : 'Last month'}</Hover></th>
-            <th>{onSort ? sortable('ly', vsAop ? <>Last<br />year</> : 'Last year', `${month.name} ${month.year - 1}, biggest change in rupees first`) : <Hover text={`${month.name} ${month.year - 1}`}>Last year</Hover>}</th>
-            {vsAop && <th>{onSort ? sortable('aop', 'AOP', 'Feather Forecast against the annual plan, furthest behind first') : <Hover text="The annual plan">AOP</Hover>}</th>}<th className="fr-b0" /></tr>
+            <th className="fr-b0">{onSort ? sortable('ly', vsAop ? <>Last<br />year</> : 'Last year', `${month.name} ${month.year - 1}, biggest change in rupees first`) : <Hover text={`${month.name} ${month.year - 1}`}>Last year</Hover>}</th>
+            <th><Hover text={`Last 28 days at ${month.name}'s ${month.days} days`}>{vsAop ? <>Last<br />month</> : 'Last month'}</Hover></th>
+            {showAop && <th>{onSort ? sortable('aop', 'AOP', 'Feather Forecast against the annual plan, furthest behind first') : <Hover text={`The annual plan for ${month.label}`}>AOP</Hover>}</th>}<th className="fr-b0" /></tr>
         </thead>
         <tbody>{rows.map(r => {
           const isOpen = r.onClick ? Boolean(r.expanded) : open === r.key, look = r.look ?? []

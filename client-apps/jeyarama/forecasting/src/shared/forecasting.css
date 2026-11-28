@@ -216,3 +216,55 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 /* full subcategory names: they wrap, never cut */
 .fr-table > tbody > tr > td:first-child { white-space: normal; }
 .fr-name { flex-wrap: wrap; }
+
+/* By Price Band (#1419, 28-Nov): under an opened subcategory, across both columns */
+.fr-bands { margin-top: 18px; }
+.fr-bands h4 .fr-sub { font-weight: 400; font-size: 12.5px; }
+.fr-band-row { cursor: pointer; }
+.fr-band-name { all: unset; font-weight: 600; cursor: pointer; }
+.fr-band-name:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; border-radius: 4px; }
+.fr-band-open > td { background: transparent !important; padding: 4px 0 10px 22px; }
+.fr-band-items .fr-mini tbody td { font-size: 13px; }
+.fr-pareto { font-size: 12.5px; margin-top: 6px; }
+.fr-bands .fr-foot { font-size: 12px; margin-top: 6px; }
+.fr-short { color: var(--color-negative); font-weight: 600; }
+.fr-short-list { margin: 6px 0 0; padding: 0; list-style: none; line-height: 1.9; }
+/* stock well above its sales share: the group rail's purple */
+.fr-over { color: var(--fr-group); font-weight: 600; }
+
+/* Needs Your Attention (#1419, 28-Nov): its own page, one tab per kind of action. Red = sales you may lose,
+   purple = stock not earning, grey = data to fix. */
+.fr-att-answer { font-size: 15px; margin: 4px 0 14px; }
+.fr-att-tabs > [role='tab'] { text-align: center; }
+.fr-tcount { display: block; font-size: 12px; font-weight: 500; color: var(--color-ink-subtle); margin-top: 1px; }
+.fr-att-tabs > [role='tab'][aria-selected='true'] .fr-tcount { color: inherit; }
+.fr-att-tabs > [role='tab'].fr-att-empty { opacity: 0.55; }
+.fr-att-about { font-size: 13px; color: var(--color-ink-muted); margin: 14px 0 10px; max-width: 1000px; }
+.fr-att-none { font-size: 13.5px; color: var(--color-ink-muted); padding: 12px 0; }
+.fr-att-wrap { overflow-x: auto; }
+.fr-att-table thead th { position: sticky; top: 0; z-index: 1; }
+.fr-att-table thead th { white-space: normal; line-height: 1.25; }
+.fr-att-table .fr-att-name { max-width: 15rem; overflow-wrap: anywhere; }
+.fr-att-sort { all: unset; cursor: pointer; } .fr-att-sort:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; border-radius: 4px; }
+.fr-att-row { cursor: pointer; } .fr-att-row:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+.fr-att-row > td:first-child { box-shadow: inset 3px 0 0 var(--color-border); }
+.fr-att-row.fr-att-red > td:first-child { box-shadow: inset 3px 0 0 var(--color-negative); }
+.fr-att-row.fr-att-purple > td:first-child { box-shadow: inset 3px 0 0 var(--fr-group); }
+.fr-att-row.fr-att-grey > td:first-child { box-shadow: inset 3px 0 0 var(--color-ink-subtle); }
+.fr-att-name { font-weight: 600; }
+.fr-att-grp { padding: 10px 12px; background: var(--color-subtle); font-size: 13.5px; }
+.fr-att-pane-amt { margin: 0; font-size: 24px; font-weight: 700; }
+.fr-att-small { margin: 2px 0 0; font-size: 12.5px; }
+.fr-att-kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 0; font-size: 13.5px; }
+.fr-att-kv dd { margin: 0; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.fr-att-p { margin: 0; font-size: 13.5px; line-height: 1.5; display: flex; flex-direction: column; gap: 2px; }
+.fr-att-mini td:first-child { white-space: normal; }
+.fr-att-group { margin: 16px 0 6px; font-size: 14px; font-weight: 500; } .fr-att-group .fr-dim { font-weight: 400; }
+.fr-att-note { font-size: 12px; margin-top: 12px; }
+.fr-att-help { font-size: 14px; line-height: 1.6; max-width: 960px; padding-left: 18px; list-style: disc; } .fr-att-help li { margin: 6px 0; }
+
+/* the one explanation table (Siraj, 28-Nov): group rows, their bases indented beneath */
+.fr-one .fr-brow > td:first-child { padding-left: 28px; }
+.fr-one .fr-grow > td { font-weight: 500; }
+.fr-wtip { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
+.fr-build-note { font-size: 12px; margin: 8px 0 0; }
