@@ -55,6 +55,21 @@ Issues in the public featherbase repo use made-up examples only (Bayside, Northg
 33. Matrix (N4): for link tables (e.g. Section Subcategory), a plain cross-table: rows × columns, the linked record name in each cell, red "Not placed" / grey "Not sold", no colours or summaries; hovering a cell tints its row and column and shows a card.
 34. Map (N5): today's Map (left = points to, right = pointed at by, one step) stays the default. A "Neighbourhood" mode on the same components adds, per table configuration (later per app): layout by meaning (up / down / sides), labelled lines, an optional second ring for chosen two-step paths, red gap notes. In both, clicking a group shows its rows at the bottom of the same page; Focus re-centres, a plain click opens.
 
+## Part 5 · Additions from the rebuild's screens (proposed 19-Nov-2026, not yet agreed item by item)
+Boards: docs/design/mockups/pages/screens.html and report.html, styled by pages.css in the same folder. Plain HTML, no build step; open screens.html from disk. They are the rebuild's generic screens (branch featherbase-redesign, features/foundations/pages, PR #1332) restyled to Part 1, on the made-up employee sample. This folder is a copy as of commit 615626b; the rebuild's folder is the source.
+Siraj's aim: the React screens here and the HTML screens of the rebuild look the same. These items are what that needs beyond Parts 1–4.
+35. One file of named values: the block at the top of pages.css holds every colour, size, gap and radius of Part 1 under a name (--canvas, --panel, --quiet, --fill, --hover, --accent, --row …). The shared components point their theme at the same names, so a value is changed once and shows in both.
+36. Dark values: Part 1's boards are light only. pages.css proposes a dark value beside each light one (light-dark()). To agree, then use in #1348's dark mode.
+37. Which tint a value gets: board 1 says "taken from its name"; the rebuild gives tints out in the order of the list of values. Pick one rule for both.
+38. Chart colours: a Choice value's bar wears its chip's colour at full strength (--c1 … --c8); the bar is always named as well, never colour alone; a total is neutral grey. The first five are checked for colour-blind separation in light and dark; the pink was moved toward magenta to clear orange.
+39. Home (screens.html#fresh, #home): actions are quiet-fill blocks; Tables, reports and uploads are rows on white with a blue count chip; nothing greyed out as coming later.
+40. Entry to importing (#import): one quiet-fill drop block with the primary button, then three numbered steps as plain text.
+41. Proposal (#proposal): a Columns table (type select, what was seen, key radio) and a preview of the first rows, both with the quiet header band; Create is the one blue button.
+42. Form (#record, #new, #refused): inputs are grey-filled with no box; a refusal sits under its field in red with a red inner outline on the input; Delete asks in a raised pop-up; the record pane is raised with a muted table kicker and the name as title.
+43. Row height and record opening (#employees): Comfortable / Compact Rows is the segmented control beside the list, as on board 2; "A record opens as" (side panel or full page) is in the View menu.
+44. Report (report.html): one row of filters, headline numbers in quiet-fill blocks, charts on the white panel with a title and one sentence each, "Show as a table" under every chart, then the rows behind a number as an ordinary table. No chart library, no script.
+Each screen and state has its own address, so a verifier can open and screenshot it directly.
+
 ## Verifier (per build)
 A separate verifier subagent runs the real UI against the items in its issue and returns a "spec vs built" table with screenshots before Siraj sees anything.
 
