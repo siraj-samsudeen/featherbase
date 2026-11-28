@@ -88,8 +88,15 @@ describe('a loaded Run', () => {
     const rows: Record<string, unknown>[] = table === 'forecasting.reach' ? REACH : table === 'forecasting.run_line' ? LINES : []
     return rows.filter(r => (args.filters ?? []).every(([c, , v]) => r[c] === v))
   }
+  // a live org chart beside them (#1430): these older validators still take people's scope from forecasting.reach
+  const LIVE: Record<string, Record<string, unknown>[]> = {
+    Employee: [{ row_id: 'E1', name: 'Tara', person: 'u_tara', status: 'Current' }],
+    'Job Assignment': [{ employee: 'E1', job: 'Team Leader', site: 'North', section: 'N-Kids', starts_on: '2026-01-01', ends_on: null }],
+  }
+  const live = { list: async (table: string, args: { filters?: [string, string, unknown][] }) =>
+    (LIVE[table] ?? []).filter(r => (args.filters ?? []).every(([c, op, v]) => (op === 'in' ? (v as unknown[]).includes(r[c]) : r[c] === v))) }
   function call(table: 'forecasting.number' | 'forecasting.explanation', user: string, row: Record<string, unknown>) {
-    const ctx: Context = { user, roles: ['Forecasting Member'], isNew: true, row,
+    const ctx: Context = { user, roles: ['Forecasting Member'], isNew: true, row, baseTables: live,
       documents: { members: async () => Object.entries(IDS).map(([row_id, full_name]) => ({ row_id, full_name })), list },
       reject(message: string): never { throw new Error(message) } }
     return validators[table](ctx)
@@ -131,8 +138,12 @@ describe('a day explanation (#1425)', () => {
     Section: [{ row_id: 'N-Kids', name: 'Kids', site: 'North', floor: 'N-1F', status: 'Active' }, { row_id: 'N-Tops', name: 'Tops', site: 'North', floor: 'N-1F', status: 'Active' }],
     'Store Floor': [{ row_id: 'N-1F', name: 'First Floor', site: 'North', floor_order: 1 }],
     'Section Subcategory': [{ store: 'North', subcategory: 'C1', section: 'N-Kids', starts_on: '2026-01-01', ends_on: null }, { store: 'North', subcategory: 'C3', section: 'N-Tops', starts_on: '2026-01-01', ends_on: null }],
-    'Job Assignment': [{ employee: 'E1', job: 'Team Leader', site: 'North', section: 'N-Kids', starts_on: '2026-01-01', ends_on: null }],
-    Employee: [{ row_id: 'E1', name: 'Tara' }],
+    // a second Tara (E6, Person u_tara2) leads Tops: she shares the first Tara's name, not her section (#1430)
+    'Job Assignment': [{ employee: 'E1', job: 'Team Leader', site: 'North', section: 'N-Kids', starts_on: '2026-01-01', ends_on: null },
+      { employee: 'E6', job: 'Team Leader', site: 'North', section: 'N-Tops', starts_on: '2026-01-01', ends_on: null }],
+    // each employee signs in as their Person (#1430)
+    Employee: [{ row_id: 'E1', name: 'Tara', person: 'u_tara', status: 'Current' }, { row_id: 'E2', name: 'Omar', person: 'u_omar', status: 'Current' },
+      { row_id: 'E6', name: 'Tara', person: 'u_tara2', status: 'Current' }],
   }
   const baseTables = { list: async (table: string, args: { filters?: [string, string, unknown][] }) =>
     (ORG[table] ?? []).filter(r => (args.filters ?? []).every(([c, op, v]) => (op === 'in' ? (v as unknown[]).includes(r[c]) : r[c] === v))) }
@@ -148,6 +159,15 @@ describe('a day explanation (#1425)', () => {
   }
   const day = { run_id: 'r', store_code: '9001', section_name: 'Kids', subcategory_name: null, explained_date: '2026-11-03', direction: 'below',
     causes: 'Weak store execution', tags: 'Weak store execution › Low footfall', note: 'Rain all evening', explained_by: 'Tara' }
+
+  it('knows the signed-in person by their Person, not their name: two Team Leaders named Tara each keep to their own section (#1430)', async () => {
+    await expect(call('u_tara2', day)).rejects.toThrow(/outside it/)
+    await expect(call('u_tara2', { ...day, section_name: 'Tops' })).resolves.toMatchObject({ section_name: 'Tops' })
+    await expect(call('u_tara', { ...day, section_name: 'Tops' })).rejects.toThrow(/outside it/)
+  })
+  it('refuses a sign-in that is not linked to an employee (#1430)', async () => {
+    await expect(call('u_nobody', day)).rejects.toThrow(/not linked to an employee/)
+  })
 
   it("is a Team Leader's of that store, for a section's day or one of its subcategories' days, the store taken from the Run", async () => {
     await expect(call('u_tara', day)).resolves.toMatchObject({ store_name: 'North', section_name: 'Kids', explained_by_role: 'Team Leader' })
@@ -165,7 +185,7 @@ describe('a day explanation (#1425)', () => {
   it("files a subcategory's day under its section today, whatever the page sent; refuses a merged line, and refuses without the org chart on a real instance", async () => {
     await expect(call('u_tara', { ...day, subcategory_name: 'Kids Jean', section_name: 'Tops' })).resolves.toMatchObject({ section_name: 'Kids' })
     await expect(call('u_tara', { ...day, subcategory_name: 'Kids Mixed' })).rejects.toThrow(/outside it/)
-    await expect(call('u_tara', day, undefined, null)).rejects.toThrow(/outside it/)
+    await expect(call('u_tara', day, undefined, null)).rejects.toThrow(/org chart cannot be read/)
   })
   it('lets an administrator explain as the Team Leader, and keeps an edit to its writer', async () => {
     await expect(call('Administrator', { ...day, explained_by: 'Anisha' })).resolves.toMatchObject({ explained_by_role: 'Team Leader' })
@@ -199,14 +219,24 @@ describe('a change on the managers\' pages (#1442)', () => {
   const IDS: Record<string, string> = { u_tara: 'Tara', u_omar: 'Omar', u_sam: 'Sam', u_priya: 'Priya', u_lena: 'Lena' }
   const ORG: Record<string, Record<string, unknown>[]> = {
     Site: [{ row_id: 'North', name: 'North', operating_region: 'R' }],
-    Section: [{ row_id: 'N-Kids', name: 'Kids', site: 'North', floor: null, status: 'Active' }],
+    Section: [{ row_id: 'N-Kids', name: 'Kids', site: 'North', floor: null, status: 'Active' }, { row_id: 'S-Kids', name: 'Kids', site: 'South', floor: null, status: 'Active' }],
     'Store Floor': [],
     'Section Subcategory': [{ store: 'North', subcategory: 'C1', section: 'N-Kids', starts_on: '2026-01-01', ends_on: null }],
     'Job Assignment': [{ employee: 'E1', job: 'Team Leader', site: 'North', section: 'N-Kids', starts_on: '2026-01-01', ends_on: null },
-      { employee: 'E2', job: 'Store Manager', site: 'North', section: null, starts_on: '2026-01-01', ends_on: null }],
+      { employee: 'E2', job: 'Store Manager', site: 'North', section: null, starts_on: '2026-01-01', ends_on: null },
+      { employee: 'E4', job: 'Store Manager', site: 'South', section: null, starts_on: '2026-01-01', ends_on: null },
+      // the Chief Executive is a Director on the org chart (#1438)
+      { employee: 'E5', job: 'Director', site: 'HO', section: null, starts_on: '2026-01-01', ends_on: null },
+      // #1430: another Tara (E8) leads Kids at South; Ravi (E9) leads Kids at South and also manages North
+      { employee: 'E8', job: 'Team Leader', site: 'South', section: 'S-Kids', starts_on: '2026-01-01', ends_on: null },
+      { employee: 'E9', job: 'Team Leader', site: 'South', section: 'S-Kids', starts_on: '2026-01-01', ends_on: null },
+      { employee: 'E9', job: 'Store Manager', site: 'North', section: null, starts_on: '2026-01-01', ends_on: null }],
     'Merchandise Assignment': [{ employee: 'E3', responsibility: 'Category head', operating_region: 'R', category: null, subcategory: 'C1', starts_on: '2026-01-01', ends_on: null }],
     Subcategory: [{ row_id: 'C1', category: 'K' }, { row_id: 'C3', category: 'K2' }],
-    Employee: [{ row_id: 'E1', name: 'Tara' }, { row_id: 'E2', name: 'Omar' }, { row_id: 'E3', name: 'Priya' }],
+    Employee: [{ row_id: 'E1', name: 'Tara', person: 'u_tara', status: 'Current' }, { row_id: 'E2', name: 'Omar', person: 'u_omar', status: 'Current' },
+      { row_id: 'E3', name: 'Priya', person: 'u_priya', status: 'Current' }, { row_id: 'E4', name: 'Sam', person: 'u_sam', status: 'Current' },
+      { row_id: 'E5', name: 'Lena', person: 'u_lena', status: 'Current' }, { row_id: 'E7', name: 'Priya', person: 'u_priya2', status: 'Current' },
+      { row_id: 'E8', name: 'Tara', person: 'u_tara_south', status: 'Current' }, { row_id: 'E9', name: 'Ravi', person: 'u_ravi', status: 'Current' }],
   }
   const match = (r: Record<string, unknown>, filters: [string, string, unknown][] = []) =>
     filters.every(([c, op, v]) => (op === 'in' ? (v as unknown[]).includes(r[c]) : r[c] === v))
@@ -232,6 +262,9 @@ describe('a change on the managers\' pages (#1442)', () => {
       await expect(call('forecasting.forecast_change', 'u_omar', { ...ask, proposed_by: 'Omar' })).resolves.toMatchObject({ change_status: 'approved', proposed_by_role: 'Store Manager' })
       await expect(call('forecasting.forecast_change', 'u_priya', { ...ask, proposed_by: 'Priya' })).resolves.toMatchObject({ change_status: 'approved', proposed_by_role: 'Category Head' })
       await expect(call('forecasting.forecast_change', 'u_lena', { ...ask, proposed_by: 'Lena', subcategory_name: 'Kids Shirt' })).resolves.toMatchObject({ change_status: 'approved', proposed_by_role: 'Chief Executive' })
+    })
+    it("does not let someone who only shares a category head's name act as her (#1430)", async () => {
+      await expect(call('forecasting.forecast_change', 'u_priya2', { ...ask, proposed_by: 'Priya' })).rejects.toThrow(/no forecasting job/)
     })
     it("keeps a category head to their merchandise and a Store Manager to their store", async () => {
       await expect(call('forecasting.forecast_change', 'u_priya', { ...ask, proposed_by: 'Priya', subcategory_name: 'Kids Shirt' })).rejects.toThrow(/outside it/)
@@ -271,6 +304,13 @@ describe('a change on the managers\' pages (#1442)', () => {
       await expect(call('forecasting.forecast_change', 'u_tara', { change_status: 'withdrawn' }, sent)).resolves.toMatchObject({ change_status: 'withdrawn' })
       await expect(call('forecasting.forecast_change', 'u_omar', { change_status: 'withdrawn' }, sent)).rejects.toThrow(/cannot act as Tara/)
     })
+    it("is not taken back by someone who only shares the proposer's name, at another store (#1430)", async () => {
+      await expect(call('forecasting.forecast_change', 'u_tara_south', { change_status: 'withdrawn' }, sent)).rejects.toThrow(/outside it/)
+      await expect(call('forecasting.forecast_change', 'u_tara_south', { change_status: 'replaced' }, sent)).rejects.toThrow(/outside it/)
+    })
+    it('is decided by someone holding several jobs, in the one that holds the line (#1430)', async () => {
+      await expect(call('forecasting.forecast_change', 'u_ravi', { change_status: 'approved', decided_by: 'Ravi' }, sent)).resolves.toMatchObject({ decided_by: 'Ravi' })
+    })
     it('keeps its numbers: a change is never edited once sent', async () => {
       await expect(call('forecasting.forecast_change', 'u_omar', { change_status: 'approved', decided_by: 'Omar', changed_value_before_tax: 1 }, sent)).rejects.toThrow(/cannot change once it is sent/)
       await expect(call('forecasting.forecast_change', 'u_tara', { set_value_before_tax: 1 }, sent)).rejects.toThrow(/not edited/)
@@ -279,10 +319,11 @@ describe('a change on the managers\' pages (#1442)', () => {
 
   describe('who decides, and who only reviews', () => {
     it('is the Store Manager only: a Department Manager of the store does not decide', async () => {
-      const dm = { full_name: 'Dev', role: 'Department Manager', place: 'North', reports_to: 'Lena', places_json: '[]' }
-      REACH.push(dm); IDS.u_dev = 'Dev'
+      // Dev is North's Department Manager on the live org chart (#1430)
+      ORG.Employee.push({ row_id: 'E10', name: 'Dev', person: 'u_dev', status: 'Current' })
+      ORG['Job Assignment'].push({ employee: 'E10', job: 'Department Manager', site: 'North', section: null, starts_on: '2026-01-01', ends_on: null })
       try { await expect(call('forecasting.forecast_change', 'u_dev', { change_status: 'approved', decided_by: 'Dev' }, sent)).rejects.toThrow(/Store Manager decides/) }
-      finally { REACH.pop(); delete IDS.u_dev }
+      finally { ORG.Employee.pop(); ORG['Job Assignment'].pop() }
     })
     it("keeps line answers and day explanations to Team Leaders and Store Managers: a category head or the Chief Executive changes and asks, nothing more", async () => {
       const review = { run_id: 'r', store_code: '9001', category_name: 'Kids Bottom', subcategory_name: 'Kids Jean', answer: 'accepted' }
