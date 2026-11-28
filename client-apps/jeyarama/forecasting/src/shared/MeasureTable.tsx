@@ -130,7 +130,7 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
     {blocks.map((b, bi) => colsOf(b).map((m, mi) => cell(l, b, m, mi === 0, m === 's' ? 'fr-dim' : strong && bi === 0 ? 'fr-fc' : strong ? 'fr-dim' : '', key)))}
     <td className="fr-b0">{pc(l.fc, l.ly)}</td><td>{pc(l.fc, l.r31)}</td>
     {showAop && <td>{vsAop ? <VsAop o={l} /> : pc(l.fc, l.aop)}</td>}
-    <td className="fr-b0"><PartsBar parts={shares(l)} shape={view.shape} /></td>
+    <td className="fr-b0">{l.fc > 0 && <PartsBar parts={shares(l)} shape={view.shape} />}</td>
   </>
 
   return (
