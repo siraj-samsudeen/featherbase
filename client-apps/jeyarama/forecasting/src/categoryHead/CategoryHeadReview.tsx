@@ -7,7 +7,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { RecordLink, chipClasses } from '@featherbase/shop-floor'
 import { combine, count, inr, storeStepOf, type HelpTopic, type Line } from '../shared/model'
-import { LEVEL, headingOf, pathTo, type Level } from '../shared/levels'
+import { LEVEL, headingOf, multiCategory, pathTo, valueOnly, type Level } from '../shared/levels'
 import { KpiTiles, Tile } from '../shared/KpiTiles'
 import { ReviewFrame, useView } from '../shared/ReviewFrame'
 import { LINE_TABLE, ReviewTree } from '../shared/ReviewTree'
@@ -116,13 +116,13 @@ export function CategoryHeadReview({ chain, hrefFor, openLine, onOpenLine }: Cha
     <ReviewTree header={header} view={view} lines={ls} levels={levels} totalLabel={o.total} firstHeading={o.first}
       sort={sort} onSort={setSort} openNodes={openNodes} onToggleNode={toggleNode} open={open} onOpen={setOpen} hrefFor={hrefFor}
       answer={answer} linePills={linePills} nodePills={n => nodeWaiting(review.waitingIn(n.lines), false)}
-      leafLabel={o.byStore ? storeLeaf : undefined} onHelp={onHelp} flash={flash} />
+      leafLabel={o.byStore ? storeLeaf : undefined} onHelp={onHelp} flash={flash} valueOnly={valueOnly} />
   )
 
   // ---- the parts every layout starts with ----
   const behind = behindCounts(lines)
   const tiles = (
-    <KpiTiles total={combine(lines, -1)} header={header} approvedDelta={review.approvedDelta(lines)}
+    <KpiTiles total={combine(lines, -1)} header={header} approvedDelta={review.approvedDelta(lines)} valueOnly={multiCategory(lines)}
       extra={<Tile name="More than 10% behind AOP" value={`${behind.stores.behind} of ${behind.stores.of} stores`} testId="kpi-behind" valueClass="ch-kpi-wrap"
         lines={[`${behind.categories.behind} of ${behind.categories.of} categories`, `${behind.subcategories.behind} of ${behind.subcategories.of} subcategories planned at ₹1 L or more`]} />} />
   )

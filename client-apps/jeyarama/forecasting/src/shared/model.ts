@@ -191,8 +191,10 @@ export const inr = (v: number | null | undefined) => v == null ? '—' : fmtINR(
 export const count = (v: number) => fmtCount(v)
 /** A signed percentage of a against b: +42%, −8%, 0%; a dash when there is nothing to compare with. */
 export function pc(a: number, b: number): string {
-  if (!b) return '—'
+  if (!b || b < 0) return '—'
   const p = Math.round((a / b - 1) * 100)
+  // past ±999% a percentage stops reading; the prototypes say how many times instead (×20)
+  if (Math.abs(p) > 999) return p > 0 ? `×${Math.round(a / b)}` : '—'
   return `${p > 0 ? '+' : p < 0 ? '−' : ''}${Math.abs(p)}%`
 }
 /** How many times one is the other: ×3.2, or ÷2.0 when it is smaller. */

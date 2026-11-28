@@ -6,7 +6,7 @@
 import { Fragment, useMemo, useState, type ReactNode } from 'react'
 import { ChipButton, RecordLink, StatusPill, TABLE_CLASSES, cellClasses, cx, headCellClasses } from '@featherbase/shop-floor'
 import { combine, inr, pc, storeStepOf, type HelpTopic, type Line } from '../shared/model'
-import { MERCHANDISE, STORE_LAYOUT, LEVEL, pathTo, type Level, type TreeNode } from '../shared/levels'
+import { MERCHANDISE, STORE_LAYOUT, LEVEL, multiCategory, pathTo, valueOnly, type Level, type TreeNode } from '../shared/levels'
 import { KpiTiles, Tile } from '../shared/KpiTiles'
 import { ReviewFrame, useView } from '../shared/ReviewFrame'
 import { LINE_TABLE, ReviewTree } from '../shared/ReviewTree'
@@ -120,7 +120,7 @@ export function StoreManagerReview({ chain, hrefFor, openLine, onOpenLine }: Cha
 
   // ---- the tiles: the store's totals and the Team Leaders' review ----
   const waitingHere = review.waitingIn(lines)
-  const tiles = <KpiTiles total={combine(lines, -1)} header={header} approvedDelta={review.approvedDelta(lines)}
+  const tiles = <KpiTiles total={combine(lines, -1)} header={header} approvedDelta={review.approvedDelta(lines)} valueOnly={multiCategory(lines)}
     extra={<Tile name="Team Leaders' review" value={`${fullyAnswered(secs)} of ${secs.length}`} testId="kpi-review"
       lines={['sections fully answered', <b>{waitingHere} {waitingHere === 1 ? 'proposal' : 'proposals'} waiting</b>]} />} />
 
@@ -133,7 +133,7 @@ export function StoreManagerReview({ chain, hrefFor, openLine, onOpenLine }: Cha
     <ReviewTree header={header} view={view} lines={ls} levels={lv} totalLabel={totalLabel} firstHeading={firstHeading}
       sort={sort} onSort={setSort} openNodes={openNodes} onToggleNode={id => setOpenNodes(s => toggle(s, id))}
       open={open} onOpen={setOpen} hrefFor={hrefFor} answer={answer} onHelp={onHelp} flash={flash}
-      linePills={l => review.linePills(l, true)} nodePills={n => nodeWaiting(review.waitingIn(n.lines), true)} nodeSub={nodeSub} />
+      linePills={l => review.linePills(l, true)} nodePills={n => nodeWaiting(review.waitingIn(n.lines), true)} nodeSub={nodeSub} valueOnly={valueOnly} />
   )
   const storeTable = <>
     <ReviewToolbar value={view} onChange={setView} toggles={['measure', 'groups', 'shape']} lead={pivotChoice} wrap />

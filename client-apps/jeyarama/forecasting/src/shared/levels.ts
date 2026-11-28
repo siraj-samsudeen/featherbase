@@ -4,6 +4,11 @@
 // (combine), so every level reads the same figures and parts as a subcategory.
 import { combine, type Group, type Line } from './model'
 
+/** Pieces of different categories do not add up (RB, 28-Nov): a figure spanning more than one category (a region, a
+ *  store, a floor, a division) shows value only; within one category quantity shows. */
+export const multiCategory = (lines: Line[]) => new Set(lines.map(l => l.category)).size > 1
+export const valueOnly = (item: Line | Group) => 'members' in item && multiCategory(item.members)
+
 /** One level of a hierarchy: what it is called, which value of a subcategory puts it in a node, and optionally
  *  how its nodes are ordered and a small line under each node's name. */
 export interface Level {

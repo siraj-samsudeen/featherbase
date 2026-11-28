@@ -5,10 +5,7 @@
 import { BuildUp, Checks, OtherModels } from '../shared/ExplainPanel'
 import { combine, count, inr, storeStepOf, times, type Group, type HelpTopic, type Line } from '../shared/model'
 import type { Header } from '../shared/review'
-
-/** Pieces of different categories do not add up: anything spanning more than one category shows value only. */
-export const multiCategory = (lines: Line[]) => new Set(lines.map(l => l.category)).size > 1
-export const valueOnly = (item: Line | Group) => 'members' in item && multiCategory(item.members)
+import { multiCategory } from '../shared/levels'
 
 /** A child one level down: a node (a store, a division …) or a subcategory. */
 export interface Kid { key: string; label: string; item: Line | Group; isNode: boolean }
