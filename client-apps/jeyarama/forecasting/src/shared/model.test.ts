@@ -37,6 +37,8 @@ describe('the Team Leader model (#1419)', () => {
     expect(pc(142, 100)).toBe('+42%')
     expect(pc(92, 100)).toBe('−8%')
     expect(pc(100, 100)).toBe('0%')
+    expect(pc(2100, 100)).toBe('×21')
+    expect(pc(50, -10)).toBe('—')
     expect(pc(1, 0)).toBe('—')
     expect(day('2026-11-26')).toBe('26-Nov-2026')
     expect(monthOfRun('2026-12-01')).toEqual({ name: 'December', year: 2026, label: 'December 2026', days: 31 })

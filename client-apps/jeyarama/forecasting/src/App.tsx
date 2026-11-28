@@ -15,6 +15,13 @@ import { WorkspacePage } from './WorkspacePage'
 import { ReviewMonthPage } from './ReviewMonthPage'
 import { IdeasPage, NumbersPage, ResultsPage, ReviewPage, RunsPage } from './pages'
 import { SectionPage } from './teamLeader/SectionPage'
+import { StoreManagerReview } from './storeManager/StoreManagerReview'
+import { CategoryHeadReview } from './categoryHead/CategoryHeadReview'
+import { RbReview } from './rb/RbReview'
+import type { ChainPageProps } from './shared/chainPage'
+import { loadRealChain, type Chain } from './shared/chainData'
+import { madeUpChain } from './shared/madeUpChain'
+import { RecordPagesProvider } from '@featherbase/shop-floor'
 import { UnassignedPage } from './unassigned/UnassignedPage'
 import { AttentionPage } from './attention/AttentionPage'
 import { DayReviewPage } from './dayReview/DayReviewPage'
@@ -53,6 +60,9 @@ const VIEWS = [
   { key: 'attention', label: 'Needs Your Attention', group: 'Forecasts', icon: 'M12 9v4M12 17h.01M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z' },
   { key: 'days', label: 'Day Review', group: 'Forecasts', icon: 'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z' },
   { key: 'unassigned', label: 'No Section', group: 'Forecasts', icon: 'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z' },
+  { key: 'store-review', label: 'Store Manager Review', group: 'Forecasts', icon: 'M3 10 12 3l9 7v11H3zM9 21v-7h6v7' },
+  { key: 'category-review', label: 'Category Review', group: 'Forecasts', icon: 'M3 3h18v18H3zM3 9h18M9 9v12' },
+  { key: 'rb-review', label: 'RB Review', group: 'Forecasts', icon: 'M3 3v18h18M8 17v-4m5 4V9m5 8V6' },
   { key: 'forecasts', label: 'Workspace', group: 'Forecasts', icon: 'M3 3h18v18H3zM3 9h18M9 3v18' },
   { key: 'numbers', label: 'Ledger', group: 'Forecasts', icon: 'M20 6 9 17l-5-5' },
   { key: 'mine', label: 'My Numbers', group: 'Forecasts', icon: 'M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10' },
@@ -198,6 +208,38 @@ function useInAppNavigation() {
   return moves
 }
 
+/** The managers' review pages (#1419): the newest real official Run in the app's tables (a local instance loads one
+ *  outside the repository), else the made-up chain; the screen as agreed, with no picker bar above it. A subcategory is
+ *  kept in the address (?line=<rowId>) and its record opens here. The Run is read once and kept while the app is open. */
+const CHAIN_PAGES = { 'store-review': StoreManagerReview, 'category-review': CategoryHeadReview, 'rb-review': RbReview } as const
+type ChainView = keyof typeof CHAIN_PAGES
+let chainLoad: Promise<Chain> | null = null
+const loadChain = () => (chainLoad ??= loadRealChain().then(real => real ?? madeUpChain(), e => { chainLoad = null; throw e }))
+function ChainPage({ view }: { view: ChainView }) {
+  const Page = CHAIN_PAGES[view]
+  const [chain, setChain] = useState<Chain | null>(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => { loadChain().then(setChain, () => setFailed(true)) }, [])
+  const line = new URLSearchParams(window.location.search).get('line')
+  if (failed) return <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => { setFailed(false); loadChain().then(setChain, () => setFailed(true)) }}>Try again</Button>} /></Card>
+  if (!chain) return <Skeleton label="Opening the review" lines={8} />
+  const props: ChainPageProps = {
+    chain,
+    hrefFor: l => address(view, { line: l.rowId }),
+    openLine: line,
+    onOpenLine: rowId => {
+      const q = new URLSearchParams(window.location.search)
+      if (rowId) q.set('line', rowId); else q.delete('line')
+      history.replaceState(null, '', `?${q}`)
+    },
+  }
+  return (
+    <RecordPagesProvider pageFor={(table, rowId) => (table === 'forecasting.forecast_line_month' ? address(view, { line: rowId }) : undefined)}>
+      <Page {...props} />
+    </RecordPagesProvider>
+  )
+}
+
 export function ForecastingApp() {
   const moves = useInAppNavigation()
   const params = new URLSearchParams(window.location.search)
@@ -262,9 +304,10 @@ export function ForecastingApp() {
       <main key={moves} className="fc-page" data-testid={`page-${view}`}>
         {offChart ? <Card><EmptyState title="You are not on the forecasting org chart" body={`${offChart} has no store, section or merchandise to review in this month's Run. If that is wrong, your job or merchandise assignment needs setting up in Featherbase.`} /></Card> : <>
         {/* My Section is the screen as agreed (#1419): no picker bar above it for the person it belongs to. */}
-        {!(view === 'section' || view === 'attention' || view === 'days' || view === 'unassigned' || view === 'sections') && <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} signedIn={!!me} />}
+        {!(view === 'section' || view === 'attention' || view === 'days' || view === 'unassigned' || view === 'sections' || CHAIN_PAGES[view as ChainView]) && <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} signedIn={!!me} />}
         {failed ? <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => void reload()}>Try again</Button>} /></Card>
           : !ctx ? <Skeleton label="Opening Forecasting" lines={6} />
+            : CHAIN_PAGES[view as ChainView] ? <ChainPage view={view as ChainView} />
             : view === 'unassigned' ? <UnassignedPage store={params.get('store') || viewer.place.split(' · ')[0]} href={line => address('unassigned', { line, ...(params.get('store') ? { store: params.get('store')! } : {}) })} />
             : view === 'sections' || ((view === 'section' || view === 'attention' || view === 'days') && !me && !asSection) ? <StorePage store={params.get('store')}
               sectionHref={(store, s) => address(view === 'attention' || view === 'days' ? view : 'section', { store, section: s.section, ...(s.teamLeaders[0] ? { tl: s.teamLeaders[0] } : {}) })}

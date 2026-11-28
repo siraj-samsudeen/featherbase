@@ -20,13 +20,19 @@ export function BuildUp({ l, month, storeStep, onHelp }: { l: Item; month: Heade
   // one table that can be checked by hand (Siraj, 28-Nov): its own value × weight used = adds, the adds summing to
   // Feather Forecast exactly and the shares to exactly 100% (explanation.ts)
   const st = l.step ?? storeStep, e = explain(l.bases, l.rebal, l.price, l.fc)
-  const rupees = (v: number) => `${v < 0 ? '−' : ''}₹${count(Math.abs(Math.round(v)))}`
-  const name: Record<BasisCode, string> = { ...BASE_INFO, B3: `Last 28 days, per day × ${month.days}`, B6: `Last 28 days × ${month.name} step${isGroup(l) ? '' : ` (×${st})`}`,
+  // summary amounts on the lakh/crore ladder, as everywhere on these screens (ADR 750); the adds still sum to the
+  // forecast exactly underneath (explanation.ts), only their display is readable
+  const rupees = (v: number) => inr(Math.round(v))
+  // above one subcategory the steps differ: their range, as the prototype's card ("×0.57 to ×2")
+  const steps = isGroup(l) ? l.members.map(m => m.step).filter(Boolean) : []
+  const range = steps.length ? (Math.min(...steps) === Math.max(...steps) ? ` (×${steps[0]})` : ` (×${Math.min(...steps)} to ×${Math.max(...steps)})`) : ''
+  const name: Record<BasisCode, string> = { ...BASE_INFO, B3: `Last 28 days, per day × ${month.days}`, B6: `Last 28 days × ${month.name} step${isGroup(l) ? range : ` (×${st})`}`,
     B1: `Same date last year × growth${isGroup(l) ? '' : ` (×${l.growth})`}` }
   const weight = (r: ExplainRow) => {
     const w = weightUsed(r)
     if (w == null) return '—'
-    return r.fitted == null ? weightText(w)
+    return r.fitted == null
+      ? <Hover text="Weight used = adds ÷ its own value, summed over the subcategories"><span className="fr-wtip">{weightText(w)}</span></Hover>
       : <Hover text={`Feather Forecast's fitted weight for the month: ${(r.fitted * 100).toFixed(1)}%; day weights differ on Sundays, salary days and Christmas`}><span className="fr-wtip">{weightText(w)}</span></Hover>
   }
   const baseRow = (r: ExplainRow) => (
@@ -85,7 +91,7 @@ export function OtherModels({ l, aop, month }: { l: Item; aop: boolean; month: H
   const rows = ([['Feather Forecast', 'var(--color-ink)', l.fc], ['XGBoost', '#0f9d8a', l.xgb], ['LightGBM', '#e0821e', l.lgbm], ...(aop ? [['AOP', '#c58b1e', l.aop]] : [])] as [string, string, number][])
     .filter(([name, , v]) => name === 'Feather Forecast' || v)
   return <>
-    <h4>Other models</h4>
+    <h4>{aop ? 'Other models and the plan' : 'Other models'}</h4>
     <table className="fr-mini">
       <thead><tr><th /><th>{month.name}</th><th>vs Feather Forecast</th></tr></thead>
       <tbody>{rows.map(([name, color, v]) => (
