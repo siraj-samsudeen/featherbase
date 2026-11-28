@@ -21,6 +21,8 @@ const PLATFORM_RELATIONS = new Set([
   'person_credential',
   // #1346: users of the MotherDuck warehouse, kept in step daily.
   'motherduck_account',
+  // #1410: screens saved as data.
+  'page',
   'identifier_system', 'person_identifier', 'person_identifier_fingerprint',
   'person_match', 'person_match_member', 'person_merge',
   'org_chart_role_rule',

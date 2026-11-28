@@ -14,6 +14,7 @@ import { encodePath, type NavPath } from '../lib/nav-path'
 import { useNavigationHistory } from '../lib/navigation-history'
 import { EntryLabel, useLiveDestinations, useRowTitle } from '../lib/row-titles'
 import { tableLabel, useMeta } from '../lib/meta'
+import { useSavedPageTitle } from '../lib/home-pages'
 import { setSidebarDrawerOpen } from '../lib/sidebar-collapsed'
 import { useRealtime } from '../lib/realtime'
 import { walkShortLabel } from '../lib/step-labels'
@@ -269,7 +270,9 @@ function SidebarRecentRow({
   const tableName = shown.row?.table ?? (entry.key.startsWith('row:') ? entry.key.slice(4, entry.key.indexOf('/')) : shown.label)
   // #1241: a row's or a list's Table by its label (a page is its own title).
   const ofTable = Boolean(shown.row) || entry.key.startsWith('row:') || shown.kind === 'list'
-  const table = tableLabel(tableName, useMeta(tableName, ofTable).data)
+  // #1410: a runtime page is its title, in the tile and the tooltip as in the row.
+  const pageTitle = useSavedPageTitle(shown.page)
+  const table = pageTitle ?? tableLabel(tableName, useMeta(tableName, ofTable).data)
   // A filtered list says its filter in the tooltip (the second line it had before).
   const what = !shown.row && shown.sub ? `${table} · ${shown.sub}` : table
   const last = entry.visits[entry.visits.length - 1] ?? 0

@@ -64,3 +64,9 @@ export { RECORD_FACTS_LIMITS, RECORD_FACT_TONES, actionDoneSchema, actionPreview
 export { WORKED_OUT_LIMITS, workedOutRowSchema, workedOutSchema, type WorkedOut, type WorkedOutAnswer, type WorkedOutRow } from './worked-out'
 export { ADDRESS_MAX, UNAVAILABLE_PATH, askedAddress, unavailableHref } from './unavailable-address'
 export { needsEmail, personMeta, personMetaShort, personMetaText, type PersonLabel, type PersonMetaPart } from './person-label'
+export {
+  PAGE_ACTIONS, PAGE_EXAMPLE, PAGE_FILTER_OPERATORS, PAGE_FUNCTIONS, PAGE_NAME, PAGE_PARTS, PAGE_ROW_CAP, PAGE_ROW_COLUMNS, PAGE_SPEC_VERSION, PAGE_STATUSES,
+  checkPage, pageCatalog, pageHref,
+  type CallRef, type ChildList, type PageActionName, type PageCheck, type PageColumnUse, type PageDefinition, type PageFunctionName, type PagePart, type PagePartName,
+  type PageSampleSource, type PageSource, type PageStateValue, type PageStatus, type PageTableBand, type PageTableColumn, type PageTableSource, type PathRef,
+} from './page-definition'

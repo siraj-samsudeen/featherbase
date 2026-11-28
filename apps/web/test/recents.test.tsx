@@ -321,6 +321,19 @@ describe('actionForLocation', () => {
       sub: 'Report',
     })
     expect(actionForLocation('/featherbase/admin/dashboard/Ops', {})).toMatchObject({ kind: 'page', sub: 'Dashboard' })
+    // #1410: a runtime page is remembered by its name, which is its address.
+    expect(actionForLocation('/featherbase/admin/page/reorder-plan', { open: 'Stationery' })).toEqual({ kind: 'page', key: 'page:page/reorder-plan', label: 'reorder-plan', sub: 'Page', path: '/featherbase/admin/page/reorder-plan' })
+  })
+
+  it('#1410: a remembered runtime page asks for its title by its name, however long ago it was recorded', () => {
+    const page = { kind: 'page' as const, key: 'page:page/reorder-plan', label: 'reorder-plan', sub: 'Page', path: '/featherbase/admin/page/reorder-plan' }
+    expect(displayEntry(page)).toEqual({ kind: 'page', label: 'reorder-plan', sub: 'Page', page: 'reorder-plan' })
+    expect(displayEntry({ ...page, path: '/featherbase/admin/page/reorder%20plan?open=Stationery' }).page).toBe('reorder plan')
+  })
+
+  it('#1410: a Dashboard and a report still read as the name they were recorded with', () => {
+    expect(displayEntry({ kind: 'page', key: 'page:dashboard/Ops', label: 'Ops', sub: 'Dashboard', path: '/featherbase/admin/dashboard/Ops' })).toEqual({ kind: 'page', label: 'Ops', sub: 'Dashboard' })
+    expect(displayEntry({ kind: 'page', key: 'page:script-report/Sales', label: 'Sales', sub: 'Report', path: '/featherbase/admin/script-report/Sales' })).toEqual({ kind: 'page', label: 'Sales', sub: 'Report' })
   })
 
   it('ignores home pages, builders, and transient new forms', () => {

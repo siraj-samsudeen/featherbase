@@ -24,6 +24,7 @@ import { AppError } from './errors'
 import { getMeta } from './meta'
 import { getRoles, permissionScope } from './permissions'
 import { storedTable } from './views'
+import { pagesFor } from './pages'
 
 // Legacy UI-027 shortcut shape, kept working: [{ label, type, link_to }].
 interface HomePageShortcut {
@@ -46,6 +47,8 @@ interface VisibleHomePage {
   module: string | null
   cards: HomePageCard[]
   shortcuts: HomePageShortcut[]
+  /** #1410: the module's pages this person may open; a Draft only for someone who may build. */
+  pages: { name: string; title: string; status: string }[]
 }
 
 // Which page a module's tables land on. `Core` is special: user tables filed
@@ -64,7 +67,7 @@ function homePageForModule(module: string): { name: string; label: string } {
 // Find the module's home page, creating it on demand. Direct SQL on purpose:
 // these are engine-seeded navigation rows (the 0005 core-seeds discipline),
 // not user mutations — nothing in the save lifecycle applies to them.
-async function ensureModuleHomePage(module: string): Promise<string> {
+export async function ensureModuleHomePage(module: string): Promise<string> {
   const [existing] = await sql`
     select row_id from home_page where module = ${module} order by row_id limit 1`
   if (existing) return existing.row_id as string
@@ -220,6 +223,14 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
     return ok
   }
 
+  // #1410: each module's pages sit on its home page, beside its Tables.
+  const pagesByModule = new Map<string, VisibleHomePage['pages']>()
+  for (const { name, title, status, module } of await pagesFor(user)) {
+    const list = pagesByModule.get(module) ?? []
+    list.push({ name, title, status })
+    pagesByModule.set(module, list)
+  }
+
   const out: VisibleHomePage[] = []
   for (const p of pages) {
     const required = rolesByPage.get(p.row_id as string) ?? []
@@ -285,6 +296,7 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
       module: (p.module as string) ?? null,
       cards: cards.filter((c) => c.links.length > 0),
       shortcuts,
+      pages: pagesByModule.get(p.module as string) ?? [],
     })
   }
   return out

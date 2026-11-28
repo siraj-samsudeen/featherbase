@@ -1,6 +1,6 @@
 // Per-user warm history cache, reconciled with the server on app load.
 
-import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, RELATED_OPS, adminPageTitle, adminPathTitle, choiceLabel } from 'shared'
+import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, RELATED_OPS, adminPageTitle, adminPathTitle, choiceLabel, pageHref } from 'shared'
 import { fmtDate } from '@featherbase/shop-floor'
 import { viewedPerson } from './viewing-as'
 import type { ColumnDef } from './meta'
@@ -457,6 +457,16 @@ interface EntryDisplay {
   sub?: string
   /** Set for a row: whose title to show in place of its id. */
   row?: { table: string; rowId: string }
+  /** #1410: set for a runtime page: the name whose title to show in place of it. */
+  page?: string
+}
+
+const PAGE_ROOT = pageHref('')
+/** #1410: the name of the runtime page an address opens (`/featherbase/admin/page/reorder-plan?open=…`), if it opens one. */
+export function pageNameOf(path: string): string | undefined {
+  if (!path.startsWith(PAGE_ROOT)) return undefined
+  const name = path.slice(PAGE_ROOT.length).split(/[/?#]/)[0]!
+  return name ? decodeURIComponent(name) : undefined
 }
 
 /**
@@ -464,8 +474,10 @@ interface EntryDisplay {
  * recorded before a rule existed read the same as new ones: a fixed admin
  * page is a page with its catalog title (an old entry may be a 'list'
  * labelled with the slug, #442), and a row names its Table as the sub-line
- * and asks for its title by reference. `kind` may be absent (a pinned
- * workspace target); the key's prefix decides then.
+ * and asks for its title by reference. A runtime page (#1410) is remembered
+ * by its name, which is its address, and asks for its title the same way; a
+ * Dashboard or a report is named by its title already. `kind` may be absent
+ * (a pinned workspace target); the key's prefix decides then.
  */
 export function displayEntry(entry: {
   kind?: RecentKind
@@ -481,7 +493,8 @@ export function displayEntry(entry: {
   }
   if (kind === 'row' && entry.sub && entry.key === `row:${entry.sub}/${entry.label}`)
     return { kind, label: entry.label, sub: entry.sub, row: { table: entry.sub, rowId: entry.label } }
-  return { kind, label: entry.label, sub: entry.sub }
+  const page = kind === 'page' ? pageNameOf(entry.path) : undefined
+  return { kind, label: entry.label, sub: entry.sub, ...(page ? { page } : {}) }
 }
 
 function noFilters(json: string): boolean {

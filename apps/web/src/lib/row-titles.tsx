@@ -2,6 +2,7 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { api } from './api'
 import { ShownName } from './people'
 import { useTableLabel } from './meta'
+import { useSavedPageTitle } from './home-pages'
 import { displayEntry, type RecentAction } from './recents'
 
 // Home cleanup: a referenced row reads as its title — the Table's title
@@ -94,11 +95,18 @@ export function RowTitle({ table, rowId }: { table: string; rowId: string }) {
   return title ? <>{title}</> : <ShownName id={rowId} />
 }
 
-/** The label of any remembered destination: a row's title, a fixed page's
- *  catalog title, or the recorded label. */
+/** #1410: a runtime page as a person reads it: its title; the name it was
+ *  remembered by until the title arrives, or when the page is no longer there. */
+export function PageName({ name, fallback }: { name: string; fallback: string }) {
+  return <>{useSavedPageTitle(name) ?? fallback}</>
+}
+
+/** The label of any remembered destination: a row's title, a runtime page's
+ *  title, a fixed page's catalog title, or the recorded label. */
 export function EntryLabel({ entry }: { entry: Pick<RecentAction, 'key' | 'label' | 'path'> & { kind?: RecentAction['kind']; sub?: string } }) {
   const shown = displayEntry(entry)
   if (shown.row) return <RowTitle table={shown.row.table} rowId={shown.row.rowId} />
+  if (shown.page) return <PageName name={shown.page} fallback={shown.label} />
   // #1241: a list is its Table as people read it.
   return shown.kind === 'list' ? <TableWords table={shown.label} /> : <ShownName id={shown.label} />
 }

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import type { PageStatus } from 'shared'
 import { api } from './api'
 
 // #80: the caller's visible Home Pages, straight from GET /api/home_pages.
@@ -26,6 +27,8 @@ interface HomePage {
   module: string | null
   cards: HomePageCard[]
   shortcuts: HomePageShortcut[]
+  /** #1410: the module's runtime pages this person may open; a Draft only for someone who may build. */
+  pages: { name: string; title: string; status: PageStatus }[]
 }
 
 export function useHomePages() {
@@ -44,4 +47,14 @@ export function useModuleHomePage(meta: { name: string; module?: string | null }
   if (!meta) return undefined
   return (pages.find((p) => p.cards.some((card) => card.links.some((link) => link.link_to === meta.name)))
     ?? pages.find((p) => p.module && p.module === meta.module))?.row_id
+}
+
+/**
+ * #1410: a runtime page's title, by its name. The home pages list every page this person may open, each under
+ * its module, and the sidebar has already asked for them. Undefined while they load, and for a page that is not
+ * among them (deleted, or a Draft this person may not open).
+ */
+export function useSavedPageTitle(name: string | undefined): string | undefined {
+  const pages = useHomePages().data?.pages ?? []
+  return name === undefined ? undefined : pages.flatMap((home) => home.pages).find((page) => page.name === name)?.title
 }

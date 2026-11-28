@@ -242,11 +242,12 @@ export function registerTableTools(tool: RegisterTool, api: Api, tokenId: string
       label: z.string().optional(),
       description: z.string().optional(),
       id_pattern: z.string().optional().describe('How new rows get their id, e.g. "SUP-.###"; a random id when left out'),
+      module: z.string().min(1).optional().describe('The group the Table is listed under in the sidebar, beside the pages of the same module (#1410)'),
       columns: z.array(columnArg).min(1),
     },
     ADDS,
-    async ({ table, label, description, id_pattern, columns }) => described((await api('POST', '/api/table_def', {
-      ...given({ name: table, label, description, id_pattern }),
+    async ({ table, label, description, id_pattern, module, columns }) => described((await api('POST', '/api/table_def', {
+      ...given({ name: table, label, description, id_pattern, module }),
       // As the wizard does: the first columns show in the Table's list.
       columns: columns.map((c, i) => ({ ...columnDef(c), in_list_view: i < LIST_COLUMNS_ON_CREATE })),
     })) as TableDef))

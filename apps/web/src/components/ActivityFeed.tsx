@@ -6,6 +6,8 @@ import { fmtClockTime, fmtTimelineDay, timelineDayKey } from '@featherbase/shop-
 import { KindIcon } from '../lib/kind-icons'
 import { useRealtime } from '../lib/realtime'
 import { useIsSystemManager } from '../lib/session'
+import { pageNameOf } from '../lib/recents'
+import { PageName } from '../lib/row-titles'
 import { undoTableDefault } from './TableDefaultDialog'
 import { cardClasses, touchLinkClasses, touchRowClasses } from '@featherbase/shop-floor'
 
@@ -27,6 +29,13 @@ interface FeedItem {
   count?: number
   /** #1282 A4: a Table default save still in force, which this line can undo. */
   undo?: string
+}
+
+/** What a line of the trail is about, as a person reads it: a row by the title the server read for it, and a
+ *  runtime page (#1410) by its title, since the trail remembers a page by its name, which is its address. */
+function ObjectName({ item }: { item: FeedItem }) {
+  const page = item.kind === 'page' ? pageNameOf(item.path) : undefined
+  return page ? <PageName name={page} fallback={item.label} /> : <>{item.title ?? item.label}</>
 }
 
 // #101 Phase 4: the homepage activity feed. Two tabs with a deliberate
@@ -142,7 +151,7 @@ export function ActivityFeed() {
                     className="min-w-[4ch] truncate text-left font-medium text-action hover:underline pointer-coarse:before:absolute pointer-coarse:before:inset-0 pointer-coarse:before:content-['']"
                     data-testid="feed-object"
                   >
-                    {item.title ?? item.label}
+                    <ObjectName item={item} />
                   </button>
                 ) : (
                   (item.title ?? item.label) && (

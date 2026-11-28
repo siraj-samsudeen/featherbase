@@ -134,6 +134,8 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   has_role: { person: id, service_account: id, role: code },
   // Shortcuts hold Table names and links, never a person id.
   home_page: { label: text, icon: code, module: code, shortcuts: code },
+  // #1410: a page's definition is left alone, as a dashboard's config is: a person id written into one of its filters is not rewritten.
+  page: { title: text, module: code, status: code, description: text, definition: text },
   home_page_link: { label: text, type: code, link_to: code },
   home_page_role: { role: code },
   import_log: { '*': code, error_summary: text, touched: text },
