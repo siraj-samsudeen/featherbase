@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Card, EmptyState, PageHeader, RecordPagesProvider, Select, Skeleton, StatusPill } from '@featherbase/shop-floor'
 import { listWhere, saveRow } from '../api'
-import { NO_SECTION, officialRuns, orgOf, type Viewer } from '../teamLeader/live'
+import { NO_SECTION, officialRuns, orgOf, speaker, type Viewer } from '../teamLeader/live'
 import { BASIS_CODES, PARTS, day as dayText, inr, monthOfRun, pc, type Base, type RunRow } from '../shared/model'
 import { addsOf } from '../shared/built'
 import { HowBuilt } from '../shared/HowBuilt'
@@ -21,7 +21,9 @@ const todayIST = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkat
 /** A subcategory's month for How it was built: Feather Forecast, what each base adds, and the AOP. */
 interface Built { name: string; fc: number; aop: number; bases: Base[] }
 interface Days { run: RunRow; storeCode: string; store: string; section: string; month: DayMonth & { label: string }; subs: SubDays[]; rowIds: Map<string, string>
-  explanations: DayExplanation[]; salesTo: string | null; built: Built[] }
+  explanations: DayExplanation[]; salesTo: string | null; built: Built[]
+  /** Who the page speaks as: the viewer, or the section's Team Leader today for an administrator's unnamed view. */
+  person: string }
 
 type Tab = 'days' | 'how'
 const ADDS = BASIS_CODES.map((_, i) => `adds_value_b${i + 1}`)
@@ -51,7 +53,7 @@ async function loadDays(viewer: Viewer): Promise<Days | null> {
   const m = monthOfRun(run.horizon_from), month = { ...m, index: Number(run.horizon_from.slice(5, 7)) - 1 }
   const upTo = loadedTo(sold, run.horizon_from)
   const asOf = sold.reduce<string | null>((a, r) => (r.actuals_as_of_date && (!a || r.actuals_as_of_date > a) ? r.actuals_as_of_date.slice(0, 10) : a), null)
-  return { run, storeCode, store, section, month,
+  return { run, storeCode, store, section, month, person: speaker(viewer.name, at0?.teamLeaders),
     subs: subDaysFrom(lines.map(l => ({ name: l.subcategory_name, category: l.category_name, section })), fc, sold, storeCode, month.days, upTo)
       .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name)),
     rowIds: new Map(lines.map(l => [l.subcategory_name, l.row_id])), explanations: said.map(explanationOf), salesTo: asOf,
@@ -92,9 +94,9 @@ export function DayReviewPage({ viewer, href, monthHref }: {
 
   // a later explanation replaces the writer's own earlier one; anyone else's stays, and theirs is added
   const save = async (d: ExplainDraft, replacing?: DayExplanation) => {
-    const mine = replacing && replacing.by === viewer.name ? { row_id: replacing.id, updated_at: replacing.updatedAt } : {}
+    const mine = replacing && replacing.by === days.person ? { row_id: replacing.id, updated_at: replacing.updatedAt } : {}
     await saveRow('forecasting.day_explanation', { ...mine, run_id: days.run.run_id, store_code: days.storeCode, section_name: days.section, subcategory_name: d.subcategory,
-      explained_date: `${days.run.horizon_from.slice(0, 7)}-${String(d.day).padStart(2, '0')}`, direction: d.direction, causes: d.causes.join('\n'), tags: d.tags.join('\n'), note: d.note, explained_by: viewer.name })
+      explained_date: `${days.run.horizon_from.slice(0, 7)}-${String(d.day).padStart(2, '0')}`, direction: d.direction, causes: d.causes.join('\n'), tags: d.tags.join('\n'), note: d.note, explained_by: days.person })
     await load()
   }
   const byRow = new Map([...days.rowIds].map(([name, id]) => [id, name]))
@@ -104,7 +106,7 @@ export function DayReviewPage({ viewer, href, monthHref }: {
     <RecordPagesProvider pageFor={(table, rowId) => (table === 'forecasting.forecast_line_month' && byRow.has(rowId) ? href(byRow.get(rowId)!) : undefined)}>
       <div className="flex flex-col" data-testid="day-review-page">
         <PageHeader title={`${days.store} · ${days.section} · ${days.month.label}, day by day`}
-          status={`${viewer.name} · ${viewer.role} · sales to ${days.salesTo ? dayText(days.salesTo) : '—'} · before tax`} />
+          status={`${days.person} · ${viewer.role} · sales to ${days.salesTo ? dayText(days.salesTo) : '—'} · before tax`} />
         {/* the underlined tab row the review and the 26-Nov mockup use: one look on every forecasting page */}
         <div className="fr-tabs mt-4" role="tablist" aria-label="Day review">
           {([['month', 'Review the month'], ['days', 'Days'], ['how', 'How it was built']] as const).map(([id, label]) => (

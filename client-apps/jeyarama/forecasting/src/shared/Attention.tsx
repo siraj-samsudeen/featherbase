@@ -105,7 +105,7 @@ function Pane({ f, header, place, index, of, onClose, onMove, href, onOpen }: {
     <div className="fr fr-att-pane" onKeyDown={keys} data-testid="attention-pane">
       <DrillPane kind={`${index + 1} of ${of} · ↑ ↓ to move, Esc to close`} title={f.title} onClose={onClose} place={place}>
         <div><p className={cx('fr-att-pane-amt', f.colour === 'red' ? 'fr-short' : f.colour === 'purple' ? 'fr-over' : 'fr-dim')}>{inr(f.rupees)}</p><p className="fr-dim fr-att-small">{what}</p></div>
-        <PaneSection title="Numbers"><dl className="fr-att-kv">{nums.map(c => <Fragment key={c}><dt>{headOf(c, header.month)}</dt><dd>{show(c, f)}</dd></Fragment>)}</dl></PaneSection>
+        <PaneSection title="Numbers"><dl className="fr-att-kv">{nums.map(c => <Fragment key={c}><dt>{headOf(c, header.month)}</dt><dd>{c === 'store' && f.n.storeCode ? <StoreLink code={String(f.n.storeCode)} name={show(c, f)} /> : show(c, f)}</dd></Fragment>)}</dl></PaneSection>
         <PaneSection title="What we see"><p className="fr-att-p">{f.evidence}</p></PaneSection>
         <PaneSection title="What to do"><p className="fr-att-p">{f.action}</p></PaneSection>
         <PaneSection title="Who to ask"><p className="fr-att-p">{f.who.map(w => <span key={w.role}><b><PersonLink id={w.id} name={w.name} /></b> <span className="fr-dim">· {w.role}</span></span>)}</p></PaneSection>

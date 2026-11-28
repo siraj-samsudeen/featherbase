@@ -2,6 +2,7 @@
 // Baseline on made-up data (#4870 in the warehouse repo): Runs, bases and sales come from madeUp.ts and
 // sales.ts; numbers, their history, Review questions and ideas are Featherbase rows. The month is
 // picked beside "Viewing as" and kept in the address (?month=), as Dash's top-bar Month picker keeps it.
+import { UNNAMED_TL } from './teamLeader/live'
 import { createElement, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Button, Card, EmptyState, Field, PersonLabel, Select, Skeleton } from '@featherbase/shop-floor'
 import { listAll, saveRow } from './api'
@@ -222,7 +223,7 @@ export function ForecastingApp() {
   // Whoever looks after the app opens any store's section as its Team Leader would see it:
   // ?view=section&store=<store>&section=<section>&tl=<name> (a loaded Run's sections are not on the made-up chart).
   const asSection = !me && params.get('section') && params.get('store')
-    ? { name: params.get('tl') || 'Team Leader', role: 'Team Leader', place: `${params.get('store')} · ${params.get('section')}` } : null
+    ? { name: params.get('tl') || UNNAMED_TL, role: 'Team Leader', place: `${params.get('store')} · ${params.get('section')}` } : null
   // A Team Leader opens on their own section's review (#1419); everyone else on the Workspace.
   const view = (VIEWS.some(v => v.key === params.get('view')) ? params.get('view') : viewer.role === 'Team Leader' && me ? 'section' : 'sections') as View
   const [month, chooseMonth] = useMonth()

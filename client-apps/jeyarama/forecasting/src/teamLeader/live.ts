@@ -91,6 +91,12 @@ export async function loadStore(store?: string | null): Promise<StoreSummary | n
   return { run: storeRun, stores, store: chosen, people: org.people, month: monthOfRun(storeRun.horizon_from), cutOff: day(storeRun.origin_date), sections, noSection }
 }
 
+/** The name an administrator's view of a section starts with when the address names no Team Leader: the page puts
+ *  the section's Team Leader today in its place, from the org chart. */
+export const UNNAMED_TL = 'Team Leader'
+/** The person a section's page speaks as: the named viewer, else the section's first Team Leader today. */
+export const speaker = (name: string, teamLeaders: string[] | undefined) => (name === UNNAMED_TL && teamLeaders?.length ? teamLeaders[0] : name)
+
 /** The place name of a store's subcategories that the org chart puts in no section. */
 export const NO_SECTION = 'Not placed in a section'
 
@@ -123,8 +129,9 @@ export async function loadSection(viewer: Viewer): Promise<Section | null> {
     listWhere<TopItemRow>('forecasting.price_band_top_item', ITEM_FIELDS, ofRun),
   ])
   const lines = linesFrom({ lines: mine, sales, plans, others, bands: { mix, stock, items } }, storeCode)
-  const header: Header = { store, section, person: viewer.name, role: viewer.role, cutOff: day(run.origin_date), month: monthOfRun(run.horizon_from), stockAsOf: stockAsOf(stock) }
-  return { run, storeCode, header, lines, org, state: await loadState(run, storeCode, viewer.name, lines) }
+  const person = speaker(viewer.name, at?.teamLeaders)
+  const header: Header = { store, section, person, role: viewer.role, cutOff: day(run.origin_date), month: monthOfRun(run.horizon_from), stockAsOf: stockAsOf(stock) }
+  return { run, storeCode, header, lines, org, state: await loadState(run, storeCode, person, lines) }
 }
 
 /** Needs Your Attention for a section: every item's health here and at the region's other stores (each store's own
