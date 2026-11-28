@@ -98,20 +98,23 @@ export async function loadSection(viewer: Viewer): Promise<Section | null> {
 
 /** Needs Your Attention for a section: every item's health, who to ask, and the same items at the region's other
  *  stores, read only for this page. None when the Run's copies carry no item health. */
-export async function loadFindings(section: Section): Promise<{ findings: Finding[]; othersAsOf: string | null } | null> {
-  const { run, storeCode, header, lines } = section
+export async function loadFindings(section: Section): Promise<{ findings: Finding[]; othersAsOf: string | null; salesTo: string | null; stockAsOf: string | null } | null> {
+  const { storeCode, header, lines } = section
   if (!header.stockAsOf) return null
-  const at = [['run_id', '=', run.run_id], ['store_code', '=', storeCode], ['subcategory_name', 'in', lines.map(l => l.name)]] as [string, string, unknown][]
+  // the items' 7/14/28 days end on the store's last complete day (refreshed each morning), not the Run's origin
+  const at = [['store_code', '=', storeCode], ['subcategory_name', 'in', lines.map(l => l.name)]] as [string, string, unknown][]
   const [health, people, others] = await Promise.all([
-    listWhere<ItemHealthRow>('forecasting.item_health', ITEM_HEALTH_FIELDS, at),
+    listWhere<ItemHealthRow & { sales_as_of_date: string | null; stock_as_of: string | null }>('forecasting.item_health', [...ITEM_HEALTH_FIELDS, 'sales_as_of_date', 'stock_as_of'], at),
     listWhere<PeopleRow>('forecasting.merchandise_people', PEOPLE_FIELDS, [['subcategory_name', 'in', lines.map(l => l.name)]]),
     listWhere<OtherStoreRow & { stock_as_of: string | null }>('forecasting.item_other_stores', [...OTHER_STORE_FIELDS, 'stock_as_of'], at),
   ])
   if (!health.length) return null
   const month = { name: header.month.name, days: header.month.days, left: daysLeft(header.stockAsOf, header.month) }
   return { findings: needsAttention(lines, health, people, month, storeCode, others),
-    othersAsOf: others.reduce<string | null>((a, r) => (r.stock_as_of && (!a || r.stock_as_of > a) ? r.stock_as_of.slice(0, 10) : a), null) }
+    othersAsOf: newest(others.map(r => r.stock_as_of)), salesTo: newest(health.map(r => r.sales_as_of_date)), stockAsOf: newest(health.map(r => r.stock_as_of)) }
 }
+/** The newest of some dates, YYYY-MM-DD. */
+const newest = (dates: (string | null)[]) => dates.reduce<string | null>((a, d) => (d && (!a || d.slice(0, 10) > a) ? d.slice(0, 10) : a), null)
 
 /** The person's answers and questions on this Run at this store. */
 export async function loadState(runId: string, storeCode: string, person: string): Promise<ReviewState> {

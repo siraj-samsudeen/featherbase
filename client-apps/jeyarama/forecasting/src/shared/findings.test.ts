@@ -28,12 +28,20 @@ describe('Needs Your Attention (#1419, approved 28-Nov-2026)', () => {
     // one a day for 34 days needs 34; 10 in stock leaves 24 short, at ₹100 a piece
     const [f] = find(line([band('a', { stock: 10 }), band('b', { stock: 10 })]), [item('1', { warehouse_qty: 8 })])
     expect(f).toMatchObject({ kind: 'short', colour: 'red', rupees: 2400, band: 'a', title: 'X · a will run short',
-      action: 'Pull up to 8 pcs from the warehouse; ask Kavya (buyer) for the rest' })
+      action: 'Pull 8 pcs from the warehouse (it holds 8); ask Kavya (buyer) for the other 16' })
     expect(f.evidence).toContain('10 pcs last 10 days at December\'s pace; about 34 pcs needed to 31-Dec')
   })
 
-  it('asks the buyer, not the warehouse, when the warehouse holds fewer than 5', () => {
+  it('asks the buyer when the warehouse holds none, and never pulls more than the band is short', () => {
     expect(find(line([band('a', { stock: 10 })]))[0].action).toBe('Ask Kavya (buyer) for about 24 pcs')
+    expect(find(line([band('a', { stock: 10 })]), [item('1', { warehouse_qty: 100 })])[0].action).toBe('Pull 24 pcs from the warehouse (it holds 100)')
+  })
+
+  it("brings in only what the warehouse can't cover", () => {
+    // 24 short; the warehouse holds 20, so a transfer is asked for the other 4, though MOT could spare 50
+    const f = find(line([band('a', { stock: 10, q28: 28 })]), [item('1', { stock_qty: 10, sales_qty: 28, sales_value_before_tax: 2800, warehouse_qty: 20 })], [at('1', 'MOT', 50, 0)])
+    expect(f.find(x => x.kind === 'xin')).toMatchObject({ action: 'Ask MOT Store MOT for 4 pcs; tell Kavya (buyer)' })
+    expect(f.find(x => x.kind === 'short')!.action).toMatch(/^Pull 20 pcs from the warehouse \(it holds 20\); ask Kavya \(buyer\) for the other 4; MOT Store MOT holds 50 pcs/)
   })
 
   it('says a band has too much stock past 60 days, and offers the surplus to a store that will run out of it', () => {
@@ -72,7 +80,7 @@ describe('Needs Your Attention (#1419, approved 28-Nov-2026)', () => {
   it('says a top seller is out when its stock covers under two days, unless its band is already flagged', () => {
     const top = item('1', { price_band: 'b', sales_qty: 28, sales_value_before_tax: 2800, stock_qty: 1, warehouse_qty: 3 })
     const f = find(line([band('a', { stock: 40 }), band('b', { stock: 40 })]), [top])
-    expect(f.find(x => x.kind === 'topout')).toMatchObject({ title: 'Top seller out: Item 1', rupees: 3300, action: 'Pull 3 pcs from the warehouse today' })
+    expect(f.find(x => x.kind === 'topout')).toMatchObject({ title: 'Top seller out: Item 1', rupees: 3300, action: 'Pull 3 pcs from the warehouse today (it holds 3)' })
     expect(find(line([band('a', { stock: 40 }), band('b', { stock: 5 })]), [top]).some(x => x.kind === 'topout')).toBe(false)
   })
 

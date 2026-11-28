@@ -138,9 +138,15 @@ export function needsAttention(lines: Line[], items: ItemHealthRow[], people: Pe
       const lasts = pace ? b.stock / pace : 0
       if (pace && b.stock < need) {
         const short = need - b.stock
-        let act = wh >= 5 ? `Pull up to ${pcs(wh)} pcs from the warehouse; ask ${buyer} for the rest` : `Ask ${buyer} for about ${pcs(short)} pcs`
-        // the band's need shared over its selling items like their 28 days' sales, less what each holds here
-        act += bringIn(bandItems.filter(i => n(i.sales_qty) > 0).map(i => [i, n(i.sales_qty) / b.q28 * need - Math.max(0, n(i.stock_qty))]), `this band runs short before ${end}`, b.name)
+        // the warehouse covers what it can, never more than it holds; the buyer is asked only for the rest
+        const pull = Math.min(short, wh), rest = short - pull
+        let act = pull >= 1 ? `Pull ${pcs(pull)} pcs from the warehouse (it holds ${pcs(wh)})${rest >= 1 ? `; ask ${buyer} for the other ${pcs(rest)}` : ''}`
+          : `Ask ${buyer} for about ${pcs(short)} pcs`
+        // what the warehouse can't cover, shared over the band's selling items like their 28 days' sales: a transfer never
+        // asks for more than that remainder, or than the other store can spare
+        const gaps = bandItems.filter(i => n(i.sales_qty) > 0).map(i => [i, Math.max(0, n(i.sales_qty) / b.q28 * need - Math.max(0, n(i.stock_qty)))] as [ItemHealthRow, number])
+        const gapSum = gaps.reduce((t, [, g]) => t + g, 0) || 1
+        if (rest >= S.minTransferPcs) act += bringIn(gaps.map(([i, g]) => [i, g / gapSum * rest]), `this band runs short before ${end}`, b.name)
         add('short', 'red', short * bandPrice, `${sub} · ${b.name} will run short`,
           `${pcs(b.stock)} pcs last ${r0(lasts)} days at ${M}'s pace; about ${pcs(need)} pcs needed to ${end}. ${shares}${shift}`, act, b.name)
         flagged.add(b.name)
@@ -171,7 +177,8 @@ export function needsAttention(lines: Line[], items: ItemHealthRow[], people: Pe
       const rate = n(i.sales_qty) / 28
       if (flagged.has(i.price_band) || n(i.stock_qty) > rate * 2) continue
       const lost = Math.max(0, rate * left - n(i.stock_qty)) * price(i)
-      const act = (n(i.warehouse_qty) >= 1 ? `Pull ${pcs(n(i.warehouse_qty))} pcs from the warehouse today` : `Ask ${buyer} to replenish it first`)
+      const shortI = Math.max(0, rate * left - n(i.stock_qty)), pullI = Math.min(shortI, n(i.warehouse_qty))
+      const act = (pullI >= 1 ? `Pull ${pcs(pullI)} pcs from the warehouse today (it holds ${pcs(n(i.warehouse_qty))})` : `Ask ${buyer} to replenish it first`)
         + bringIn([[i, rate * left - n(i.stock_qty)]], 'a top seller nearly out', i.price_band)
       add('topout', 'red', lost, `Top seller out: ${name(i)}`,
         `${sub} · ${i.price_band}: sold ${pcs(n(i.sales_qty))} pcs in 28 days; ${pcs(n(i.stock_qty))} left`, act, i.price_band)
