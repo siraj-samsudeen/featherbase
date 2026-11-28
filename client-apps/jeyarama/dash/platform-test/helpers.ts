@@ -84,7 +84,9 @@ type Revertable = { migrations: { id: string }[]; tables?: { name: string; decid
  *  role's two columns back on its list, and no setup runs or access decisions. It comes off before all the others. */
 export const RUN_TABLES = ['dash.setup_run', 'dash.access_decision']
 export function revertRolesInFeatherbase(manifest: Revertable) {
-  // #1418's 0.13.48 (its one dataset stays a JSON snapshot) changes no Table and comes off first.
+  // #1458's 0.13.49 (the top jobs and regional readers reach their own region) changes no Table and comes off first.
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'top_jobs_own_region', fromVersion: '0.13.48', operations: [] })
+  // #1418's 0.13.48 (its one dataset stays a JSON snapshot) changes no Table and comes off next.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'datasets_kept_as_json', fromVersion: '0.13.47', operations: [] })
   // #1423's 0.13.47 (a refused report says why, and is logged) changes no Table and comes off next.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'report_refusals_explained', fromVersion: '0.13.46', operations: [] })

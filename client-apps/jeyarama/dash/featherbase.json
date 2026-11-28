@@ -3640,6 +3640,12 @@
       "fromVersion": "0.13.47",
       "toVersion": "0.13.48",
       "operations": []
+    },
+    {
+      "id": "top_jobs_own_region",
+      "fromVersion": "0.13.48",
+      "toVersion": "0.13.49",
+      "operations": []
     }
   ],
   "baseTables": {

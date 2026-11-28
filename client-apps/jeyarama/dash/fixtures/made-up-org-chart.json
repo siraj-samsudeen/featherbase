@@ -625,7 +625,7 @@
   {
    "key": "director",
    "name": "Divya Director",
-   "says": "Director: every store; the whole-stores report lists them all",
+   "says": "Director at the East head office: every East store, none in the West (#1458); the whole-stores report lists them",
    "jobs": [
     [
      "Director",
@@ -673,7 +673,7 @@
   {
    "key": "allstores",
    "name": "Hema All-Stores",
-   "says": "Head office staff holding Dash All-Stores Reader: every store, as a Director",
+   "says": "Head office staff holding Dash All-Stores Reader: every East store, as a Director there (#1458)",
    "jobs": [
     [
      "Head office staff",

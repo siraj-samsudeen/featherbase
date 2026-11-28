@@ -42,12 +42,13 @@ export const STARTING_ROLES: StartingRole[] = [
   { name: 'Visual Merchandiser', reaches: 'Store', description: 'Does visual merchandising in a store.', grants: [REPORTS_IN_AREA, TEAM_TASKS, TEAM_TICKETS] },
   // Owner, 18-Nov-2026: no reports and no Dash by default; head office staff get reports through a role given by hand or a grant.
   { name: 'Head Office', reaches: 'Whole company', description: 'Works at head office. No Dash by default: reports come from a role given by hand or a report given to them.', grants: [OWN_TASKS, TICKETS] },
-  // Owner, 18-Nov-2026: the owner names them by hand; no HR title maps to it (a COO of a region is a Regional Head).
+  // Owner, 18-Nov-2026: the owner names them by hand; no HR title maps to it (a Director, MD or COO by title is a Regional Head, #1458).
   { name: 'Owner Director', reaches: 'Whole company', description: 'The group\'s owner-directors: the whole company and every report.', by_hand_only: true, grants: [EVERY_REPORT, GIVE_TO_TEAM, TEAM_TASKS, TEAM_TICKETS] },
   { name: 'Master Data Manager', reaches: 'Whole company', description: 'Keeps the master tables right: reads, adds and edits them everywhere, and deletes none.', by_hand_only: true,
     grants: [MASTER_DATA('View'), MASTER_DATA('Add'), MASTER_DATA('Edit')] },
-  // Owner, 18-Nov-2026: every store, but only the reports given to them as a person: View Reports at Area, never at All.
-  { name: 'Report Analyst', reaches: 'Whole company', description: 'Analyses reports across the company: sees every store, and the reports given to them as a person.', by_hand_only: true,
+  // Owner, 18-Nov-2026: only the reports given to them as a person: View Reports at Area, never at All. #1458 (owner, 28-Nov-2026):
+  // their own region's stores, as Dash All-Stores Reader was meant to give, never both regions.
+  { name: 'Report Analyst', reaches: 'Region', description: 'Analyses reports for a region: sees every store of the region their job (or the store given) sits in, and the reports given to them as a person.', by_hand_only: true,
     grants: [REPORTS_IN_AREA, OWN_TASKS, TICKETS] },
   // Owner, 18-Nov-2026: Supplier (was Vendor), D8's supplier area.
   // No Dash until the supplier area exists: a store's reports show every supplier's articles (Codex adversarial round 5).
@@ -56,11 +57,13 @@ export const STARTING_ROLES: StartingRole[] = [
   { name: 'Tester', reaches: 'Given place', description: 'Tests the apps, given by hand at the stores it is given for: reads their reports there.', by_hand_only: true, grants: [REPORTS_IN_AREA, OWN_TASKS, TICKETS] },
 ]
 
-/** Today's jobs and the two merchandise responsibilities, each mapped to its business role. Director, Managing Director and
- *  Chief Operating Officer map to nothing (owner, 18-Nov-2026): Owner Directors are named by hand. */
+/** Today's jobs and the two merchandise responsibilities, each mapped to its business role. Owner Directors are named by hand
+ *  (owner, 18-Nov-2026); every other Director, Managing Director and Chief Operating Officer holds Regional Head, the region
+ *  of their job's site (#1458, owner, 28-Nov-2026). The HR title stays as HR has it; the map only names the role it holds. */
 export const STARTING_TITLES: [title: string, role: string][] = [
   ['Staff', 'Staff'], ['Team Leader', 'Team Leader'], ['Floor Manager', 'Floor Manager'], ['Department Manager', 'Department Manager'],
   ['Store Manager', 'Store Manager'], ['Cluster Manager', 'Cluster Manager'],
+  ['Director', 'Regional Head'], ['Managing Director', 'Regional Head'], ['Chief Operating Officer', 'Regional Head'],
   ['Head office staff', 'Head Office'], ['Buyer', 'Buyer'], ['Category head', 'Category Head'], ['Division head', 'Division Head'],
   // Owner, 18-Nov-2026. Merchandiser, the buying side, is not visual merchandising: it stays as it maps.
   ['Manager - visual merchandising', 'Visual Merchandising Manager'], ['Visual merchandiser', 'Visual Merchandiser'],

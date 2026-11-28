@@ -108,18 +108,21 @@ export async function rolePlaces(docs: Base, person: string, today: string, held
   // job (or the store it is given at) sits at, as a Store Manager of each; regions are the sites' own data.
   // A hand change naming a store places the role there, not at the job's own store (Codex round 5).
   const site = spot.kind === 'job' ? (spot.site || exact(mine.jobs.find(j => exact(j.row_id) === spot.job)?.site)) : spot.kind === 'site' ? spot.site : ''
+  /** Every open store the filter finds, as a Store Manager of each, for anyone holding the role, on the staff list or not. */
+  const asStoreManager = async (kind: string, filters: Filter[]) => {
+    const stores = []
+    for (const s of await every(docs, 'Site', await siteStoreFields(siteKindRead(docs)), filters)) if (openStore(s)) stores.push(s)
+    return reach({ employees: [{ row_id: `by-${kind}`, person, status: 'Current' }],
+      jobs: stores.map(s => ({ row_id: `${kind}-${exact(s.row_id)}`, employee: `by-${kind}`, job: 'Store Manager', site: exact(s.row_id), starts_on: today })) })
+  }
   if (reaches === 'Region' && site) {
     const [here] = await every(docs, 'Site', ['operating_region'], [['row_id', '=', site]])
     const region = exact(here?.operating_region)
-    if (!region) return []
-    const stores = []
-    for (const s of await every(docs, 'Site', await siteStoreFields(siteKindRead(docs)), [['operating_region', '=', region]])) if (openStore(s)) stores.push(s)
-    return reach({ employees: [{ row_id: 'by-region', person, status: 'Current' }],
-      jobs: stores.map(s => ({ row_id: `region-${exact(s.row_id)}`, employee: 'by-region', job: 'Store Manager', site: exact(s.row_id), starts_on: today })) })
+    return region ? asStoreManager('region', [['operating_region', '=', region]]) : []
   }
   switch (spot.kind) {
-    // An every-store job reaches every store, whatever its site, for anyone holding it, on the staff list or not.
-    case 'company': return reach({ employees: [{ row_id: 'by-role', person, status: 'Current' }], jobs: [{ row_id: 'company', employee: 'by-role', job: 'Director', site: '', starts_on: today }] })
+    // #1458: the whole company is every open store; no job reaches it any more (Directors reach their own region).
+    case 'company': return asStoreManager('company', [])
     case 'cluster': return reach({ clusters: mine.clusters.filter(c => exact(c.row_id) === spot.cluster) })
     case 'merchandise': return reach({ merchandise: mine.merchandise.filter(m => spot.assignments.includes(exact(m.row_id))), buyerSections: reaches === 'Merchandise',
       // A merchandise role other than the Buyer's own gets no Buyer Section that names this person its buyer.
