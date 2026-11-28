@@ -9,8 +9,13 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   // choosing a destination closes it again. Wider, the sidebar is always there.
   async function goTo(nav) {
     if ((page.viewportSize()?.width ?? 1440) < 768) await page.getByRole('button', { name: 'Toggle menu' }).click()
-    // #1385: the rows are links the shared sidebar draws from Tasker's data.
-    await page.locator('featherbase-sidebar').getByRole('link', { name: nav, exact: typeof nav === 'string' }).click()
+    // #1385: the rows are links the shared sidebar draws from Tasker's data. A link opens its page when the
+    // address changes, a moment after the click: wait until the row is the open one.
+    const row = page.locator('featherbase-sidebar').getByRole('link', { name: nav, exact: typeof nav === 'string' })
+    await row.click()
+    // At phone width the drawer closes, which takes the rows out of the accessibility tree: read the open one by its words.
+    const open = page.locator('featherbase-sidebar a[aria-current="page"]')
+    await expect(open).toHaveText(nav)
   }
   async function capture(name, expected) {
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}: horizontal page overflow`)
