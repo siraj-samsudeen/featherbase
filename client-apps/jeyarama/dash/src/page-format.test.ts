@@ -17,7 +17,7 @@ describe('the sentence that says why the reader sees the store', () => {
   // #1192: the role reaches every store; the sentence says so, whatever job sits beside it.
   it('says a holder of Dash All-Stores Reader sees every store because of the role', () => {
     expect([at([{ basis: 'all_stores_reader', sections: [] }]), at([{ basis: 'all_stores_reader', sections: [] }, { basis: 'store_manager', sections: [] }])])
-      .toEqual(Array(2).fill('You see every store because you hold Dash All-Stores Reader.'))
+      .toEqual(Array(2).fill('You see every store in your region because you hold Dash All-Stores Reader.'))
   })
 
   describe('one reason (item 3)', () => {

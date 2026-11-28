@@ -40,7 +40,7 @@ function world(): Record<string, Row[]> {
     ],
     Designation: [{ row_id: 'D-OPS', designation: 'Operations Executive' }],
     'Merchandise Assignment': [{ row_id: 'M-1', employee: 'E-BUY', responsibility: 'Category head', category: 'Sarees', operating_region: 'East', starts_on: '2026-01-01' }],
-    Site: [{ row_id: 'LKS', name: 'Lakeside', is_store: true, cluster: 'NORTH', operating_region: 'East' }, { row_id: 'HOF', name: 'Head office', is_store: false }],
+    Site: [{ row_id: 'LKS', name: 'Lakeside', is_store: true, cluster: 'NORTH', operating_region: 'East' }, { row_id: 'HOF', name: 'Head office', is_store: false, operating_region: 'East' }],
     Plant: [{ row_id: '9901', site: 'LKS', plant_type: 'Store' }],
     Section: [{ row_id: 'S1', name: 'Sarees', site: 'LKS', floor: 'F1' }],
     'Section Subcategory': [{ row_id: 'P1', store: 'LKS', section: 'S1', subcategory: '010101001', starts_on: '2026-01-01' }],
@@ -1145,13 +1145,13 @@ describe('the steps towards business roles run only when asked (#1277 J1, J3, J5
 })
 
 describe('business roles decide Dash access (#1277 J2)', () => {
-  it('gives a store manager their store, a buyer their subcategories, an Owner Director named by hand every store, and a Director by title, head office and floor staff nothing', async () => {
+  it('gives a store manager their store, a buyer their subcategories, an Owner Director named by hand every store, a Director by title their region, and head office and floor staff nothing', async () => {
     const { tables } = await switched()
     tables.Employee.push({ row_id: 'E-DIR', name: 'Dina', employee_code: 'E-DIR', status: 'Current', person: 'dir' }, { row_id: 'E-OD', name: 'Omana', employee_code: 'E-OD', status: 'Current', person: 'od' })
     tables['Job Assignment'].push({ row_id: 'J-DIR', employee: 'E-DIR', job: 'Director', site: 'HOF', starts_on: '2026-01-01' }, { row_id: 'J-OD', employee: 'E-OD', job: 'Director', site: 'HOF', starts_on: '2026-01-01' })
     await giveRole(context(tables, { payload: { person: 'od', change: 'Also give', role: roleId(tables, 'Owner Director') } }) as never)
     expect([await scopeOf(tables, 'sm'), await scopeOf(tables, 'b'), await scopeOf(tables, 'od'), await scopeOf(tables, 'dir'), await scopeOf(tables, 'ho'), await scopeOf(tables, 'st')])
-      .toEqual([{ 9901: null }, { 9901: ['010101001'] }, { 9901: null }, {}, {}, {}])
+      .toEqual([{ 9901: null }, { 9901: ['010101001'] }, { 9901: null }, { 9901: null }, {}, {}])
   })
 
   // Owner, 18-Nov-2026: head office staff see reports only through a role given by hand or a grant.
@@ -1251,9 +1251,23 @@ describe('Region and Tester', () => {
     expect(explained.roles.map(r => [r.name, r.area.parts.map(p => p.name), r.area.stores])).toEqual([['Regional Head', ['East'], 2]])
   })
 
-  it('maps no HR title to Regional Head', async () => {
+  // #1458 (owner, 28-Nov-2026): the top jobs hold Regional Head by their HR title, which stays as HR has it.
+  it('maps Director, Managing Director and Chief Operating Officer to Regional Head, and no other title', async () => {
     const tables = await regional()
-    expect(tables['dash.title_map'].map(r => r.business_role)).not.toContain(roleId(tables, 'Regional Head'))
+    expect(tables['dash.title_map'].filter(r => r.business_role === roleId(tables, 'Regional Head')).map(r => r.title).sort())
+      .toEqual(['Chief Operating Officer', 'Director', 'Managing Director'])
+  })
+
+  it('gives a Director by title, at a head office, their region only, and an Owner Director at the same office every store', async () => {
+    const tables = await regional()
+    tables.Site.push({ row_id: 'EHO', name: 'East office', is_store: false, operating_region: 'East' })
+    tables.Employee.push({ row_id: 'E-DIR', name: 'Dina', employee_code: 'E-DIR', status: 'Current', person: 'dir' }, { row_id: 'E-OD', name: 'Omana', employee_code: 'E-OD', status: 'Current', person: 'od' },
+      { row_id: 'E-COO', name: 'Cyril', employee_code: 'E-COO', status: 'Current', person: 'coo' })
+    tables['Job Assignment'].push({ row_id: 'J-DIR', employee: 'E-DIR', job: 'Director', site: 'EHO', starts_on: '2026-01-01' },
+      { row_id: 'J-OD', employee: 'E-OD', job: 'Director', site: 'EHO', starts_on: '2026-01-01' }, { row_id: 'J-COO', employee: 'E-COO', job: 'Chief Operating Officer', site: 'RIV', starts_on: '2026-01-01' })
+    await giveRole(context(tables, { payload: { person: 'od', change: 'Correct', role: roleId(tables, 'Owner Director') } }) as never)
+    expect([await scopeOf(tables, 'dir'), await scopeOf(tables, 'coo'), await scopeOf(tables, 'od')])
+      .toEqual([{ 9901: null, 9902: null }, { 9903: null }, { 9901: null, 9902: null, 9903: null }])
   })
 
   it('gives a Tester, by hand at two stores, those two stores only', async () => {
@@ -1772,7 +1786,7 @@ describe('Give Old Grants To Business Roles carries only the grants to Dash Read
   })
 })
 
-// #1277 (owner, 18-Nov-2026): Report Analyst, given by hand: every store, and only the reports given to them as a person.
+// #1277 (owner, 18-Nov-2026): Report Analyst, given by hand: only the reports given to them as a person. #1458: their region's stores.
 describe('Report Analyst', () => {
   async function analyst(grant: boolean) {
     const { tables } = await switched()
@@ -1785,10 +1799,10 @@ describe('Report Analyst', () => {
     return tables
   }
 
-  it('is given by hand only, reaches the whole company, and views reports in its area, never at reach All', async () => {
+  it('is given by hand only, reaches its region, and views reports in its area, never at reach All', async () => {
     const tables = await seeded()
     const role = tables['dash.business_role'].find(r => r.role_name === 'Report Analyst')!
-    expect([role.reaches, role.by_hand_only, role.description]).toEqual(['Whole company', true, 'Analyses reports across the company: sees every store, and the reports given to them as a person.'])
+    expect([role.reaches, role.by_hand_only, role.description]).toEqual(['Region', true, 'Analyses reports for a region: sees every store of the region their job (or the store given) sits in, and the reports given to them as a person.'])
     expect(tables['dash.business_role_permission'].filter(p => p.business_role === role.row_id).map(p => [p.app, p.level, p.verb, p.thing, p.reach].join(' · ')).sort())
       .toEqual(['Dash · Reader · View · Reports · Area', 'Tasker · User · Edit · Tasks · Own', 'Tickets · User · Raise · Tickets · Own'])
     expect(tables['dash.title_map'].map(t => t.business_role)).not.toContain(role.row_id)
@@ -1799,9 +1813,9 @@ describe('Report Analyst', () => {
     expect(tables['dash.report_access'].filter(r => r.business_role === roleId(tables, 'Report Analyst'))).toEqual([])
   })
 
-  it('opens a report given to them as a person at every store', async () => {
+  it("opens a report given to them as a person at every store of their job site's region, and none in another", async () => {
     const tables = await analyst(true)
-    expect(await scopeOf(tables, 'ra', ['Dash Reader'])).toEqual({ 9901: null, 9902: null, 9903: null })
+    expect(await scopeOf(tables, 'ra', ['Dash Reader'])).toEqual({ 9901: null, 9902: null })
     expect((await reportsFor(readerOf(tables, 'ra', ['Dash Reader']) as never)).map(r => r.report_key)).toEqual(['sales'])
   })
 

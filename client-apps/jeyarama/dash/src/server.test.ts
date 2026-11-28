@@ -36,7 +36,8 @@ function reader(tables: Record<string, Row[]>, throws: boolean | string[] = fals
 }
 const STORES = {
   Plant: [{ row_id: '9901', site: 'LKS', plant_type: 'Store' }, { row_id: '9902', site: 'HLV', plant_type: 'Store' }],
-  Site: [{ row_id: 'LKS', name: 'Lakeside', is_store: true, cluster: null }, { row_id: 'HLV', name: 'Hillview', is_store: true, cluster: null }],
+  // #1458: every site sits in a region, as on production; a regional reader reaches both stores here.
+  Site: [{ row_id: 'LKS', name: 'Lakeside', is_store: true, cluster: null, operating_region: 'East' }, { row_id: 'HLV', name: 'Hillview', is_store: true, cluster: null, operating_region: 'East' }],
 }
 
 interface Options {
@@ -295,7 +296,8 @@ describe('a holder of Dash All-Stores Reader', () => {
   })
 
   it('reads as reaching every store on the Report access page, by the roles the platform says they hold', async () => {
-    const { ctx } = context({ core: jobOf({ job: 'Head office staff' }), reports: [WHOLE], payload: { person: 'psn_104' }, places: [] })
+    // #1458: the role reaches the region of their job site, so the person looked up holds the head-office job.
+    const { ctx } = context({ core: { ...jobOf({ job: 'Head office staff' }), Employee: [{ row_id: 'E1', person: 'psn_104', status: 'Current' }] }, reports: [WHOLE], payload: { person: 'psn_104' }, places: [] })
     const lookup = (roles: string[]) => reads.person_lookup({ ...ctx, roles: ['Report Access Manager'],
       people: { async names() { return {} }, async rolesOf(person: string) { return person === 'psn_104' ? roles : [] } } })
     expect((await lookup(['Dash Reader', 'Dash All-Stores Reader'])).reports.map(r => [r.key, r.closed])).toEqual([['whole', null]])

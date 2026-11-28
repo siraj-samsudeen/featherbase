@@ -163,12 +163,12 @@ at the repository root.
   | Department Manager | nothing until departments are filled |
   | Store Manager | the whole store |
   | Cluster Manager | every store in their site's cluster |
-  | Director, Managing Director, Chief Operating Officer | every store |
+  | Director, Managing Director, Chief Operating Officer | every open store of their job site's region (#1458) |
   | Head office staff | nothing |
 
   A store is sold through its one Store plant, so a place is a plant code. A whole-store place names
   no section. `reach_problem` says why a job reaches nothing, for the page's message.
-- **Roles:** Dash Reader, Dash All-Stores Reader (reaches every store, as a Director's job does; for head-office staff, #1192) and Report Access Manager. `roleDefaults` is empty; part 4 adds the stand-in binding.
+- **Roles:** Dash Reader, Dash All-Stores Reader (reaches every store of the region of their job sites, as a Director's job does; for head-office staff, #1192, #1458) and Report Access Manager. `roleDefaults` is empty; part 4 adds the stand-in binding.
 - **Datasets:** only `organisation_dives`, on the instance's `motherduck` Data Source: the
   organisation's Dives, read live for Add a Dive (#1169). Dash copies no sales figures into
   Featherbase (#1366): the Dive reads the warehouse itself.

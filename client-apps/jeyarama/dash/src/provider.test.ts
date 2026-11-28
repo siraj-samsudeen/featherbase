@@ -131,9 +131,16 @@ describe('who sees what', () => {
     expect(await reach({ job: 'Cluster Manager', site: 'DDD' })).toEqual({ places: [], problems: ['no_cluster'] })
   })
 
-  it('a Director, Managing Director and Chief Operating Officer see every store, wherever their job row sits', async () => {
-    for (const job of ['Director', 'Managing Director', 'Chief Operating Officer'])
-      expect(await stores({ job, site: 'HOF' })).toEqual(['9901', '9902', '9903', '9904'].map(store => ({ store: [store] })))
+  // #1458 (owner, 28-Nov-2026): the top jobs see their own region; only Owner Directors (business roles) see the whole company.
+  it('a Director, Managing Director and Chief Operating Officer see the open stores of their job site\'s region, a head office\'s too', async () => {
+    for (const job of ['Director', 'Managing Director', 'Chief Operating Officer']) {
+      expect(await stores({ job, site: 'HOF' })).toEqual(['9901', '9902'].map(store => ({ store: [store] })))
+      expect(await stores({ job, site: 'CCC' })).toEqual(['9903', '9904'].map(store => ({ store: [store] })))
+    }
+  })
+
+  it('a Director whose job names no site reaches no store', async () => {
+    expect(await stores({ job: 'Director', site: null })).toEqual([])
   })
 
   it('head office staff see no report', async () => {
@@ -286,25 +293,30 @@ describe('heads named on a cluster', () => {
   })
 })
 
-// #1192 (owner, 11-Nov-2026): a holder of Dash All-Stores Reader reaches every store, as a
-// Director's job does, on top of whatever their jobs reach.
+// #1192 (owner, 11-Nov-2026): a holder of Dash All-Stores Reader reaches every store of their region, as a
+// Director's job does, on top of whatever their jobs reach. #1458 (owner, 28-Nov-2026): their own region, never both.
 describe('the Dash All-Stores Reader role', () => {
   const ROLE = ['All', 'Dash All-Stores Reader']
-  const EVERY = ['9901', '9902', '9903', '9904']
+  const EVERY = ['9901', '9902']
   const whole = (store: string, basis = 'all_stores_reader') => ({ label: store, filters: { store: [store] }, basis, reasons: [{ text: 'Dash All-Stores Reader role' }] })
 
-  it('gives a head office person every store whole, with the role as the reason, and no head-office message', async () => {
+  it('gives a head office person every store of their region whole, with the role as the reason, and no head-office message', async () => {
     expect(await reachOf(fake([{ job: 'Head office staff', site: 'HOF' }]), 'me', ON, ROLE)).toEqual({ places: EVERY.map(store => whole(store)), problems: [] })
   })
 
-  it('gives someone not on the staff list every store, and no no-job message', async () => {
-    expect(await reachOf(fake([]), 'someone else', ON, ROLE)).toEqual({ places: EVERY.map(store => whole(store)), problems: [] })
+  it('gives someone with no job site no store: the region comes from a job', async () => {
+    expect(await reachOf(fake([]), 'someone else', ON, ROLE)).toEqual({ places: [], problems: ['no_job'] })
   })
 
-  it('adds to a job: a Team Leader keeps their section and gains every store', async () => {
+  it('reaches each region one of their jobs sits in', async () => {
+    const two = await reachOf(fake([{ job: 'Head office staff', site: 'HOF' }, { job: 'Head office staff', site: 'CCC' }]), 'me', ON, ROLE)
+    expect(two.places.map(place => place.label)).toEqual(['9901', '9902', '9903', '9904'])
+  })
+
+  it("adds to a job: a Team Leader keeps their section and gains every store of their store's region", async () => {
     const both = await reachOf(fake([{ job: 'Team Leader', site: 'AAA', section: 'AAA-GF-Tops' }]), 'me', ON, ROLE)
     expect(both.places.map(place => [place.label, place.basis])).toEqual([
-      ['9901', 'all_stores_reader'], ['9901 / Section: Tops', 'team_leader'], ['9902', 'all_stores_reader'], ['9903', 'all_stores_reader'], ['9904', 'all_stores_reader']])
+      ['9901', 'all_stores_reader'], ['9901 / Section: Tops', 'team_leader'], ['9902', 'all_stores_reader']])
     expect(both.problems).toEqual([])
   })
 
@@ -315,8 +327,8 @@ describe('the Dash All-Stores Reader role', () => {
   })
 
   it('adds nothing for a store that sells through no plant', async () => {
-    const onlyWarehouse = PLANTS.filter(plant => plant.site !== 'DDD').concat({ row_id: '9154', site: 'DDD', plant_type: 'Warehouse' })
-    expect((await reachOf(fake([], { plants: onlyWarehouse }), 'me', ON, ROLE)).places.map(place => place.label)).toEqual(['9901', '9902', '9903'])
+    const onlyWarehouse = PLANTS.filter(plant => plant.site !== 'BBB').concat({ row_id: '9154', site: 'BBB', plant_type: 'Warehouse' })
+    expect((await reachOf(fake([{ job: 'Head office staff', site: 'HOF' }], { plants: onlyWarehouse }), 'me', ON, ROLE)).places.map(place => place.label)).toEqual(['9901'])
   })
 
   it('gives nothing to someone holding only other roles', async () => {
@@ -327,10 +339,10 @@ describe('the Dash All-Stores Reader role', () => {
 
 // #1277: Dash's scope provider, with no switch row: the old rules.
 describe('the provider', () => {
-  it("reaches every store for a holder of Dash All-Stores Reader, from the roles the platform hands it", async () => {
+  it("reaches every store of their region for a holder of Dash All-Stores Reader, from the roles the platform hands it", async () => {
     const provide = dashScopeProvider({ today: () => ON })
-    const places = await provide({ person: { id: 'me', email: null, roles: ['All', 'Dash All-Stores Reader'] }, documents: fake([]) } as never)
-    expect(places.map(place => place.filters)).toEqual(['9901', '9902', '9903', '9904'].map(store => ({ store: [store] })))
+    const places = await provide({ person: { id: 'me', email: null, roles: ['All', 'Dash All-Stores Reader'] }, documents: fake([{ job: 'Head office staff', site: 'HOF' }]) } as never)
+    expect(places.map(place => place.filters)).toEqual(['9901', '9902'].map(store => ({ store: [store] })))
   })
 
   it('answers the person\'s places on today\'s date', async () => {

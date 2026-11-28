@@ -100,8 +100,10 @@ const BASIS: Record<string, string> = {
   'Store Manager': 'store_manager', 'Cluster Manager': 'cluster_manager', 'Chief Operating Officer': 'chief_operating_officer',
   'Director': 'director', 'Managing Director': 'managing_director',
 }
-const EVERY_STORE = new Set(['Director', 'Managing Director', 'Chief Operating Officer'])
-/** #1192 (owner, 11-Nov-2026): the role that reaches every store, as an every-store job does, for head-office staff. */
+/** #1458 (owner, 28-Nov-2026): jobs that reach every open store of their site's operating region, a head office's too. */
+const REGION_JOBS = new Set(['Director', 'Managing Director', 'Chief Operating Officer'])
+/** #1192 (owner, 11-Nov-2026): the role that reaches every store of the holder's region, as a regional job does, for head-office
+ *  staff. #1458: the regions of their job sites, never the whole company; with no job, nothing. */
 export const ALL_STORES_ROLE = 'Dash All-Stores Reader'
 /** The plant types a store sells through, which a site's readers reach. */
 const SOLD_THROUGH = ['Store', 'Shop-in-shop', 'E-commerce fulfilment']
@@ -147,7 +149,7 @@ export async function reachOf(documents: Documents, person: string, on: string, 
   // rama_dw #4588: a Cluster row names its head in cluster_manager, a text column holding the head's Employee id.
   const ids = employees.map(id)
   const clustersHeaded = employees.length ? (await all(documents, T.cluster, [['cluster_manager', 'in', ids]])).map(id) : []
-  if (!jobs.length && !assignments.length && !myBuyerSections.length && !everyStore && !clustersHeaded.length) return { places: [], problems: ['no_job'] }
+  if (!jobs.length && !assignments.length && !myBuyerSections.length && !clustersHeaded.length) return { places: [], problems: ['no_job'] }
 
   // #1280: a site's kind and status decide whether it is an open store, where the instance's Site has them.
   const sites = await all(documents, T.site, [], await siteKindRead(documents) ? SITE_KIND_FIELDS : [])
@@ -164,10 +166,14 @@ export async function reachOf(documents: Documents, person: string, on: string, 
   /** A site's selling plants; none for a site that sells through none, or that is no open store (#1280:
    *  a Planned or Closed store, a Group or any other kind gives no store reach, whoever's job is there). */
   const sellingPlants = (site: Row | undefined) => (site && openStore(site) ? plantsOf.get(id(site)) ?? [] : [])
+  /** The open stores of the operating region a site sits in; none for a site with no region. */
+  const regionOf = (site: string) => exact(siteOf.get(site)?.operating_region)
+  const storesInRegion = (region: string) => (region ? stores.filter(row => exact(row.operating_region) === region) : [])
   const places = new Places()
   const problems: NoReach[] = []
   if (everyStore)
-    for (const store of stores) for (const plant of sellingPlants(store)) places.add(plant, plant, null, 'all_stores_reader', { text: `${ALL_STORES_ROLE} role` })
+    for (const region of new Set(jobs.map(job => regionOf(exact(job.site)))))
+      for (const store of storesInRegion(region)) for (const plant of sellingPlants(store)) places.add(plant, plant, null, 'all_stores_reader', { text: `${ALL_STORES_ROLE} role` })
   for (const cluster of clustersHeaded)
     for (const store of stores.filter(row => exact(row.cluster) === cluster))
       for (const plant of sellingPlants(store)) places.add(plant, plant, null, 'cluster_manager', { text: `Named head of cluster ${cluster}` })
@@ -205,8 +211,8 @@ export async function reachOf(documents: Documents, person: string, on: string, 
       // A Cluster Manager on a head-office site reaches the cluster that names them instead.
       if (!cluster) { if (!clustersHeaded.length) problems.push('no_cluster'); continue }
       whole(stores.filter(row => exact(row.cluster) === cluster))
-    } else if (EVERY_STORE.has(name)) {
-      whole(stores)
+    } else if (REGION_JOBS.has(name)) {
+      whole(storesInRegion(regionOf(site)))
     } else {
       problems.push('head_office')
     }
