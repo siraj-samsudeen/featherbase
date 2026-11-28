@@ -203,24 +203,28 @@ const LINE_KEY = ['run_id', 'store_code', 'division_name', 'subdivision_name', '
 async function lineOf(ctx: Context): Promise<Row> {
   const { row } = ctx
   const [line] = await ctx.documents.list!('forecasting.forecast_line_month', {
-    fields: ['row_id', ...LINE_KEY, 'store_name', 'section_name', 'forecast_month', 'forecast_value_before_tax', 'forecast_qty'],
+    fields: ['row_id', ...LINE_KEY, 'store_short_code', 'subcategory_code', 'forecast_month', 'forecast_value_before_tax', 'forecast_qty'],
     filters: [['run_id', '=', row.run_id], ['store_code', '=', row.store_code], ['subcategory_name', '=', row.subcategory_name]], limit_page_length: 1 })
   if (!line) ctx.reject(`${String(row.subcategory_name || 'That line')} is not in Run ${String(row.run_id || '')}`)
   for (const k of LINE_KEY) row[k] = line[k] // the key is the Run's, whatever the page sent
   return line
 }
 /** Whether a person reviews this line: a Team Leader their store · section, a Store or Department Manager their store. */
+/** Whether a person reviews this line of the Run (a copy row: its store by site code). A Team Leader is held to
+ *  their store, not yet their section: the section comes live from the org chart, which a validator cannot read
+ *  until #1428 (the page shows each Team Leader only their own section's lines). */
 function reviews(p: Who, line: Row) {
-  if (p.role === 'Team Leader') return p.area === `${String(line.store_name)} · ${String(line.section_name)}`
-  if (p.role === 'Store Manager' || p.role === 'Department Manager') return p.area === String(line.store_name)
+  const store = String(line.store_short_code)
+  if (p.role === 'Team Leader') return p.area.split(' · ')[0] === store
+  if (p.role === 'Store Manager' || p.role === 'Department Manager') return p.area === store
   return false
 }
 async function reviewer(ctx: Context, named: unknown, line: Row): Promise<Who> {
   // An administrator acts for a section's Team Leader by name (the app's "view a section as its Team Leader"),
   // whether or not that person is on the forecasting org chart.
-  if (isAdmin(ctx)) return { name: String(named || 'Team Leader'), role: 'Team Leader', reportsTo: null, area: `${String(line.store_name)} · ${String(line.section_name)}` }
+  if (isAdmin(ctx)) return { name: String(named || 'Team Leader'), role: 'Team Leader', reportsTo: null, area: `${String(line.store_short_code)} · ${String(ctx.row.section_name ?? '')}` }
   const p = await actor(ctx, await orgOf(ctx), named)
-  if (!isAdmin(ctx) && !reviews(p, line)) ctx.reject(`${p.name} reviews ${p.area}; ${String(line.store_name)} · ${String(line.subcategory_name)} is outside it`)
+  if (!isAdmin(ctx) && !reviews(p, line)) ctx.reject(`${p.name} reviews ${p.area}; ${String(line.store_short_code)} · ${String(line.subcategory_name)} is outside it`)
   return p
 }
 /** The columns a save moved, other than `keep` and the platform's own stamps. */
@@ -291,12 +295,14 @@ async function prepareLineReview(ctx: Context) {
 async function prepareDayExplanation(ctx: Context) {
   const { row, old } = ctx
   if (!ctx.isNew && String(old?.explained_by) !== String(row.explained_by) && !isAdmin(ctx)) ctx.reject("An explanation is its writer's own")
+  // the Run's line (a subcategory's day) or any line of the store (a section's day); the section itself is the page's
+  // until a validator can read the org chart (#1428)
   const filters: [string, string, unknown][] = [['run_id', '=', row.run_id], ['store_code', '=', row.store_code],
-    ...(row.subcategory_name ? [['subcategory_name', '=', row.subcategory_name] as [string, string, unknown]] : [['section_name', '=', row.section_name] as [string, string, unknown]])]
-  const [line] = await ctx.documents.list!('forecasting.forecast_line_month', { fields: ['store_name', 'section_name', 'subcategory_name'], filters, limit_page_length: 1 })
+    ...(row.subcategory_name ? [['subcategory_name', '=', row.subcategory_name] as [string, string, unknown]] : [])]
+  const [line] = await ctx.documents.list!('forecasting.forecast_line_month', { fields: ['store_short_code', 'subcategory_name'], filters, limit_page_length: 1 })
   if (!line) ctx.reject(`${String(row.subcategory_name || row.section_name || 'That section')} is not in Run ${String(row.run_id || '')}`)
-  row.section_name = line.section_name
-  row.store_name = line.store_name
+  if (!String(row.section_name ?? '').trim()) ctx.reject('Say which section', { section_name: 'Required' })
+  row.store_name = line.store_short_code
   const p = await reviewer(ctx, row.explained_by, line)
   row.explained_by_role = p.role
   if (!row.explained_date) ctx.reject('Say which day', { explained_date: 'Required' })

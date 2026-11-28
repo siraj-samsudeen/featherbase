@@ -118,8 +118,9 @@ describe('a day explanation (#1425)', () => {
     { full_name: 'Omar', role: 'Department Manager', place: 'North', reports_to: '', places_json: JSON.stringify([{ store: 'North', codes: ['C1', 'C2', 'C3'] }]) },
   ]
   const LINES = [
-    { run_id: 'r', store_code: '9001', store_name: 'North', section_name: 'Kids', subcategory_name: 'Kids Jean' },
-    { run_id: 'r', store_code: '9001', store_name: 'North', section_name: 'Tops', subcategory_name: 'Kids Shirt' },
+    // the Run's lines, as the read-only copy holds them: no section (that comes live from the org chart)
+    { run_id: 'r', store_code: '9001', store_short_code: 'North', subcategory_code: 'C1', subcategory_name: 'Kids Jean' },
+    { run_id: 'r', store_code: '9001', store_short_code: 'North', subcategory_code: 'C3', subcategory_name: 'Kids Shirt' },
   ]
   const IDS: Record<string, string> = { u_tara: 'Tara', u_omar: 'Omar' }
   const list = async (table: string, args: { filters?: [string, string, unknown][] }) => {
@@ -135,14 +136,19 @@ describe('a day explanation (#1425)', () => {
   const day = { run_id: 'r', store_code: '9001', section_name: 'Kids', subcategory_name: null, explained_date: '2026-11-03', direction: 'below',
     causes: 'Weak store execution', tags: 'Weak store execution › Low footfall', note: 'Rain all evening', explained_by: 'Tara' }
 
-  it("is the section's Team Leader's, for the section's day or one of its subcategories' days, with the store and section taken from the Run", async () => {
+  it("is a Team Leader's of that store, for a section's day or one of its subcategories' days, the store taken from the Run", async () => {
     await expect(call('u_tara', day)).resolves.toMatchObject({ store_name: 'North', section_name: 'Kids', explained_by_role: 'Team Leader' })
-    await expect(call('u_tara', { ...day, section_name: 'Anything', subcategory_name: 'Kids Jean' })).resolves.toMatchObject({ section_name: 'Kids' })
+    await expect(call('u_tara', { ...day, subcategory_name: 'Kids Jean' })).resolves.toMatchObject({ store_name: 'North' })
   })
-  it("refuses another section's day, another person's name, and a subcategory not in the Run", async () => {
-    await expect(call('u_tara', { ...day, section_name: 'Tops' })).rejects.toThrow(/outside it/)
+  it("refuses another person's name, a subcategory not in the Run, and a day with no section", async () => {
     await expect(call('u_tara', { ...day, explained_by: 'Omar' })).rejects.toThrow(/cannot act as Omar/)
     await expect(call('u_tara', { ...day, subcategory_name: 'Kids Sock' })).rejects.toThrow(/not in Run r/)
+    await expect(call('u_tara', { ...day, section_name: '' })).rejects.toThrow(/which section/)
+  })
+  // Known gap (#1428): a validator cannot read the live org chart, so a Team Leader is held to their store, not their
+  // section. This pins the check we want: Tara (Kids) is refused Tops' day.
+  it.fails("refuses another section's day in the same store (#1428)", async () => {
+    await expect(call('u_tara', { ...day, section_name: 'Tops' })).rejects.toThrow(/outside it/)
   })
   it('lets an administrator explain as the Team Leader, and keeps an edit to its writer', async () => {
     await expect(call('Administrator', { ...day, explained_by: 'Anisha' })).resolves.toMatchObject({ explained_by_role: 'Team Leader' })
