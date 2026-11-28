@@ -227,3 +227,16 @@ export function contribution(value: number, siblingsTotal: number): string {
   const p = value / siblingsTotal * 100
   return p > 0 && p < 1 ? '<1%' : `${Math.round(p)}%`
 }
+
+/** Siblings' contributions that show exactly 100% between them (largest remainder): every share floored, the points
+ *  left over given to the biggest remainders. A sliver under 1% shows "<1%" and takes no points; "—" when the
+ *  siblings come to nothing. */
+export function contributions(values: number[]): string[] {
+  const total = values.reduce((t, v) => t + v, 0)
+  if (!total) return values.map(() => '—')
+  const raw = values.map(v => v / total * 100), whole = raw.map(r => (r < 1 ? 0 : Math.floor(r)))
+  let left = 100 - whole.reduce((t, x) => t + x, 0)
+  const order = raw.map((r, i) => [r - Math.floor(r), i] as const).filter(([, i]) => raw[i] >= 1).sort((a, b) => b[0] - a[0])
+  for (let k = 0; left > 0 && order.length; k = (k + 1) % order.length, left--) whole[order[k][1]]++
+  return values.map((v, i) => (v === 0 ? '0%' : raw[i] < 1 ? '<1%' : `${whole[i]}%`))
+}
