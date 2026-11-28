@@ -1,5 +1,5 @@
 // #1454: a Table about places is read only within each person's places, on the ordinary read paths. The app
-// `scopedproof` declares its answers Table under `scopedTables`, mapped on store and section; its Answer Reader role
+// `scopedproof` gives its answers Table the row rule `places` (#1459), mapped on store and section; its Answer Reader role
 // reads and writes the Table whole, and the platform narrows every read and write to the reader's places. The places
 // come from test-apps/fixtures/place-roster, which a test tells what to answer. Every row is made up.
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url'
 import type { TestClient } from 'feather-testing-postgres'
 import { afterEach, describe, expect } from 'vitest'
 import { test } from './pg-test'
+import { scenarioFor } from './scenario'
 import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
 import { expectRefused } from './fixtures'
 import { eventVisibleTo } from '../src/realtime'
@@ -32,7 +33,7 @@ const manifest = (more: Record<string, unknown> = {}) => ({
     { table: ANSWER, role: 'Answer Reader', can_read: true, can_write: true, can_create: true },
     { table: REASON, role: 'Answer Reader', can_read: true, can_write: true, can_create: true },
   ],
-  scopedTables: [{ table: ANSWER, keys: ['body'], filters: { store: 'store', section: 'section' } }],
+  rowRules: { [`${APP}.entry`]: { kind: 'all' }, [ANSWER]: { kind: 'places', columns: { store: 'store', section: 'section' } } },
   ...more,
 })
 
@@ -164,9 +165,75 @@ describe('a Table about places', () => {
 
   test('the declaration names the app’s own Table and its plain columns', async () => {
     const problems = async (more: Record<string, unknown>) => JSON.stringify(await discoverPackages([await writeApp(more), provider]))
-    expect(await problems({ scopedTables: [{ table: 'Shop Store', keys: [], filters: { store: 'store' } }] })).toContain('not one of the app')
-    expect(await problems({ scopedTables: [{ table: ANSWER, keys: ['missing'], filters: { store: 'store' } }] })).toContain('cannot be filtered on missing')
-    expect(await problems({ scopedTables: [{ table: ANSWER, keys: [], filters: { store: 'notes' } }] })).toContain('cannot be filtered on notes')
-    expect(await problems({ scopedTables: [{ table: ANSWER, keys: [], filters: {} }] })).toContain('maps at least one scope filter')
+    expect(await problems({ rowRules: { 'Shop Store': { kind: 'places', columns: { store: 'store' } } } })).toContain('not one of the app')
+    expect(await problems({ rowRules: { [ANSWER]: { kind: 'places', columns: { store: 'missing' } } } })).toContain('cannot be narrowed by missing')
+    expect(await problems({ rowRules: { [ANSWER]: { kind: 'places', columns: { store: 'notes' } } } })).toContain('cannot be narrowed by notes')
+    expect(await problems({ rowRules: { [ANSWER]: { kind: 'places', columns: {} } } })).toContain('Map at least one scope filter')
+  })
+})
+
+// The capability's scenarios (openspec/specs/scoped-app-reads), each on the fixture above: answers a1 (N1, kids),
+// a2 (N1, mens), a3 (S1, kids) and a4 (S1, mens).
+const scenario = scenarioFor(test, 'scoped-app-reads')
+describe('scoped-app-reads', () => {
+  scenario('A section\'s answers, and no other', async ({ admin, createUser }, step) => {
+    let reader!: TestClient
+    const places = [{ label: 'North kids', filters: { store: ['N1'], section: ['kids'] } }]
+    await step('a review Table holds an answer at store "N1" for section "kids" and one for section "mens"', () => installed(admin))
+    await step('the reader\'s only place is store "N1" with section "kids"', async () => { reader = await createUser({ roles: ['Answer Reader'] }) })
+    await withPlaces(places, async () => {
+      let listed: string[] = []
+      await step('the reader lists the review Table', async () => { listed = ids(await list(reader)) })
+      await step('it answers the first answer only', () => expect(listed).toEqual(['a1']))
+      await step('opening the second answer is refused', () => expectRefused(reader.get(`/api/table/${encodeURIComponent(ANSWER)}/a2`), 403))
+    })
+  })
+
+  scenario('A place the Table cannot apply adds nothing', async ({ admin, createUser }, step) => {
+    let reader!: TestClient
+    let listed: string[] = []
+    await step('a reader\'s place names a filter the Table does not map', async () => {
+      await installed(admin)
+      reader = await createUser({ roles: ['Answer Reader'] })
+    })
+    await withPlaces([{ label: 'North, by floor', filters: { store: ['N1'], floor: ['2'] } }, { label: 'South kids', filters: { store: ['S1'], section: ['kids'] } }], async () => {
+      await step('the reader lists the Table', async () => { listed = ids(await list(reader)) })
+      await step('that place adds no rows', () => expect(listed).toEqual(['a3']))
+    })
+  })
+
+  scenario('Someone with no places sees only what they wrote', async ({ admin, createUser }, step) => {
+    let reader!: TestClient
+    let listed: string[] = []
+    await step('the org chart gives the reader no place', async () => {
+      await installed(admin)
+      reader = await createUser({ roles: ['Answer Reader'] })
+    })
+    await withPlaces([], async () => {
+      await step('the reader saves an answer and lists the review Table', async () => {
+        await reader.post('/api/save_row', { table: ANSWER, row: { row_id: 'mine', store: 'S1', section: 'mens', body: 'my own' } })
+        listed = ids(await list(reader))
+      })
+      await step('the list holds that answer only', () => expect(listed).toEqual(['mine']))
+    })
+  })
+
+  scenario('A row outside one\'s places is not changed', async ({ admin, createUser }, step) => {
+    let reader!: TestClient
+    let change!: Response
+    await step('the reader\'s only place is store "N1"', async () => {
+      await installed(admin)
+      reader = await createUser({ roles: ['Answer Reader'] })
+    })
+    await withPlaces([{ label: 'North', filters: { store: ['N1'] } }], async () => {
+      await step('the reader changes an answer at store "S1"', async () => {
+        const row = await admin.get<{ updated_at: string }>(`/api/table/${encodeURIComponent(ANSWER)}/a3`)
+        change = await reader.fetch(`/api/table/${encodeURIComponent(ANSWER)}/a3`, { method: 'PATCH', body: JSON.stringify({ updated_at: row.updated_at, body: 'changed' }) })
+      })
+      await step('the change is refused', async () => {
+        expect(change.status).toBe(403)
+        expect(await admin.get(`/api/table/${encodeURIComponent(ANSWER)}/a3`)).toMatchObject({ body: 'south kids' })
+      })
+    })
   })
 })

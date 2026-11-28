@@ -1,4 +1,4 @@
-import { placeCondition } from './place-scope'
+import { readsConnectedRows, rowWithinRule, ruleCondition } from './row-rule'
 import { sql } from './db'
 import { AppError } from './errors'
 import { permissionRefusal } from './refusals'
@@ -175,9 +175,9 @@ export async function scopedWhere(
   if (ROW_ATTACHED_TABLES.has(meta.name))
     extraConds.push((await attachedRowScopeCond(meta.name, user, callerFilters)).frag)
   if (!bypass) {
-    // #1454: a Table about places reads only within the person's places (or their own rows)
-    const places = await placeCondition(table, user, tbl)
-    if (places) extraConds.push(places.frag)
+    // #1459: the Table's row rule (every row, own rows, the person's places, through a reference, or none)
+    const rule = await ruleCondition(meta, user, tbl)
+    if (rule) extraConds.push(rule.frag)
     const scope = tableScope(meta, await getScopeMap(user))
     if (scope?.none) extraConds.push(sql`false`)
     else if (scope) {
@@ -447,10 +447,10 @@ async function parentScopeCond(
       narrowed.push(ref.unsetPasses
         ? sql`(${sql(ref.column)} is null or ${sql(ref.column)} in ${sql([...ref.allowed])})`
         : sql`${sql(ref.column)} in ${sql([...ref.allowed])}`)
-    // #1454: and the parent's places, as a list of the parent applies them
+    // #1459: and the parent's row rule, as a list of the parent applies it
     if (scopes) {
-      const places = await placeCondition(holder, user, await tableRelation(holder))
-      if (places) narrowed.push(places.frag)
+      const rule = await ruleCondition(holderMeta, user, await tableRelation(holder))
+      if (rule) narrowed.push(rule.frag)
     }
     const scoped = narrowed.reduce((acc, c) => sql`${acc} and ${c}`, sql`true`)
     branches.push(
@@ -515,11 +515,14 @@ async function attachedRowScopeCond(
     const ownHistoryOnly = SENSITIVE_HISTORY_TABLES.has(table) && !(await seesEveryColumn(user, targetMeta))
     if (ownHistoryOnly && !(await seesEveryColumn(user, targetMeta, user))) continue
     if (isBound(targetMeta)) {
-      const narrowed = tableScope(targetMeta, scopes) !== null
+      // #1459: a connected Table's rows are read whole or not at all, by its row rule
+      const narrowed = tableScope(targetMeta, scopes) !== null || (!privileged && !(await readsConnectedRows(targetMeta, user)))
       if (scope === 'all' && !narrowed && !ownHistoryOnly) branches.push(sql`${rel}.ref_table = ${target}`)
       continue
     }
     if (targetMeta.kind === 'settings') {
+      // #1459: the single row is theirs only by the Table's row rule
+      if (!privileged && !(await rowWithinRule(targetMeta, user, {}))) continue
       if (!ownHistoryOnly) branches.push(sql`${rel}.ref_table = ${target}`)
       continue
     }

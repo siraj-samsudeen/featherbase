@@ -1,3 +1,5 @@
+import { rowRuleSchema } from 'shared'
+import { renameRuleColumn } from './app-row-rules'
 import { renameNamingColumn, tableSlug } from 'shared'
 import { sql, type TxSql } from './db'
 import { AppError } from './errors'
@@ -102,6 +104,12 @@ export async function renameColumn(
     // #246: and the columns its Data Scope narrows by.
     if (meta.scope_on?.includes(from))
       await tx`update table_def set scope_on = ${meta.scope_on.map((c) => c === from ? target : c)} where name = ${meta.name}`
+    // #1459: and the columns its row rule names.
+    const rule = rowRuleSchema.safeParse(meta.row_rule)
+    if (rule.success) {
+      const renamed = renameRuleColumn(rule.data, from, target)
+      if (renamed) await tx`update table_def set row_rule = ${tx.json(renamed as never)} where name = ${meta.name}`
+    }
     // #1346: and the columns search matches. The stored list, not the
     // effective one, so an override is never written into the Table.
     await tx`update table_def set search_columns = array_replace(search_columns, ${from}, ${target})

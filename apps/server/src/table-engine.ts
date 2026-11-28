@@ -12,7 +12,8 @@ import { deleteStored } from './storage'
 import { asNameList } from './installed-app-ledger'
 import { COLUMN_NAME_RE, quoteIdent } from './sql-identifier'
 import { PLATFORM_SCHEMA, platformRelation, resolvedRelation, tableName } from './platform-schema'
-import { canRetire, readingPresentationSchema } from 'shared'
+import { canRetire, readingPresentationSchema, rowRuleSchema } from 'shared'
+import { rowRuleProblem } from './app-row-rules'
 import { allowedTables, anyTableLinkColumns, linkableTable } from './any-table-link'
 import { filterColumns, normaliseViewFilters, rowsInView, viewsOf } from './views'
 
@@ -207,6 +208,9 @@ export const tableDefSchema = z.object({
   // those dimensions. Both are kept when an update leaves them out.
   scope_on: z.array(z.string()).nullish(),
   scope_required: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
+  // #1459: who reads which rows (shared/row-rule.ts). Without one only System Managers read the Table. Kept when an
+  // update leaves it out; null clears it. An app's Table is declared by its app (`rowRules`), never here.
+  row_rule: rowRuleSchema.nullish(),
   // #1259: a queue's lists open on cards (List And Record). Kept when an update leaves it out.
   queue: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   // #1273: where a feed row of this Table is corrected (an address in the
@@ -316,6 +320,10 @@ function validateDef(def: TableDef) {
     if (bad) errs.scope_on = `${bad} is not a Reference column of this Table`
   }
   if (def.scope_required && !def.scope_on?.length) errs.scope_required = 'Name the columns it is scoped on first'
+  if (def.row_rule) {
+    const problem = rowRuleProblem(def, def.row_rule)
+    if (problem) errs.row_rule = problem
+  }
   if (def.search_columns?.length) {
     // A column named like a stored secret is never searched, whatever it holds.
     const bad = def.search_columns.find((name) => isSensitiveColumn(name) || !def.columns.some((c) =>
@@ -609,6 +617,8 @@ export async function updateTable(
   if (def.reading_presentation === undefined) def.reading_presentation = existing.reading_presentation
   if (def.scope_on === undefined) def.scope_on = existing.scope_on
   if (def.scope_required === undefined) def.scope_required = existing.scope_required
+  // #1459: kept when left out, so a column the rule names cannot be removed from under it (validateDef below).
+  if (def.row_rule === undefined) def.row_rule = (existing.row_rule ?? undefined) as typeof def.row_rule
   if (def.queue === undefined) def.queue = existing.queue
   if (def.correction_path === undefined) def.correction_path = existing.correction_path
   // #1345 (as #1346's Codex round 2): an update that leaves person_column out writes nothing to it;
@@ -699,6 +709,7 @@ export async function updateTable(
       // Only once the definition has them: migrations before 0154 update Tables too.
       ...(def.scope_on !== undefined ? { scope_on: def.scope_on?.length ? def.scope_on : null } : {}),
       ...(def.scope_required !== undefined ? { scope_required: def.scope_required } : {}),
+      ...(def.row_rule !== undefined ? { row_rule: def.row_rule } : {}),
       ...(def.queue !== undefined ? { queue: def.queue } : {}),
       ...(def.correction_path !== undefined ? { correction_path: def.correction_path || null } : {}),
       ...(def.search_columns !== undefined ? { search_columns: def.search_columns?.length ? def.search_columns : null } : {}),
@@ -975,6 +986,8 @@ export async function createTable(
   const qualified = def.name.includes('.')
   if (qualified && def.name.split('.')[0] !== ownerApp)
     throw new AppError('ValidationError', 'App-qualified Tables must be created by their owning app')
+  if (ownerApp && def.row_rule)
+    throw new AppError('ValidationError', `${def.name}: an app declares its Tables' row rules in rowRules, not on the Table`)
   if (qualified && (def.data_source || def.kind === 'settings'))
     throw new AppError('ValidationError', 'Runtime app Tables require local collection storage')
   // DOC-008: submittable rows track their cancelled predecessor.
@@ -1094,6 +1107,7 @@ export async function createTable(
     if (def.decides_scope) tableRow.decides_scope = true
     if (def.scope_on?.length) tableRow.scope_on = def.scope_on
     if (def.scope_required) tableRow.scope_required = true
+    if (def.row_rule) tableRow.row_rule = def.row_rule
     if (def.queue) tableRow.queue = true
     if (def.correction_path) tableRow.correction_path = def.correction_path
     if (def.search_columns?.length) tableRow.search_columns = def.search_columns

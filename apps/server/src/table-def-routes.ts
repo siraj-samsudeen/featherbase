@@ -7,6 +7,7 @@ import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { archiveTable, unarchiveTable } from './table-archive'
 import { assertSystemManager } from './permissions'
 import { ensureHomePageForTable } from './home-pages'
+import { rowRuleReport, setRowRule } from './row-rule'
 import { who, type Env } from './route-context'
 
 export const tableDefRoutes = new Hono<Env>()
@@ -39,6 +40,19 @@ tableDefRoutes.put('/api/table_def/:name/id_pattern', async (c) => {
   if (typeof body.id_pattern !== 'string')
     throw new AppError('ValidationError', 'Expected { id_pattern }')
   return c.json(await setIdPattern(c.req.param('name'), body.id_pattern))
+})
+
+// #1459: a System Manager's own rule for who reads which rows of a Table (null takes it away), and every Table's rule.
+tableDefRoutes.put('/api/table_def/:name/row_rule', async (c) => {
+  await assertSystemManager(who(c))
+  const body = (await c.req.json()) as { row_rule?: unknown }
+  if (!Object.hasOwn(body, 'row_rule')) throw new AppError('ValidationError', 'Expected { row_rule }')
+  return c.json(await setRowRule(await resolveTableName(c.req.param('name')), body.row_rule, who(c)))
+})
+
+tableDefRoutes.get('/api/row_rules', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json({ data: await rowRuleReport() })
 })
 
 // #206 (issue #197): the file-imports that have run, each rolled up from its

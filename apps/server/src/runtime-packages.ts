@@ -20,7 +20,7 @@ import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
 import { roleDefaultsDeclaration, validateRoleDefaults } from './app-role-bindings'
 import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './app-datasets'
-import { scopedTablesDeclaration, validateScopedTables } from './app-scoped-tables'
+import { rowRulesDeclaration, validateRowRules } from './app-row-rules'
 import { appCopyTables, forgetAppCopies, registerAppCopies, syncAppCopies, validateAppCopies } from './read-only-copy'
 import { glossaryDeclaration, syncAppGlossary, validateGlossary } from './glossary'
 import { sql, withTransaction, usingTransaction } from './db'
@@ -188,8 +188,8 @@ const manifestSchema = z.object({
   roleDefaults: roleDefaultsDeclaration.optional(),
   // #625 (E3): the cached datasets the app reads, built by the platform.
   datasets: datasetsDeclaration.optional(),
-  // #1454: the app's own Tables its person_scope reads list within the reader's places.
-  scopedTables: scopedTablesDeclaration.optional(),
+  // #1459: who reads which rows of each of the app's own Tables.
+  rowRules: rowRulesDeclaration.optional(),
   // #1453: the app's roles everyone the org chart gives a place holds, once the instance turns it on.
   orgChartRoles: z.array(z.string().min(1)).refine((roles) => new Set(roles).size === roles.length, 'Each org chart role is named once').optional(),
   // #642 (E4): the outside sites the app's own pages may frame.
@@ -391,20 +391,16 @@ async function assertOnlyScopeProvider(pkg: RuntimePackage) {
     `Only one enabled app may provide people's scope; ${others.map(r => String(r.name)).join(', ')} already does`)
 }
 
-/** #1454: whether an app's files are loaded and serving now (its Tables' place scope can be read). */
-export function isAppLoaded(app: string): boolean {
-  return packages.has(app)
-}
-
-/** #1454: how an active app's Table is narrowed by places (scope filter → column), or null. A read-only copy maps
- *  its dataset's filters (an unscoped one is read whole); one of the app's own Tables its `scopedTables` entry. */
-export function tablePlaceScope(table: string): Readonly<Record<string, string>> | null {
-  const app = table.includes('.') ? packages.get(table.slice(0, table.indexOf('.'))) : undefined
-  if (!app) return null
-  const name = table.slice(table.indexOf('.') + 1)
+/** #1459: the row rule a loaded app declares for one of its Tables, or null: it declares none, or its files are not
+ *  loaded now (so the Table is closed). A read-only copy takes its dataset's: its filters are its places, and an
+ *  unscoped one is read whole. */
+export function appRowRule(owner: string, table: string): import('shared').RowRule | null {
+  const app = packages.get(owner)
+  if (!app || !table.startsWith(`${owner}.`)) return null
+  const name = table.slice(owner.length + 1)
   const copy = app.manifest.datasets?.find((d) => d.name === name && d.store !== 'json')
-  if (copy) return copy.unscoped || !Object.keys(copy.filters).length ? null : copy.filters
-  return app.manifest.scopedTables?.find((t) => t.table === table)?.filters ?? null
+  if (copy) return copy.unscoped || !Object.keys(copy.filters).length ? { kind: 'all' } : { kind: 'places', columns: copy.filters }
+  return app.manifest.rowRules?.[table] ?? null
 }
 
 // #559: the instance's one scope provider: the enabled, active app whose
@@ -582,7 +578,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   for (const operation of allOperations) validateOperationFacts(operation, manifest.tables)
   validateAppJobs(manifest.name, manifest, declaredSecrets)
   validateAppCopies(manifest.name, manifest)
-  validateScopedTables(manifest.name, manifest.tables, manifest.scopedTables)
+  validateRowRules(manifest.name, manifest.tables, manifest.rowRules)
   for (const role of manifest.orgChartRoles ?? [])
     if (!(manifest.roles ?? []).includes(role) || PLATFORM_ROLES.includes(role))
       throw new Error(`orgChartRoles names ${role}, which is not one of the app's own roles`)

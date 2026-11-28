@@ -324,6 +324,7 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/glossary/take_app_wording': 'saveDoc on Glossary Term (#629), not system-written',
     'PUT /api/table_def/:name': 'structure',
     'PUT /api/table_def/:name/id_pattern': 'structure',
+    'PUT /api/table_def/:name/row_rule': 'who reads the rows (#1459): changes no row and no structure',
     'POST /api/table_def/:name/rename_column': 'structure',
     'POST /api/table_def/:name/rename': 'structure',
     'POST /api/table_def/:name/archive': 'refuses system and system-written Tables (#905)',
@@ -639,10 +640,10 @@ describe('#432: storage decides, not the name', () => {
       ['Activity log', 'sub_table'],
       ['ACTIVITY  LOG', 'settings'],
     ] as const)
-      await expectApiError(admin.post('/api/table_def', { name, kind, columns: [{ column_name: 'note', column_type: 'Data' }] }), CLASH)
+      await expectApiError(admin.post('/api/table_def', { row_rule: { kind: 'all' }, name, kind, columns: [{ column_name: 'note', column_type: 'Data' }] }), CLASH)
     // An ordinary Table's storage is owned just the same, even by a Settings Table.
     await makeTable(admin, { name: 'Audit Owned', kind: 'settings', columns: ['note'] })
-    await expectApiError(admin.post('/api/table_def', { name: 'audit owned', columns: [{ column_name: 'note', column_type: 'Data' }] }), CLASH)
+    await expectApiError(admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'audit owned', columns: [{ column_name: 'note', column_type: 'Data' }] }), CLASH)
     expect(await sql`select name from table_def where lower(name) in ('activity log', 'audit owned') order by name`).toEqual([
       { name: 'Activity Log' },
       { name: 'Audit Owned' },
@@ -734,7 +735,7 @@ describe('#432: a Data Source never reaches platform storage', () => {
       await saveSource(admin, { row_id: 'audit-ext', url_env: 'AUDIT_EXT_URL' })
       const binding = { data_source: 'audit-ext', external_schema: 'featherbase', external_table: 'activity_log', external_pk: 'row_id' }
       await expectApiError(
-        admin.post('/api/table_def', { name: 'Audit Bound Log', ...binding, columns: [{ column_name: 'operation', column_type: 'Data' }] }),
+        admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'Audit Bound Log', ...binding, columns: [{ column_name: 'operation', column_type: 'Data' }] }),
         { status: 403, type: 'PermissionError', message: expect.stringMatching(/platform schema/) },
       )
       // A binding that pre-dates the rule is refused at use.
