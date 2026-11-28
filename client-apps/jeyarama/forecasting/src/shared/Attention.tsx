@@ -140,7 +140,7 @@ function TabTable({ tab, findings, open, onOpen }: { tab: Tab; findings: Finding
     <div className="fr-att-wrap">
       <table className={cx(TABLE_CLASSES, 'fr-att-table')} data-testid="attention-table">
         <thead><tr>{cols.map((c, k) => (
-          <th key={c} className={headCellClasses({ first: k === 0, last: k === cols.length - 1, className: cx('fr-att-th whitespace-normal', numeric(c) && 'text-right') })}
+          <th key={c} className={headCellClasses({ first: k === 0, last: k === cols.length - 1, className: cx('fr-att-th', numeric(c) && 'text-right') })}
             aria-sort={sort.col === c ? (sort.dir < 0 ? 'descending' : 'ascending') : undefined}>
             <button type="button" className="fr-att-sort" onClick={() => pick(c)}>{COL[c].head}{sort.col === c && <span aria-hidden> {sort.dir < 0 ? '↓' : '↑'}</span>}</button>
           </th>))}</tr></thead>
