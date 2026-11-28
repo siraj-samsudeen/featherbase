@@ -1,7 +1,7 @@
 // The managers' pages on the app's tables (#1442): the Team Leaders' changes they see in Approvals, the decisions the
 // Store Manager makes on them, and the viewer's own changes and questions. Every write goes through the server, which
 // decides who may move which status (server.ts, CHANGE_MOVES); this file only says what was asked.
-import { listWhere, saveRow } from '../api'
+import { listReview, listWhere, saveRow } from '../api'
 import type { Line } from './model'
 import type { Answer, ChangeSpec, Proposal, ProposalItem, Question, ReviewState } from './review'
 
@@ -40,7 +40,8 @@ async function reasonsOf(ids: string[]): Promise<Map<string, string[]>> {
  *  (as sent, or replaced by the Store Manager's own number), or sent back. Withdrawn changes, and changes a Team
  *  Leader replaced with their next one, are gone. */
 export async function loadProposals(runIds: string[], lines: Line[]): Promise<{ proposals: ProposalItem[]; rows: Map<string, ChangeRow> }> {
-  const rows = await listWhere<ChangeRow>('forecasting.forecast_change', CHANGE_FIELDS, [['run_id', 'in', runIds], ['change_status', 'in', ['sent', 'approved', 'rejected', 'replaced']]], 'created_at asc')
+  const rows = await listReview<ChangeRow & { reasons?: { reason_code: string }[] }>('forecasting.forecast_change', CHANGE_FIELDS,
+    [['run_id', 'in', runIds], ['change_status', 'in', ['sent', 'approved', 'rejected', 'replaced']]], 'created_at asc', ['reasons'])
   const byId = new Map(rows.map(r => [r.row_id, r]))
   const lineAt = new Map(lines.map(l => [keyOf(l.runId, l.storeCode, l.name), l]))
   // the Store Manager's own number that replaced a change, by the change it replaced
@@ -50,7 +51,9 @@ export async function loadProposals(runIds: string[], lines: Line[]): Promise<{ 
     return r.change_status === 'approved' && of && of.decided_by === r.proposed_by && keyOf(of.run_id, of.store_code, of.subcategory_name) === keyOf(r.run_id, r.store_code, r.subcategory_name)
   }).map(r => [r.replaces_change!, r]))
   const sent = rows.filter(r => r.proposed_by_role === 'Team Leader' && (r.change_status !== 'replaced' || r.decided_by))
-  const reasons = await reasonsOf(sent.map(r => r.row_id))
+  // the scoped read brings each change's reasons; a read without them (the forecast team's own grant) asks for them
+  const reasons = sent.every(r => Array.isArray(r.reasons))
+    ? new Map(sent.map(r => [r.row_id, r.reasons!.map(x => x.reason_code)])) : await reasonsOf(sent.map(r => r.row_id))
   const proposals: ProposalItem[] = []
   for (const r of sent) {
     const l = lineAt.get(keyOf(r.run_id, r.store_code, r.subcategory_name))
@@ -75,8 +78,8 @@ const plain = (html: string) => new DOMParser().parseFromString(html, 'text/html
 export async function loadViewerState(runIds: string[], lines: Line[], person: string): Promise<{ state: ReviewState; own: Map<string, ChangeRow> }> {
   const lineAt = new Map(lines.map(l => [keyOf(l.runId, l.storeCode, l.name), l]))
   const [mine, asked] = await Promise.all([
-    listWhere<ChangeRow>('forecasting.forecast_change', CHANGE_FIELDS, [['run_id', 'in', runIds], ['proposed_by', '=', person], ['change_status', '=', 'approved']], 'created_at asc'),
-    listWhere<QuestionRow>('forecasting.forecast_question', ['run_id', 'store_code', 'subcategory_name', 'question_text', 'created_at', 'answered_by_role', 'answer_seen_at'],
+    listReview<ChangeRow>('forecasting.forecast_change', CHANGE_FIELDS, [['run_id', 'in', runIds], ['proposed_by', '=', person], ['change_status', '=', 'approved']], 'created_at asc'),
+    listReview<QuestionRow>('forecasting.forecast_question', ['run_id', 'store_code', 'subcategory_name', 'question_text', 'created_at', 'answered_by_role', 'answer_seen_at'],
       [['run_id', 'in', runIds], ['asked_by', '=', person]], 'created_at asc'),
   ])
   const own = new Map<string, ChangeRow>(), answers: Record<string, Answer> = {}
@@ -185,6 +188,7 @@ export function chainWrites(person: string, role: string, rows: Map<string, Chan
     async seen(questions: Question[]) {
       if (!questions.length) return
       const now = new Date().toISOString()
+      // the viewer's own questions, which their own-rows grant reads
       const fresh = await listWhere<{ row_id: string; updated_at: string }>('forecasting.forecast_question', [], [['row_id', 'in', questions.map(q => q.id)]])
       for (const q of fresh) await saveRow('forecasting.forecast_question', { row_id: q.row_id, updated_at: q.updated_at, answer_seen_at: now })
     },

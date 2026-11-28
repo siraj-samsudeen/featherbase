@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { hostedStart, signedIn } from './startup'
+import { NOT_A_LEAD } from './scoped'
 
 const refused = (status: number) => async () => { throw Object.assign(new Error('refused'), { status }) }
 
@@ -10,6 +11,11 @@ describe('how a hosted instance on the read-only copies opens (#1419)', () => {
   })
   it('says the person has no access when the copy refuses the read (no Forecasting Member), not No Run', async () => {
     expect(await hostedStart(refused(403))).toBe('no-access')
+  })
+  it('says the same to someone whose places on the org chart are below a Team Leader’s (#1454)', async () => {
+    expect(await hostedStart(async () => { throw Object.assign(new Error(NOT_A_LEAD), { status: 417 }) })).toBe('no-access')
+    // any other refused read is not taken for no access
+    await expect(hostedStart(async () => { throw Object.assign(new Error('Dataset forecast_run cannot be filtered on x'), { status: 417 }) })).rejects.toThrow(/cannot be filtered/)
   })
   it('lets any other failure through to the page’s own handling (a sign-in, a broken connection)', async () => {
     await expect(hostedStart(refused(401))).rejects.toMatchObject({ status: 401 })

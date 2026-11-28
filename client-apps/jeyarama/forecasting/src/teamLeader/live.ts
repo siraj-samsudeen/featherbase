@@ -3,7 +3,7 @@
 // subcategory is in from the live org chart (the org_chart read), and the person's own answers and questions; writes
 // forecast_change, forecast_line_review and forecast_question through the server, which checks every row
 // (server.ts). The answer to a question is the newest Comment on it.
-import { countBy, getRow, listWhere, readOp, saveRow } from '../api'
+import { getRow, listCopy, listReview, listWhere, readOp, saveRow } from '../api'
 import { day, linesFrom, monthOfRun, type LineMonthRow, type OtherModelRow, type PlanRow, type RunRow, type SalesRow, type Line } from '../shared/model'
 import { ITEM_HEALTH_FIELDS, needsAttention, type Finding, type ItemHealthRow } from '../shared/findings'
 import { ITEM_FIELDS, MIX_FIELDS, STOCK_FIELDS, daysLeft, stockAsOf, type BandMixRow, type StockBandRow, type TopItemRow } from '../shared/bands'
@@ -60,11 +60,14 @@ export async function loadStore(store?: string | null): Promise<StoreSummary | n
   // the month's Runs, one per region: a store is in one of them. The stores and their sizes come from one grouped
   // count, and only the chosen store's lines are read (the whole month is ~19,000 lines, 39 pages one after another)
   const monthRuns = ['run_id', 'in', runs.filter(r => r.horizon_from === run.horizon_from).map(r => r.run_id)] as [string, string, unknown]
-  const count = new Map((await countBy('forecasting.forecast_line_month', 'store_short_code', [monthRuns])).filter(c => c.label).map(c => [c.label, c.value]))
+  // the stores the person may see, and their sizes: their own places' lines of the month (#1454)
+  const count = new Map<string, number>()
+  for (const r of await listCopy<{ store_short_code: string | null }>('forecasting.forecast_line_month', ['store_short_code'], [monthRuns]))
+    if (r.store_short_code) count.set(r.store_short_code, (count.get(r.store_short_code) ?? 0) + 1)
   const stores = [...count.keys()].sort()
   const chosen = store && count.has(store) ? store : [...count.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
   if (!chosen) return null
-  const rows = await listWhere<{ run_id: string; store_code: string; store_short_code: string; subcategory_code: string | null; subcategory_name: string; forecast_value_before_tax: number | string }>(
+  const rows = await listCopy<{ run_id: string; store_code: string; store_short_code: string; subcategory_code: string | null; subcategory_name: string; forecast_value_before_tax: number | string }>(
     'forecasting.forecast_line_month', ['run_id', 'store_code', 'store_short_code', 'subcategory_code', 'subcategory_name', 'forecast_value_before_tax'], [['store_short_code', '=', chosen], monthRuns])
   if (!rows.length) return null
   const at0 = rows[0], storeRun = runs.find(r => r.run_id === at0.run_id) ?? run
@@ -72,7 +75,7 @@ export async function loadStore(store?: string | null): Promise<StoreSummary | n
   const month = storeRun.horizon_from.slice(0, 10)
   const [org, stored] = await Promise.all([
     orgOf(chosen),
-    listWhere<{ run_id: string; subcategory_name: string; forecast_month: string | null; engine_value_before_tax: number | string | null; updated_at: string }>('forecasting.forecast_line_review',
+    listReview<{ run_id: string; subcategory_name: string; forecast_month: string | null; engine_value_before_tax: number | string | null; updated_at: string }>('forecasting.forecast_line_review',
       ['run_id', 'subcategory_name', 'forecast_month', 'engine_value_before_tax', 'updated_at'], [['store_code', '=', at0.store_code], ['forecast_month', '=', month]]),
   ])
   // answered as the review counts it: on this Run, or carried from an earlier Run of the month (carry.ts)
@@ -112,7 +115,7 @@ export async function loadSection(viewer: Viewer, month?: string | null): Promis
   if (!runs.length) return null
   const org = await orgOf(store)
   const at = org.sections.find(s => s.name === section)
-  const rows = await listWhere<LineMonthRow & { row_id: string }>('forecasting.forecast_line_month', LINE_FIELDS,
+  const rows = await listCopy<LineMonthRow & { row_id: string }>('forecasting.forecast_line_month', LINE_FIELDS,
     [['store_short_code', '=', store], ['run_id', 'in', runs.map(r => r.run_id)]])
   const inSection = (code: string | null) => (section === NO_SECTION ? !org.sections.some(s => s.id === sectionOf(org, code)) : !!at && sectionOf(org, code) === at.id)
   const run = runs.find(r => rows.some(l => l.run_id === r.run_id && inSection(l.subcategory_code)))
@@ -123,13 +126,13 @@ export async function loadSection(viewer: Viewer, month?: string | null): Promis
   const ofRun = [...near, ['run_id', '=', run.run_id]] as [string, string, unknown][]
   const coded = [['store_code', '=', storeCode], ['subcategory_code', 'in', mine.flatMap(l => (l.subcategory_code ? [l.subcategory_code] : []))]] as [string, string, unknown][]
   const [sales, plans, others, mix, stock, items] = await Promise.all([
-    listWhere<SalesRow>('forecasting.sales_reference', ['store_code', 'subcategory_name', 'window_name', 'sales_value_before_tax', 'sales_qty'], ofRun),
-    listWhere<PlanRow>('forecasting.annual_plan_line', ['store_code', 'subcategory_name', 'plan_month', 'plan_value_before_tax', 'plan_qty'], [...ofRun, ['plan_month', '=', run.horizon_from.slice(0, 10)]]),
-    listWhere<OtherModelRow>('forecasting.other_model_day', ['model', 'store_code', 'subcategory_name', 'forecast_value_before_tax'], [...near, ['official_run_id', '=', run.run_id]]),
+    listCopy<SalesRow>('forecasting.sales_reference', ['store_code', 'subcategory_name', 'window_name', 'sales_value_before_tax', 'sales_qty'], ofRun),
+    listCopy<PlanRow>('forecasting.annual_plan_line', ['store_code', 'subcategory_name', 'plan_month', 'plan_value_before_tax', 'plan_qty'], [...ofRun, ['plan_month', '=', run.horizon_from.slice(0, 10)]]),
+    listCopy<OtherModelRow>('forecasting.other_model_day', ['model', 'store_code', 'subcategory_name', 'forecast_value_before_tax'], [...near, ['official_run_id', '=', run.run_id]]),
     // By Price Band: the split over this Run's 28 days, and today's stock
-    listWhere<BandMixRow>('forecasting.price_band_mix', MIX_FIELDS, ofRun),
-    listWhere<StockBandRow>('forecasting.stock_band', STOCK_FIELDS, coded),
-    listWhere<TopItemRow>('forecasting.price_band_top_item', ITEM_FIELDS, ofRun),
+    listCopy<BandMixRow>('forecasting.price_band_mix', MIX_FIELDS, ofRun),
+    listCopy<StockBandRow>('forecasting.stock_band', STOCK_FIELDS, coded),
+    listCopy<TopItemRow>('forecasting.price_band_top_item', ITEM_FIELDS, ofRun),
   ])
   const lines = linesFrom({ lines: mine, sales, plans, others, bands: { mix, stock, items } }, storeCode)
   const person = speaker(viewer.name, at?.teamLeaders)
@@ -144,7 +147,7 @@ export async function loadFindings(section: Section): Promise<{ findings: Findin
   const { storeCode, header, lines, org } = section
   if (!header.stockAsOf) return null
   // the items' 7/14/28 days end on the store's last complete day (refreshed each morning), not the Run's origin
-  const health = await listWhere<ItemHealthRow & { sales_as_of_date: string | null; stock_as_of: string | null }>('forecasting.item_health', [...ITEM_HEALTH_FIELDS, 'sales_as_of_date', 'stock_as_of'],
+  const health = await listCopy<ItemHealthRow & { sales_as_of_date: string | null; stock_as_of: string | null }>('forecasting.item_health', [...ITEM_HEALTH_FIELDS, 'sales_as_of_date', 'stock_as_of'],
     [['store_short_code', 'in', Object.keys(org.stores).length ? Object.keys(org.stores) : [header.store]], ['subcategory_code', 'in', lines.flatMap(l => (l.code ? [l.code] : []))]])
   const here = health.filter(r => r.store_code === storeCode), others = health.filter(r => r.store_code !== storeCode)
   if (!here.length) return null
@@ -161,9 +164,9 @@ export async function loadState(run: RunRow, storeCode: string, person: string, 
   const runId = run.run_id, month = run.horizon_from.slice(0, 10)
   const at = [['run_id', '=', runId], ['store_code', '=', storeCode]] as [string, string, unknown][]
   const [stored, asked] = await Promise.all([
-    listWhere<ReviewRow>('forecasting.forecast_line_review', ['run_id', 'subcategory_name', 'answer', 'forecast_change', 'forecast_month', 'engine_value_before_tax'],
+    listReview<ReviewRow>('forecasting.forecast_line_review', ['run_id', 'subcategory_name', 'answer', 'forecast_change', 'forecast_month', 'engine_value_before_tax'],
       [['store_code', '=', storeCode], ['reviewer', '=', person], ['forecast_month', '=', month]]),
-    listWhere<QuestionRow>('forecasting.forecast_question', ['subcategory_name', 'question_text', 'created_at', 'answered_by_role', 'answer_seen_at'], [...at, ['asked_by', '=', person]], 'created_at asc'),
+    listReview<QuestionRow>('forecasting.forecast_question', ['subcategory_name', 'question_text', 'created_at', 'answered_by_role', 'answer_seen_at'], [...at, ['asked_by', '=', person]], 'created_at asc'),
   ])
   // this Run's own answers, and earlier Runs' answers carried while Feather Forecast stayed within 10%
   const { answers: kept, moved } = carryAnswers(stored.map(r => ({ run: r.run_id, month: r.forecast_month, subcategory: r.subcategory_name,
@@ -196,7 +199,7 @@ const plain = (html: string) => new DOMParser().parseFromString(html, 'text/html
 export function liveActions(section: Section, person: string, reload: () => void): ReviewActions {
   // the line's key; the server takes the rest of it (division, subdivision) from the line itself
   const lineKey = (l: Line) => ({ run_id: section.run.run_id, store_code: section.storeCode, category_name: l.category, subcategory_name: l.name })
-  const review = async (l: Line) => (await listWhere<ReviewRow & { updated_at: string }>('forecasting.forecast_line_review', ['subcategory_name', 'answer', 'forecast_change'],
+  const review = async (l: Line) => (await listReview<ReviewRow & { updated_at: string }>('forecasting.forecast_line_review', ['subcategory_name', 'answer', 'forecast_change'],
     [['run_id', '=', section.run.run_id], ['store_code', '=', section.storeCode], ['subcategory_name', '=', l.name], ['reviewer', '=', person]]))[0]
   /** A sent change this person made on the line goes when a new answer replaces it. */
   const retire = async (old: (ReviewRow & { updated_at: string }) | undefined, to: 'replaced' | 'withdrawn') => {
@@ -232,6 +235,7 @@ export function liveActions(section: Section, person: string, reload: () => void
     async seen(name) {
       const q = section.state.questions.filter(x => x.line === name && x.answer && !x.seen)
       if (!q.length) return
+      // the person's own questions, which their own-rows grant reads
       const rows = await listWhere<{ row_id: string; updated_at: string }>('forecasting.forecast_question', [], [['row_id', 'in', q.map(x => x.id)]])
       const now = new Date().toISOString()
       for (const r of rows) await saveRow('forecasting.forecast_question', { row_id: r.row_id, updated_at: r.updated_at, answer_seen_at: now })

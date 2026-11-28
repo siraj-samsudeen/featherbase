@@ -1,6 +1,6 @@
 import { createRoot } from 'react-dom/client'
 import { APP_THEME_ATTRIBUTE, THEME_CHANGE_EVENT, paintTheme } from '@featherbase/shop-floor/theme'
-import { listAll } from './api'
+import { listAll, listCopy, refusedAccess } from './api'
 import { datasetFrom, setCopiesOnly, setDataset, type ReachRow, type RunLineRow } from './dataset'
 import { hostedStart } from './startup'
 import './style.css'
@@ -21,8 +21,9 @@ const NoRun = () => (
   </div>)
 const NoAccess = () => (
   <div style={{ padding: 32, font: '15px system-ui', maxWidth: 560 }}>
-    <h1 style={{ fontSize: 20 }}>You don't have access to forecasting data yet</h1>
-    <p>Forecasting opens for you once you are given the Forecasting Member role. Ask the forecast team.</p>
+    <h1 style={{ fontSize: 20 }}>You don't have access to forecasting data</h1>
+    <p>Forecasting opens for Team Leaders and above, for the stores and subcategories the org chart gives them. If your
+      job on the org chart is missing or wrong, ask your Store Manager or HR to correct it.</p>
   </div>)
 
 // The Run under review and who reviews it are read first; the app's modules build from them as they load.
@@ -37,7 +38,8 @@ async function start() {
     // The made-up data is for a local instance only: a hosted one with no Run loaded says so instead.
     if (!dataset && !LOCAL) {
       // a hosted instance on the read-only copies (#1418): open the pages built on them once an official Run is loaded
-      const how = await hostedStart(() => listAll<{ run_id: string }>('forecasting.forecast_run', ['run_id']))
+      // through the scoped read (#1454), so the same rule that filters the rows decides who opens the app
+      const how = await hostedStart(() => listCopy<{ run_id: string }>('forecasting.forecast_run', ['run_id'], []))
       if (how === 'no-access') { root.render(<NoAccess />); return }
       if (how === 'no-run') { root.render(<NoRun />); return }
       setCopiesOnly(true)
@@ -45,6 +47,8 @@ async function start() {
     setDataset(dataset)
   } catch (e) {
     if ((e as { status?: number }).status === 401) { window.location.href = `/featherbase/login?next=${encodeURIComponent(location.pathname + location.search)}`; return }
+    // a hosted instance never falls back to the made-up data for someone it refuses (#1454)
+    if (!LOCAL && refusedAccess(e)) { root.render(<NoAccess />); return }
     setDataset(null) // an older instance without the Tables: the made-up data
   }
   const { ForecastingApp } = await import('./App')

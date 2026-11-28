@@ -2,7 +2,7 @@
 // Review and Needs Your Attention, read from the same read-only copies as the Team Leader's (forecast_line_day,
 // actuals_day, item_health, stock_band, …), one store at a time, each line placed on its store's org chart today.
 // A region is read store by store, so the page shows the first store while the rest arrive.
-import { listWhere, listWhereAll } from '../api'
+import { listCopy, listReview } from '../api'
 import { NO_SECTION, officialRuns, orgOf } from '../teamLeader/live'
 import type { OrgChart } from '../orgChart'
 import { BASIS_CODES, linesFrom, monthOfRun, type Base, type Line, type LineMonthRow, type PlanRow, type RunRow, type SalesRow } from '../shared/model'
@@ -40,7 +40,7 @@ export async function planOf(reach: Reach, which: 'started' | 'newest'): Promise
   const month = runs.filter(r => r.horizon_from === first.horizon_from)
   const filters: Filter[] = [['run_id', 'in', month.map(r => r.run_id)], ...(reach.kind === 'store' ? [['store_short_code', '=', reach.store] as Filter] : [])]
   // one row per store would do; the copies have no distinct read, so the month's lines name them (a few pages)
-  const rows = await listWhereAll<{ run_id: string; store_code: string; store_short_code: string; region: string | null }>('forecasting.forecast_line_month',
+  const rows = await listCopy<{ run_id: string; store_code: string; store_short_code: string; region: string | null }>('forecasting.forecast_line_month',
     ['run_id', 'store_code', 'store_short_code', 'region'], filters)
   const seen = new Map<string, ReachStore & { n: number }>()
   for (const r of rows) {
@@ -76,7 +76,7 @@ const ADDS = BASIS_CODES.map((_, i) => `adds_value_b${i + 1}`)
 
 /** The explanations given at a store in its Run, with the section each is for. */
 export async function loadExplanations(s: ReachStore): Promise<(DayExplanation & { section: string })[]> {
-  const said = await listWhere<DayExplanationRow & { section_name: string }>('forecasting.day_explanation', [...DAY_EXPLANATION_FIELDS, 'section_name'],
+  const said = await listReview<DayExplanationRow & { section_name: string }>('forecasting.day_explanation', [...DAY_EXPLANATION_FIELDS, 'section_name'],
     [['run_id', '=', s.run.run_id], ['store_code', '=', s.storeCode]])
   return said.map(r => ({ ...explanationOf(r), section: r.section_name }))
 }
@@ -85,12 +85,12 @@ export async function loadStoreDays(s: ReachStore, days: number): Promise<StoreD
   const at: Filter[] = [['run_id', '=', s.run.run_id], ['store_code', '=', s.storeCode]]
   const [org, lines, fc, sold, explanations, plans] = await Promise.all([
     orgOf(s.store),
-    listWhereAll<{ row_id: string; subcategory_name: string; subcategory_code: string | null; category_name: string; forecast_value_before_tax: number | string | null } & Record<string, number | string | null>>(
+    listCopy<{ row_id: string; subcategory_name: string; subcategory_code: string | null; category_name: string; forecast_value_before_tax: number | string | null } & Record<string, number | string | null>>(
       'forecasting.forecast_line_month', ['subcategory_name', 'subcategory_code', 'category_name', 'forecast_value_before_tax', ...ADDS], at),
-    listWhereAll<ForecastDayRow>('forecasting.forecast_line_day', FORECAST_DAY_FIELDS, at),
-    listWhereAll<ActualsDayRow>('forecasting.actuals_day', ACTUALS_DAY_FIELDS, at),
+    listCopy<ForecastDayRow>('forecasting.forecast_line_day', FORECAST_DAY_FIELDS, at),
+    listCopy<ActualsDayRow>('forecasting.actuals_day', ACTUALS_DAY_FIELDS, at),
     loadExplanations(s),
-    listWhereAll<{ subcategory_name: string; plan_value_before_tax: number | string | null }>('forecasting.annual_plan_line', ['subcategory_name', 'plan_value_before_tax'],
+    listCopy<{ subcategory_name: string; plan_value_before_tax: number | string | null }>('forecasting.annual_plan_line', ['subcategory_name', 'plan_value_before_tax'],
       [...at, ['plan_month', '=', s.run.horizon_from.slice(0, 10)]]),
   ])
   const aop = new Map<string, number>()
@@ -124,11 +124,11 @@ export interface StoreFindings { store: ReachStore; findings: Finding[]; lines: 
 async function storeLines(s: ReachStore, org: OrgChart): Promise<{ lines: Line[]; stockAsOf: string | null }> {
   const at: Filter[] = [['run_id', '=', s.run.run_id], ['store_code', '=', s.storeCode]]
   const [rows, sales, plans, mix, stock] = await Promise.all([
-    listWhereAll<LineMonthRow>('forecasting.forecast_line_month', LINE_FIELDS, at),
-    listWhereAll<SalesRow>('forecasting.sales_reference', ['store_code', 'subcategory_name', 'window_name', 'sales_value_before_tax', 'sales_qty'], at),
-    listWhereAll<PlanRow>('forecasting.annual_plan_line', ['store_code', 'subcategory_name', 'plan_month', 'plan_value_before_tax', 'plan_qty'], [...at, ['plan_month', '=', s.run.horizon_from.slice(0, 10)]]),
-    listWhereAll<BandMixRow>('forecasting.price_band_mix', MIX_FIELDS, at),
-    listWhereAll<StockBandRow>('forecasting.stock_band', STOCK_FIELDS, [['store_code', '=', s.storeCode]]),
+    listCopy<LineMonthRow>('forecasting.forecast_line_month', LINE_FIELDS, at),
+    listCopy<SalesRow>('forecasting.sales_reference', ['store_code', 'subcategory_name', 'window_name', 'sales_value_before_tax', 'sales_qty'], at),
+    listCopy<PlanRow>('forecasting.annual_plan_line', ['store_code', 'subcategory_name', 'plan_month', 'plan_value_before_tax', 'plan_qty'], [...at, ['plan_month', '=', s.run.horizon_from.slice(0, 10)]]),
+    listCopy<BandMixRow>('forecasting.price_band_mix', MIX_FIELDS, at),
+    listCopy<StockBandRow>('forecasting.stock_band', STOCK_FIELDS, [['store_code', '=', s.storeCode]]),
   ])
   // the band's top items are the Team Leader's panel; the findings read every item's own health instead
   const lines = linesFrom({ lines: rows, sales, plans, others: [], bands: { mix, stock, items: [] } }, s.storeCode)
@@ -143,7 +143,7 @@ export async function loadStoreFindings(s: ReachStore, regionStores: string[]): 
   const { lines, stockAsOf: asOf } = await storeLines(s, org)
   if (!asOf || !lines.length) return null
   const fields = [...ITEM_HEALTH_FIELDS, 'sales_as_of_date', 'stock_as_of']
-  const own = await listWhereAll<ItemHealthRow & { sales_as_of_date: string | null; stock_as_of: string | null }>('forecasting.item_health', fields, [['store_code', '=', s.storeCode]])
+  const own = await listCopy<ItemHealthRow & { sales_as_of_date: string | null; stock_as_of: string | null }>('forecasting.item_health', fields, [['store_code', '=', s.storeCode]])
   if (!own.length) return null
   const month = monthOfRun(s.run.horizon_from)
   const m = { name: month.name, days: month.days, left: daysLeft(newest(own.map(r => r.stock_as_of)) ?? asOf, month) }
@@ -156,7 +156,7 @@ export async function loadStoreFindings(s: ReachStore, regionStores: string[]): 
   const others = [...new Set([...regionStores, ...Object.keys(org.stores)])].filter(x => x !== s.store)
   const codes = [...wanted], theirs: (ItemHealthRow & { stock_as_of: string | null })[] = []
   for (let i = 0; i < codes.length && others.length; i += 150)
-    theirs.push(...await listWhereAll<ItemHealthRow & { stock_as_of: string | null }>('forecasting.item_health', [...ITEM_HEALTH_FIELDS, 'stock_as_of'],
+    theirs.push(...await listCopy<ItemHealthRow & { stock_as_of: string | null }>('forecasting.item_health', [...ITEM_HEALTH_FIELDS, 'stock_as_of'],
       [['store_short_code', 'in', others], ['item_code', 'in', codes.slice(i, i + 150)]]))
   const theirsBy = new Map<string, ItemHealthRow[]>()
   for (const r of theirs) (theirsBy.get(r.item_code) ?? theirsBy.set(r.item_code, []).get(r.item_code)!).push(r)

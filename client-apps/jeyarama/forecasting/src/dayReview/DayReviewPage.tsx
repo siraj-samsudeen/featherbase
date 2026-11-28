@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Card, EmptyState, PageHeader, RecordPagesProvider, Select, Skeleton, StatusPill } from '@featherbase/shop-floor'
 import { PlaceTitle } from '../shared/records'
-import { listWhere, saveRow } from '../api'
+import { listCopy, listReview, saveRow } from '../api'
 import { NO_SECTION, officialRuns, orgOf, speaker, type Viewer } from '../teamLeader/live'
 import { BASIS_CODES, PARTS, day as dayText, inr, monthOfRun, pc, type Base, type RunRow } from '../shared/model'
 import { addsOf } from '../shared/built'
@@ -39,16 +39,16 @@ async function loadDays(viewer: Viewer): Promise<Days | null> {
   // the section's subcategories today, from the live org chart
   const org = await orgOf(store), at0 = org.sections.find(s => s.name === section)
   const inSection = (code: string | null) => (section === NO_SECTION ? !org.sections.some(s => s.id === (code ? org.subcategories[code]?.section : undefined)) : !!at0 && (code ? org.subcategories[code]?.section : undefined) === at0.id)
-  const lines = (await listWhere<{ row_id: string; store_code: string; category_name: string; subcategory_name: string; subcategory_code: string | null; forecast_value_before_tax: number | string | null } & Record<string, number | string | null>>('forecasting.forecast_line_month',
+  const lines = (await listCopy<{ row_id: string; store_code: string; category_name: string; subcategory_name: string; subcategory_code: string | null; forecast_value_before_tax: number | string | null } & Record<string, number | string | null>>('forecasting.forecast_line_month',
     ['store_code', 'category_name', 'subcategory_name', 'subcategory_code', 'forecast_value_before_tax', ...ADDS], [['run_id', '=', run.run_id], ['store_short_code', '=', store]])).filter(l => inSection(l.subcategory_code))
   if (!lines.length) return null
   const storeCode = lines[0].store_code, subs = lines.map(l => l.subcategory_name)
   const at = [['run_id', '=', run.run_id], ['store_code', '=', storeCode], ['subcategory_name', 'in', subs]] as [string, string, unknown][]
   const [fc, sold, said, plans] = await Promise.all([
-    listWhere<ForecastDayRow>('forecasting.forecast_line_day', FORECAST_DAY_FIELDS, at),
-    listWhere<ActualsDayRow>('forecasting.actuals_day', ACTUALS_DAY_FIELDS, at),
-    listWhere<DayExplanationRow>('forecasting.day_explanation', DAY_EXPLANATION_FIELDS, [['run_id', '=', run.run_id], ['store_code', '=', storeCode], ['section_name', '=', section]]),
-    listWhere<{ subcategory_name: string; plan_value_before_tax: number | string | null }>('forecasting.annual_plan_line', ['subcategory_name', 'plan_value_before_tax'],
+    listCopy<ForecastDayRow>('forecasting.forecast_line_day', FORECAST_DAY_FIELDS, at),
+    listCopy<ActualsDayRow>('forecasting.actuals_day', ACTUALS_DAY_FIELDS, at),
+    listReview<DayExplanationRow>('forecasting.day_explanation', DAY_EXPLANATION_FIELDS, [['run_id', '=', run.run_id], ['store_code', '=', storeCode], ['section_name', '=', section]]),
+    listCopy<{ subcategory_name: string; plan_value_before_tax: number | string | null }>('forecasting.annual_plan_line', ['subcategory_name', 'plan_value_before_tax'],
       [...at, ['plan_month', '=', run.horizon_from.slice(0, 10)]]),
   ])
   const m = monthOfRun(run.horizon_from), month = { ...m, index: Number(run.horizon_from.slice(5, 7)) - 1 }

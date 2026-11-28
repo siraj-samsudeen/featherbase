@@ -1,4 +1,5 @@
 import { version } from '../package.json'
+import { NOT_A_LEAD } from './scoped'
 
 export class ApiError extends Error {
   constructor(message: string, readonly status?: number) { super(message) }
@@ -63,6 +64,48 @@ export async function listWhereAll<T>(table: string, fields: string[], filters: 
   for (let i = 0; i < starts.length; i += 8) for (const p of await Promise.all(starts.slice(i, i + 8).map(page))) rows.push(...p.data)
   return rows
 }
+// ---- #1454: the reads scoped by the org chart (server.ts `copy` and `review`, scoped.ts) ------------------------
+
+/** Whether a read was refused because the person may not read Forecasting's data at all. */
+export const refusedAccess = (e: unknown) => (e as { status?: number } | null)?.status === 403 || (e instanceof Error && e.message.includes(NOT_A_LEAD))
+
+/** The filters as the scoped reads take them, each column one value or a list, all of which must hold; null when a
+ *  list is empty, so nothing can match. Only = and in. */
+function keyed(filters: Filter[]): Record<string, string[]> | null {
+  const out: Record<string, string[]> = {}
+  for (const [column, op, value] of filters) {
+    if (op !== '=' && op !== 'in') throw new Error(`The scoped reads filter by = or in, not ${op}`)
+    const values = (Array.isArray(value) ? value : [value]).map(String)
+    out[column] = out[column] ? out[column].filter(v => values.includes(v)) : values
+    if (!out[column].length) return null
+  }
+  return out
+}
+/** A read-only copy's rows that the signed-in person may see (their places on the org chart), matching `filters`. */
+export async function listCopy<T>(table: string, fields: string[], filters: Filter[]): Promise<T[]> {
+  const where = keyed(filters)
+  if (!where) return []
+  return (await readOp<{ at: string | null; rows: T[] }>('copy', { dataset: table.replace(/^forecasting\./, ''), filters: where, fields })).rows
+}
+/** A review Table's rows (answers, changes, questions, day explanations) that the person may see: within their places
+ *  on the org chart; for someone the org chart gives none (the forecast team at head office), as their own grants on the
+ *  Table allow, which for anyone else is the rows they wrote. */
+export async function listReview<T>(table: string, fields: string[], filters: Filter[], orderBy = 'row_id asc',
+  /** Sub-table columns the scoped read brings with each row (a plain Table read does not). */
+  subTables: string[] = []): Promise<T[]> {
+  const where = keyed(filters)
+  if (!where) return []
+  const [column, direction] = orderBy.split(/\s+/)
+  try {
+    const rows = await readOp<Record<string, unknown>[]>('review', { table, filters: where, fields: [...new Set([...fields, ...subTables, column])] })
+    const sign = direction === 'desc' ? -1 : 1
+    return rows.sort((a, b) => (String(a[column] ?? '') < String(b[column] ?? '') ? -sign : String(a[column] ?? '') > String(b[column] ?? '') ? sign : 0)) as T[]
+  } catch (e) {
+    if (refusedAccess(e)) return listWhere<T>(table, fields, filters, orderBy)
+    throw e
+  }
+}
+
 /** One row, with its sub-table rows. */
 export async function getRow<T>(table: string, rowId: string): Promise<T> {
   const r = await request<{ data?: T } & T>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(rowId)}`)

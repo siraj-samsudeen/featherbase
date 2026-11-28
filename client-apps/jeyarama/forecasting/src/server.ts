@@ -18,6 +18,7 @@ import { causesProblem, linesOf } from './causes'
 import { orgChart } from './orgChart'
 import { noticesFor } from './notices'
 import { livePerson, signedIn } from './signedIn'
+import { readCopy, readReview, type ScopedReadContext } from './scoped'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -214,6 +215,8 @@ async function lineOf(ctx: Context): Promise<Row> {
     filters: [['run_id', '=', row.run_id], ['store_code', '=', row.store_code], ['subcategory_name', '=', row.subcategory_name]], limit_page_length: 1 })
   if (!line) ctx.reject(`${String(row.subcategory_name || 'That line')} is not in Run ${String(row.run_id || '')}`)
   for (const k of LINE_KEY) row[k] = line[k] // the key is the Run's, whatever the page sent
+  // #1454: the line's subcategory code, which places the row for who may read it (null for a line merged from several)
+  row.subcategory_code = line.subcategory_code ?? null
   return line
 }
 /** Whether a person reviews this line of the Run (a copy row: its store by site code): a Store or Department Manager
@@ -412,6 +415,8 @@ async function prepareDayExplanation(ctx: Context) {
   if (!line) ctx.reject(`${String(row.subcategory_name || row.section_name || 'That section')} is not in Run ${String(row.run_id || '')}`)
   if (!String(row.section_name ?? '').trim()) ctx.reject('Say which section', { section_name: 'Required' })
   row.store_name = line.store_short_code
+  // #1454: a subcategory's day is placed by its code for who may read it; a section's day by its store alone
+  row.subcategory_code = row.subcategory_name ? line.subcategory_code ?? null : null
   const p = await reviewer(ctx, row.explained_by, line)
   row.explained_by_role = p.role
   if (!row.explained_date) ctx.reject('Say which day', { explained_date: 'Required' })
@@ -439,7 +444,8 @@ async function prepareQuestion(ctx: Context) {
     return
   }
   await reviewer(ctx, old?.asked_by, await lineOf(ctx), undefined, PAGE_ROLES)
-  const moved = unchanged(ctx, ['answer_seen_at'])
+  // the line's code is stamped afresh from the Run (a question asked before 0.14.0 had none)
+  const moved = unchanged(ctx, ['answer_seen_at', 'subcategory_code'])
   if (moved.length) ctx.reject('The asker only marks the answer seen')
 }
 
@@ -458,6 +464,10 @@ export const reads = {
   /** Who the signed-in person is on the org chart (#1438): their Employee rows and Chief Executive jobs, so each
    *  manager's page opens for them; an administrator also gets every Chief Executive, to view RB Review as one. */
   signed_in: (ctx: { user: string; roles?: string[]; baseTables?: Context['baseTables'] }) => signedIn(ctx.baseTables, ctx.user, ctx.roles ?? [], todayIST()),
+  /** #1454: one read-only copy's rows, and the review Tables' rows, inside the reader's places on the org chart, for
+   *  Team Leaders and above (scoped.ts). */
+  copy: (ctx: ScopedReadContext) => readCopy(ctx),
+  review: (ctx: ScopedReadContext) => readReview(ctx),
 }
 export const validators = { 'forecasting.number': prepareNumber, 'forecasting.decision': prepareDecision, 'forecasting.explanation': prepareExplanation,
   'forecasting.forecast_change': prepareChange, 'forecasting.forecast_line_review': prepareLineReview, 'forecasting.forecast_question': prepareQuestion, 'forecasting.day_explanation': prepareDayExplanation }
