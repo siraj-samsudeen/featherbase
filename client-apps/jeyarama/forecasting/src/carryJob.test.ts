@@ -13,10 +13,13 @@ const ctx = (moves: { group: Record<string, string>; before: string; after: stri
       { store_code: '9001', subcategory_name: 'Girls Jean', reviewer: 'Asha', forecast_month: '2026-12-01' },
       { store_code: '9001', subcategory_name: 'Capri', reviewer: 'Asha', forecast_month: '2026-12-01' }] } },
     // the live org chart: Omar (Person P3, by his Employee row) is the Store Manager of Lakeside (LKS) today
-    baseTables: { list: async (table: string) => ({
+    // (and a second Omar, E4, who has left but whose job was never ended: he is not told)
+    baseTables: { list: async (table: string, args?: { filters?: [string, string, unknown][] }) => (({
       Site: [{ row_id: 'LKS', name: 'Lakeside', operating_region: 'North' }],
-      'Job Assignment': [{ employee: 'E3', job: 'Store Manager', site: 'LKS', section: null, starts_on: '2026-01-01', ends_on: null }],
-      Employee: [{ row_id: 'E3', name: 'Omar', person: 'P3' }] } as Record<string, Record<string, unknown>[]>)[table] ?? [] },
+      'Job Assignment': [{ employee: 'E3', job: 'Store Manager', site: 'LKS', section: null, starts_on: '2026-01-01', ends_on: null },
+        { employee: 'E4', job: 'Store Manager', site: 'LKS', section: null, starts_on: '2026-01-01', ends_on: null }],
+      Employee: [{ row_id: 'E3', name: 'Omar', person: 'P3', status: 'Current' }, { row_id: 'E4', name: 'Omar', person: 'P4', status: 'Left' }] } as Record<string, Record<string, unknown>[]>)[table] ?? [])
+      .filter(r => (args?.filters ?? []).every(([c, op, v]) => (op === 'in' ? (v as unknown[]).includes(r[c]) : r[c] === v))) },
     people: { list: async () => [{ person: 'P1', full_name: 'Asha' }, { person: 'P3', full_name: 'Omar' }], notify: async (person: string, m: { subject: string; body: string }) => { told.push({ person, ...m }); return true } },
     setResult: (s: string) => { result = s },
   }

@@ -12,6 +12,7 @@ const TABLES: Record<string, Row[]> = {
     { row_id: 'E3', name: 'Lena', person: 'psn_l', status: 'Current' },
     { row_id: 'E4', name: 'Omar', person: 'psn_o', status: 'Left' },
     { row_id: 'E5', name: 'Ravi', person: 'psn_r', status: 'Current' },
+    { row_id: 'E6', name: 'Lena', person: 'psn_c', status: 'Current' },
   ],
   'Job Assignment': [
     { employee: 'E1', job: 'Director', starts_on: '2024-01-01', ends_on: null },
@@ -19,6 +20,7 @@ const TABLES: Record<string, Row[]> = {
     { employee: 'E3', job: 'Director', starts_on: '2024-01-01', ends_on: '2026-11-27' },
     { employee: 'E4', job: 'Director', starts_on: '2024-01-01', ends_on: null },
     { employee: 'E5', job: 'Store Manager', starts_on: '2024-01-01', ends_on: null },
+    { employee: 'E6', job: 'Chief Operating Officer', starts_on: '2024-01-01', ends_on: null },
   ],
 }
 let running = 0
@@ -33,24 +35,30 @@ const base = {
 }
 
 describe('who is signed in, on the org chart (#1438)', () => {
+  it('passes the signed-in person and their roles from the read to the org chart', async () => {
+    const { reads } = await import('./server')
+    expect(await reads.signed_in({ user: 'psn_x', roles: ['System Manager'], baseTables: base })).toMatchObject({ admin: true, orgChart: true })
+    expect(await reads.signed_in({ user: 'psn_a', baseTables: base })).toMatchObject({ admin: false, employees: ['E1'] })
+  })
+
   it("finds the person's current Employee rows by their Person, and their own Chief Executive job today", async () => {
-    expect(await signedIn(base, 'psn_a', [], '2026-11-28')).toEqual({ admin: false, employees: ['E1'], chiefs: [{ id: 'E1', name: 'Asha', job: 'Director' }] })
+    expect(await signedIn(base, 'psn_a', [], '2026-11-28')).toEqual({ admin: false, orgChart: true, employees: ['E1'], chiefs: [{ id: 'E1', name: 'Asha', job: 'Director' }] })
   })
 
   it('gives a Store Manager no Chief Executive job, and someone with no Employee row nothing', async () => {
-    expect(await signedIn(base, 'psn_r', [], '2026-11-28')).toEqual({ admin: false, employees: ['E5'], chiefs: [] })
-    expect(await signedIn(base, 'psn_nobody', [], '2026-11-28')).toEqual({ admin: false, employees: [], chiefs: [] })
+    expect(await signedIn(base, 'psn_r', [], '2026-11-28')).toEqual({ admin: false, orgChart: true, employees: ['E5'], chiefs: [] })
+    expect(await signedIn(base, 'psn_nobody', [], '2026-11-28')).toEqual({ admin: false, orgChart: true, employees: [], chiefs: [] })
   })
 
   it("gives an administrator every Chief Executive today, the Managing Director first; not an ended job or a leaver's", async () => {
     const got = await signedIn(base, 'Administrator', [], '2026-11-28')
     expect(got.admin).toBe(true)
-    expect(got.chiefs.map(c => c.id)).toEqual(['E2', 'E1'])
-    expect((await signedIn(base, 'psn_x', ['System Manager'], '2026-11-27')).chiefs.map(c => c.id)).toEqual(['E2', 'E1', 'E3'])
+    expect(got.chiefs.map(c => c.id)).toEqual(['E2', 'E1', 'E6'])
+    expect((await signedIn(base, 'psn_x', ['System Manager'], '2026-11-27')).chiefs.map(c => c.id)).toEqual(['E2', 'E1', 'E3', 'E6'])
   })
 
   it('knows no one on an instance without the org chart, but still knows an administrator', async () => {
-    expect(await signedIn(undefined, 'psn_a', [], '2026-11-28')).toEqual({ admin: false, employees: [], chiefs: [] })
-    expect(await signedIn({ ...base, available: async () => false }, 'psn_a', ['System Manager'], '2026-11-28')).toEqual({ admin: true, employees: [], chiefs: [] })
+    expect(await signedIn(undefined, 'psn_a', [], '2026-11-28')).toEqual({ admin: false, orgChart: false, employees: [], chiefs: [] })
+    expect(await signedIn({ ...base, available: async () => false }, 'psn_a', ['System Manager'], '2026-11-28')).toEqual({ admin: true, orgChart: false, employees: [], chiefs: [] })
   })
 })

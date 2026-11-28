@@ -14,7 +14,7 @@ const people: ChainPerson[] = [
   { id: 'E4', name: 'Ravi', role: 'Category Head', place: 'North', places: [{ store: 'HLT', codes: ['S2'] }] },
 ]
 const chain = { real: true, lines: [line('LKS', 'S1'), line('LKS', 'S2'), line('HLT', 'S2')], sections: [], people, proposals: [], cutOff: '2026-11-27', horizon: '2026-12-01' } as Chain
-const me = (employees: string[], chiefs: SignedIn['chiefs'] = [], admin = false): SignedIn => ({ admin, employees, chiefs })
+const me = (employees: string[], chiefs: SignedIn['chiefs'] = [], admin = false): SignedIn => ({ admin, orgChart: true, employees, chiefs })
 const person = (o: ReturnType<typeof ownerOf>) => ('person' in o ? o.person : null)
 
 describe('whose manager page opens (#1438)', () => {
@@ -33,8 +33,26 @@ describe('whose manager page opens (#1438)', () => {
 
   it('lets an administrator view as anyone by their Employee row (?as=), and not by a name', () => {
     expect(person(ownerOf('store-review', chain, me([], [], true), 'E1'))?.id).toBe('E1')
-    expect(person(ownerOf('store-review', chain, me([], [], true), 'Omar'))).toBeNull()
     expect(person(ownerOf('category-review', chain, me([], [], true), 'E4'))?.id).toBe('E4')
+  })
+
+  it("tells an administrator when ?as= names no one holding the job, rather than show someone else", () => {
+    for (const view of ['store-review', 'category-review', 'rb-review'] as const)
+      expect(ownerOf(view, chain, me([], [], true), 'Omar')).toEqual({ missing: expect.objectContaining({ title: 'No one with employee row Omar holds this job' }) })
+  })
+
+  it('opens an administrator who holds the job on their own page when the address names no one', () => {
+    expect(person(ownerOf('category-review', chain, me(['E4'], [], true), null))?.id).toBe('E4')
+    expect(person(ownerOf('category-review', chain, me([], [], true), null))?.id).toBe('E3')
+  })
+
+  it("never shows a real Chief Executive the made-up chain under their own name", () => {
+    expect(ownerOf('rb-review', { ...chain, real: false }, me(['E9'], [{ id: 'E9', name: 'Kumar', job: 'Director' }]), null)).toHaveProperty('missing')
+  })
+
+  it('says the instance has no org chart, not that the person is unlinked, where there is none to find them on', () => {
+    expect(ownerOf('store-review', chain, { admin: false, orgChart: false, employees: [], chiefs: [] }, null))
+      .toEqual({ missing: expect.objectContaining({ title: 'This instance has no org chart' }) })
   })
 
   it('opens RB Review for the Chief Executive the org chart names, under their own name, covering every store', () => {
@@ -67,5 +85,7 @@ describe("the store a Store Manager's page reviews (#1438)", () => {
   it('lets an administrator open any store by code or name, and opens the biggest store when nothing is named', () => {
     expect(storeOf(chain, null, true, 'Hilltop')).toBe('HLT')
     expect(storeOf(chain, null, true, null)).toBe('LKS')
+    // viewing as a Store Manager keeps to their stores, as they would see it
+    expect(storeOf(chain, omar, true, 'HLT')).toBe('LKS')
   })
 })

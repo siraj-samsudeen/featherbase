@@ -65,7 +65,8 @@ export function focusOpen(lines: Line[], levels: Level[], scoped: boolean, few =
  *  most subcategories. */
 export function storeOf(chain: Chain, person: ChainPerson | null, admin: boolean, asked: string | null): string {
   const found = asked ? chain.lines.find(l => l.store === asked || l.storeName === asked) : undefined
-  if (found && (admin || person?.places.some(x => x.store === found.store))) return found.store
+  // an administrator viewing as a Store Manager keeps to that manager's stores, as they would
+  if (found && ((admin && !person) || person?.places.some(x => x.store === found.store))) return found.store
   const own = person?.places.find(x => chain.lines.some(l => l.store === x.store))
   if (own) return own.store
   if (!admin) return person?.places[0]?.store ?? ''
