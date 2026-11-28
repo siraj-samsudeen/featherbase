@@ -39,7 +39,7 @@ export function PriceBands({ line, header, open: openFromPage, onOpen }: { line:
     <section className="fr-bands" data-testid="price-bands">
       <h4>By Price Band <span className="fr-dim fr-sub">{m.name}'s forecast split like the last 28 days' sales; stock as of {asOf}</span></h4>
       <table className="fr-mini fr-band-table">
-        <thead><tr><th>Price band</th><th>Forecast</th><th>Pieces</th><th>Share, last 28 days</th><th>Stock, pieces</th><th>Stock at cost</th><th>Lasts, at {m.name}'s pace</th><th>Items sold</th></tr></thead>
+        <thead><tr><th>Price band</th><th>Forecast</th><th>Pieces</th><th>Share, last 28 days</th><th>Stock, pieces</th><th>Lasts, at {m.name}'s pace</th><th>Items sold</th></tr></thead>
         <tbody>{line.bands.map(b => {
           const isOpen = open === b.name
           return (
@@ -48,9 +48,9 @@ export function PriceBands({ line, header, open: openFromPage, onOpen }: { line:
                 <td><span className="fr-name"><span className="fr-twisty" aria-hidden><ChevronRight size={14} className={cx('transition-transform motion-reduce:transition-none', isOpen && 'rotate-90')} /></span>
                   <button type="button" className="fr-band-name" aria-expanded={isOpen} onClick={e => { e.stopPropagation(); toggle(b.name) }}>{b.name}</button></span></td>
                 <td>{b.fc ? inr(b.fc) : '—'}</td><td>{b.fq ? count(Math.round(b.fq)) : '—'}</td><td>{Math.round(b.share * 100)}%</td>
-                <td>{count(b.stock)}</td><td>{b.stockCost ? inr(b.stockCost) : '—'}</td><td><Lasts b={b} month={m} left={left} /></td><td>{b.sold ? count(b.sold) : '—'}</td>
+                <td>{count(b.stock)}</td><td><Lasts b={b} month={m} left={left} /></td><td>{b.sold ? count(b.sold) : '—'}</td>
               </tr>
-              {isOpen && <tr className="fr-band-open"><td colSpan={8}><TopItems b={b} /></td></tr>}
+              {isOpen && <tr className="fr-band-open"><td colSpan={7}><TopItems b={b} /></td></tr>}
             </Fragment>)
         })}</tbody>
       </table>

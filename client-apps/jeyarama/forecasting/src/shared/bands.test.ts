@@ -6,7 +6,7 @@ import { NO_BAND, bandsOf, coverOf, daysLeft, isShort, notSelling, shortBands, s
 const lines = linesFrom({ lines: fixture.forecast_line_month, sales: fixture.sales_reference, plans: fixture.annual_plan_line, others: fixture.other_model_line,
   bands: { mix: fixture.price_band_mix, stock: fixture.stock_band, items: fixture.price_band_top_item } } as unknown as CopiedRows, 'LKS')
 const december = monthOfRun('2026-12-01')
-const band = (over: Partial<Band>): Band => ({ name: '₹500–600', order: 1, fc: 0, fq: 0, share: 0, stock: 0, stockCost: 0, sold: 0, n50: null, n70: null, items: [], ...over })
+const band = (over: Partial<Band>): Band => ({ name: '₹500–600', order: 1, fc: 0, fq: 0, share: 0, stock: 0, sold: 0, n50: null, n70: null, items: [], ...over })
 
 describe('By Price Band (#1419, 28-Nov-2026)', () => {
   it("splits each subcategory's forecast by its bands' share of the last 28 days, cheapest band first", () => {

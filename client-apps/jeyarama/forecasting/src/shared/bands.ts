@@ -10,12 +10,12 @@ interface BandKey { store_code: string; subcategory_name: string; price_band: st
 export interface BandMixRow extends BandKey {
   sales_value_before_tax: Num; sales_qty: Num; items_sold: Num; value_share: Num; qty_share: Num; items_to_50_pct: Num; items_to_70_pct: Num
 }
-export interface StockBandRow extends BandKey { stock_qty: Num; stock_value_at_cost: Num; items_in_stock: Num; stock_as_of: string | null }
+export interface StockBandRow extends BandKey { stock_qty: Num; items_in_stock: Num; stock_as_of: string | null }
 export interface TopItemRow extends BandKey { item_rank: Num; item_code: string; item_name: string | null; sales_qty: Num; sales_value_before_tax: Num; stock_qty: Num }
 export interface BandRows { mix: BandMixRow[]; stock: StockBandRow[]; items: TopItemRow[] }
 
 export const MIX_FIELDS = ['store_code', 'subcategory_name', 'price_band', 'price_band_order', 'sales_value_before_tax', 'sales_qty', 'items_sold', 'value_share', 'qty_share', 'items_to_50_pct', 'items_to_70_pct']
-export const STOCK_FIELDS = ['store_code', 'subcategory_name', 'price_band', 'price_band_order', 'stock_qty', 'stock_value_at_cost', 'items_in_stock', 'stock_as_of']
+export const STOCK_FIELDS = ['store_code', 'subcategory_name', 'price_band', 'price_band_order', 'stock_qty', 'items_in_stock', 'stock_as_of']
 export const ITEM_FIELDS = ['store_code', 'subcategory_name', 'price_band', 'price_band_order', 'item_rank', 'item_code', 'item_name', 'sales_qty', 'sales_value_before_tax', 'stock_qty']
 
 export interface TopItem { code: string; name: string; qty: number; value: number; stock: number }
@@ -25,7 +25,7 @@ export interface Band {
   fc: number; fq: number
   /** Its share of the last 28 days' sales value, 0 to 1. */
   share: number
-  stock: number; stockCost: number; sold: number
+  stock: number; sold: number
   /** How many of its best sellers make 50% and 70% of its sales; null when it sold nothing. */
   n50: number | null; n70: number | null
   items: TopItem[]
@@ -45,7 +45,7 @@ export function bandsOf(rows: BandRows, store: string, sub: string, fc: number, 
     const share = n(m?.value_share), shareQ = n(m?.qty_share)
     return {
       name, order: n((m ?? s)!.price_band_order), fc: Math.round(fc * share), fq: Math.round(fq * shareQ * 10) / 10, share,
-      stock: Math.round(n(s?.stock_qty)), stockCost: Math.round(n(s?.stock_value_at_cost)), sold: n(m?.items_sold),
+      stock: Math.round(n(s?.stock_qty)), sold: n(m?.items_sold),
       n50: m?.items_to_50_pct == null || m.items_to_50_pct === '' ? null : n(m.items_to_50_pct),
       n70: m?.items_to_70_pct == null || m.items_to_70_pct === '' ? null : n(m.items_to_70_pct),
       items: items.filter(i => i.price_band === name).sort((a, b) => n(a.item_rank) - n(b.item_rank))
