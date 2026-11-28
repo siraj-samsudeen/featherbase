@@ -6,7 +6,7 @@
 // red = sales you may lose, purple = stock not earning, grey = data to fix. Shared, so other review pages can show
 // their own findings the same way.
 import { Fragment, useEffect, useState, type KeyboardEvent } from 'react'
-import { Button, DrillPane, PaneSection, SplitWithPane, TABLE_CLASSES, cellClasses, cx, headCellClasses, resolvePanePlace } from '@featherbase/shop-floor'
+import { Button, DrillPane, PaneSection, RecordLink, SplitWithPane, TABLE_CLASSES, cellClasses, cx, headCellClasses, resolvePanePlace } from '@featherbase/shop-floor'
 import { count, day, inr } from './model'
 import { ATTENTION_SETTINGS as T, type Finding } from './findings'
 import type { Header } from './review'
@@ -131,7 +131,9 @@ function Pane({ f, header, place, index, of, onClose, onMove, href, onOpen }: {
   )
 }
 
-function TabTable({ tab, findings, open, onOpen, month }: { tab: Tab; findings: Finding[]; open: Finding | null; onOpen: (f: Finding) => void; month: Header['month'] }) {
+function TabTable({ tab, findings, open, onOpen, month, lineHref, onLine }: { tab: Tab; findings: Finding[]; open: Finding | null; onOpen: (f: Finding) => void; month: Header['month']
+  /** A subcategory is a record: its link opens the review with it (and its band) open. */
+  lineHref: (f: Finding) => string; onLine: (f: Finding) => void }) {
   const [sort, setSort] = useState<Sort>({ col: COLS[tab.key].includes('amt') ? 'amt' : 'soldValue', dir: -1 })
   const cols = open ? KEY_COLS[tab.key] : COLS[tab.key]
   const groups: [string | null, Finding[], string][] = tab.key === 'transfers'
@@ -153,7 +155,9 @@ function TabTable({ tab, findings, open, onOpen, month }: { tab: Tab; findings: 
               <tr key={`${f.kind}:${f.title}:${k}`} className={cx('group fr-att-row', `fr-att-${f.colour}`)} aria-selected={open === f} tabIndex={0}
                 onClick={() => onOpen(f)} onKeyDown={e => { if (e.key === 'Enter') onOpen(f) }}>
                 {cols.map((c, j) => <td key={c} className={cellClasses({ first: j === 0, last: j === cols.length - 1,
-                  className: cx(numeric(c) && 'text-right tabular-nums', j === 0 && 'fr-att-name', tone(c, f)) })}>{show(c, f)}</td>)}
+                  className: cx(numeric(c) && 'text-right tabular-nums', j === 0 && 'fr-att-name', tone(c, f)) })}>{c === 'sub'
+                  ? <span onClick={e => e.stopPropagation()}><RecordLink table="forecasting.forecast_line_month" rowId={f.line} name={f.line} href={lineHref(f)} onNavigate={() => onLine(f)} /></span>
+                  : show(c, f)}</td>)}
               </tr>))}
           </Fragment>))}</tbody>
       </table>
@@ -202,7 +206,7 @@ export function NeedsAttention({ findings, header, othersAsOf, tab: chosen, onTa
             onClose={() => setOpen(null)} onMove={move} href={href(open)} onOpen={() => onOpen(open)} /> : null}>
             <p className="fr-att-about">{openTab.about(m)}</p>
             {!fs.length ? <p className="fr-att-none">Nothing here for {header.section} today.</p>
-              : <TabTable key={openTab.key} tab={openTab} findings={fs} open={open} onOpen={setOpen} month={m} />}
+              : <TabTable key={openTab.key} tab={openTab} findings={fs} open={open} onOpen={setOpen} month={m} lineHref={href} onLine={onOpen} />}
             <p className="fr-dim fr-att-note">₹ at selling price (never cost), to {endOf(m)} from the stock on {asOf} at {m.name}'s forecast pace.
               {openTab.key === 'transfers' && ` Other stores' stock as of ${othersAsOf ? day(othersAsOf) : '—'}; same region only; at least ${T.minTransferPcs} pcs, and a store must have sold at least ${T.minSellingTherePcs} in 28 days to be offered stock.`}
               {' '}Click a row for its details; sort by any heading.</p>
