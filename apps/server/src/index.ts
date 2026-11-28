@@ -1022,6 +1022,16 @@ app.post('/api/open_admin', async (c) => {
   return c.json(opened)
 })
 
+// #1418 (design D6): the warehouse, after a build, asks a read-only copy to
+// check for a new run now: POST /api/copy_check_now { table }. Not a write
+// action on the Table: it changes no row, and a read-only copy is system-written.
+app.post('/api/copy_check_now', async (c) => {
+  const { table } = (await c.req.json().catch(() => ({}))) as { table?: unknown }
+  if (typeof table !== 'string' || !table) throw new AppError('ValidationError', 'Name the read-only copy to check', { table: 'Required' })
+  const { checkCopyNow } = await import('./copy-refresh')
+  return c.json(await checkCopyNow(c.get('user'), table))
+})
+
 // #101 Phase 3: batched capture of the caller's read-side intent (rows
 // visited, lists filtered, searches run). The user always comes from the
 // session — a client cannot write anyone else's trail — and reads are

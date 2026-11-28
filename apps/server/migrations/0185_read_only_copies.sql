@@ -17,8 +17,12 @@ alter table featherbase.table_copy
 alter table featherbase.table_copy drop constraint if exists table_copy_mode_check;
 alter table featherbase.table_copy add constraint table_copy_mode_check check (mode in ('editable', 'read_only'));
 
--- An editable copy names its warehouse table and key; a read-only one its query.
+-- An editable copy names its source, warehouse table and key; a read-only one
+-- its query. A read-only copy's source is the one its app declares by name,
+-- which an administrator connects after the install, so it holds no link to
+-- a Data Source row (the description of its Table names it).
 alter table featherbase.table_copy
+  alter column data_source drop not null,
   alter column database drop not null,
   alter column source_schema drop not null,
   alter column source_table drop not null,
@@ -26,8 +30,8 @@ alter table featherbase.table_copy
 alter table featherbase.table_copy drop constraint if exists table_copy_source_check;
 alter table featherbase.table_copy add constraint table_copy_source_check check (
   case mode
-    when 'editable' then database is not null and source_schema is not null and source_table is not null and key_column is not null
-    else query is not null
+    when 'editable' then data_source is not null and database is not null and source_schema is not null and source_table is not null and key_column is not null
+    else query is not null and data_source is null
   end);
 
 create schema if not exists featherbase_copy;

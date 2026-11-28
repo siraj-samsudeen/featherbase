@@ -146,7 +146,7 @@ async function ensureCopy(app: string, dataset: DatasetDeclaration): Promise<boo
   const target = copyTarget(app, dataset.name)
   const [copy] = await sql`select * from featherbase.table_copy where target_table = ${target}`
   const provenance = {
-    data_source: dataset.source, query: dataset.query, run_key_query: dataset.refresh?.runKey ?? null,
+    query: dataset.query, run_key_query: dataset.refresh?.runKey ?? null,
     daily_at: dataset.refresh?.dailyAt ?? null, key_column: dataset.rowKey!.join(','),
   }
   if (!copy) {
@@ -343,7 +343,7 @@ export async function checkCopy(target: string, opts: LoadOptions = {}): Promise
     let snapshot: string | undefined
     try {
       const { text, values } = boundQuery(dataset.query, runKey)
-      await checkShape(dataset, await driver.describe(source, text, values))
+      await checkShape(dataset, await describeOrRefuse(() => driver.describe!(source, text, values)))
       snapshot = randomUUID()
       await sql`insert into dataset_snapshot (row_id, dataset, definition_version, state, built_at, triggered_by)
         values (${snapshot}, ${target}, ${shapeVersion(dataset)}, 'building', now(), ${opts.trigger ?? null})`
@@ -356,7 +356,7 @@ export async function checkCopy(target: string, opts: LoadOptions = {}): Promise
         return '0'
       })
       await indexAndAttach(target, dataset, snapshot)
-      await assertStillServing(app, identity, () => activate(target, snapshot!, rows, loadMs, runKeyText))
+      await assertStillServing(app, identity, () => activate(target, snapshot!, rows, loadMs, runKeyText, now))
       await prune(target)
       if (dataset.onNewLoad) await queueNewLoad(app, dataset.onNewLoad, target, previous, snapshot)
       return { status: 'loaded', snapshot, previous, rows }
@@ -376,6 +376,19 @@ async function refused(target: string, reason: string, opts: LoadOptions, snapsh
       values (${snapshot}, ${target}, 'failed', now(), ${opts.trigger ?? null}, ${reason})`
   }
   return { status: 'refused', snapshot, reason: `${target.split('.')[1]}: ${reason}` }
+}
+
+/** A query that names a column the source no longer has fails to describe:
+ *  that is the shape check's refusal too, naming the column (Postgres says
+ *  `column "x" does not exist`, DuckDB `column "x" not found`). */
+async function describeOrRefuse<T>(describe: () => Promise<T>): Promise<T> {
+  try {
+    return await describe()
+  } catch (error) {
+    const [, column] = /column "?([^"\s]+)"? (?:does not exist|not found)/i.exec(errorMessage(error)) ?? []
+    if (column) refuse(`the source has no column ${column.split('.').pop()} (renamed or removed?). The last good load is kept`)
+    throw error
+  }
 }
 
 /** D4: every declared column is in the source, as a kind of value its type takes. */
@@ -438,7 +451,7 @@ async function checkLoad(target: string, dataset: DatasetDeclaration, snapshot: 
     if (refusal) refuse(refusal.slice(dataset.name.length + 2))
   }
   for (const guard of guards) {
-    const column = q(guard.column!)
+    const column = q(guard.column ?? '')
     if (guard.kind === 'source_total') {
       const expected = await sourceTotal(guard.column!)
       const [loaded] = await sql.unsafe(`select coalesce(sum(${column}), 0)::text as total, coalesce(sum(${column}), 0) = $1::numeric as same from ${part}`, [expected])
@@ -466,13 +479,13 @@ async function indexAndAttach(target: string, dataset: DatasetDeclaration, snaps
 }
 
 /** The swap: one update of the registry, readers see one load or the other. */
-async function activate(target: string, snapshot: string, rows: number, loadMs: number, runKey: string | null): Promise<void> {
+async function activate(target: string, snapshot: string, rows: number, loadMs: number, runKey: string | null, at: Date): Promise<void> {
   const [size] = await sql.unsafe(`select pg_total_relation_size(${literal(partRelation(snapshot))}) as bytes`)
   await sql.begin(async (tx) => {
     await tx`update dataset_snapshot set state = 'superseded', updated_at = now() where dataset = ${target} and state = 'active'`
     await tx`update dataset_snapshot set state = 'active', activated_at = now(), row_count = ${rows}, bytes = ${Number(size.bytes)},
       load_ms = ${loadMs}, updated_at = now() where row_id = ${snapshot}`
-    await tx`update featherbase.table_copy set last_copied_at = clock_timestamp(), last_run_id = ${snapshot}, last_run_key = ${runKey}
+    await tx`update featherbase.table_copy set last_copied_at = ${at}, last_run_id = ${snapshot}, last_run_key = ${runKey}
       where target_table = ${target}`
   })
 }
