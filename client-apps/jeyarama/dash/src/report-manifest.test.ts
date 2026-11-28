@@ -302,12 +302,14 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['dive_failure_detail', '0.13.45', '0.13.46', 0],
       // #1423: a refused report says why on the page and in the log; no Table change.
       ['report_refusals_explained', '0.13.46', '0.13.47', 0],
+      // #1418: its one dataset stays a JSON snapshot now that a dataset is a typed copy by default; no Table change.
+      ['datasets_kept_as_json', '0.13.47', '0.13.48', 0],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')
     expect(manifest.people).toEqual({ describe: 'describe_people', sections: 'worked_out' })
     expect(manifest.reads.operations.describe_people).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read.Site).toEqual(['name', 'is_store', 'cluster', 'operating_region', 'site_kind', 'status'])
-    expect(pkg.version).toBe('0.13.47')
+    expect(pkg.version).toBe('0.13.48')
   })
 })

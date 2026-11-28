@@ -13,6 +13,9 @@
 // through the members of forecasting.forecaster (holders of the Forecasting Member role).
 import { areaText, covers, personNamed } from './areas'
 import { person as madeUpPerson } from './madeUp'
+import { causesProblem, linesOf } from './causes'
+import { orgChart } from './orgChart'
+import { noticesFor } from './notices'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -27,6 +30,8 @@ export interface Context {
     list?(table: string, args: { fields: string[]; filters?: Filter[]; limit_start?: number; limit_page_length?: number }): Promise<Row[]>
   }
   reject(message: string, fields?: Record<string, string>): never
+  /** The instance's own Tables the app declares reading (#1428): the live org chart. Absent where the instance has none. */
+  baseTables?: Parameters<typeof orgChart>[0] & { available?(table: string, columns?: string[]): Promise<boolean> }
 }
 type Level = 'Store' | 'Division' | 'Subdivision' | 'Category' | 'Subcategory' | 'Section'
 /** Someone on the org chart: their name and job, their manager's name, and what they cover. */
@@ -192,7 +197,208 @@ async function prepareExplanation(ctx: Context) {
   await inArea(ctx, org, p, row.store, row.scope_level, row.scope_name)
 }
 
+// ---- the Team Leader review (#1419): forecast_change, forecast_line_review, forecast_question -------------
+// A row names its line by the warehouse's own key (run, store, subcategory); the server reads that line from
+// forecasting.forecast_line_month and decides from it: who may act on it (a Team Leader for their own store ·
+// section, a Store Manager for their store), and what Feather Forecast said, so the engine figure stored with a
+// change is the Run's, never the page's.
+const LINE_KEY = ['run_id', 'store_code', 'division_name', 'subdivision_name', 'category_name', 'subcategory_name']
+async function lineOf(ctx: Context): Promise<Row> {
+  const { row } = ctx
+  const [line] = await ctx.documents.list!('forecasting.forecast_line_month', {
+    fields: ['row_id', ...LINE_KEY, 'store_short_code', 'subcategory_code', 'forecast_month', 'forecast_value_before_tax', 'forecast_qty'],
+    filters: [['run_id', '=', row.run_id], ['store_code', '=', row.store_code], ['subcategory_name', '=', row.subcategory_name]], limit_page_length: 1 })
+  if (!line) ctx.reject(`${String(row.subcategory_name || 'That line')} is not in Run ${String(row.run_id || '')}`)
+  for (const k of LINE_KEY) row[k] = line[k] // the key is the Run's, whatever the page sent
+  return line
+}
+/** Whether a person reviews this line of the Run (a copy row: its store by site code): a Store or Department Manager
+ *  their store; a Team Leader their own section today, from the live org chart (#1428): the section the line's
+ *  subcategory sits in, or for a section's day the section it names. An instance without the org chart's Tables (the
+ *  made-up one) holds a Team Leader to their store. */
+async function reviews(ctx: Context, p: Who, line: Row): Promise<boolean> {
+  const store = String(line.store_short_code)
+  if (p.role === 'Store Manager' || p.role === 'Department Manager') return p.area === store
+  if (p.role !== 'Team Leader' || p.area.split(' · ')[0] !== store) return false
+  const base = ctx.baseTables
+  // without the org chart's Tables only the made-up instance may hold a Team Leader to their store; a real one refuses
+  if (!base || !(await (base.available?.('Job Assignment') ?? Promise.resolve(true)))) return (await orgOf(ctx)) === madeUp
+  const org = await orgChart(base, store, todayIST())
+  // a subcategory's line is in its section today; a line merged from several codes is in none a Team Leader holds
+  if (ctx.row.subcategory_name && !line.subcategory_code) return false
+  const at = ctx.row.subcategory_name ? org.sections.find(s => s.id === org.subcategories[String(line.subcategory_code)]?.section) : org.sections.find(s => s.name === ctx.row.section_name)
+  if (!at || !at.teamLeaders.includes(p.name)) return false
+  // a day explanation is filed under the section the org chart gives, whatever the page sent
+  if ('section_name' in ctx.row) ctx.row.section_name = at.name
+  return true
+}
+async function reviewer(ctx: Context, named: unknown, line: Row): Promise<Who> {
+  // An administrator acts for a section's Team Leader by name (the app's "view a section as its Team Leader"),
+  // whether or not that person is on the forecasting org chart.
+  if (isAdmin(ctx)) return { name: String(named || 'Team Leader'), role: 'Team Leader', reportsTo: null, area: `${String(line.store_short_code)} · ${String(ctx.row.section_name ?? '')}` }
+  const p = await actor(ctx, await orgOf(ctx), named)
+  if (!(await reviews(ctx, p, line))) ctx.reject(`${p.name} reviews ${p.area}; ${String(line.store_short_code)} · ${String(line.subcategory_name)} is outside it`)
+  return p
+}
+/** The columns a save moved, other than `keep` and the platform's own stamps. */
+const norm = (v: unknown) => (v instanceof Date ? v.toISOString() : v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v))
+const same = (a: unknown, b: unknown) => norm(a) === norm(b) || (norm(a) !== '' && norm(b) !== '' && Number(norm(a)) === Number(norm(b)))
+function unchanged(ctx: Context, keep: string[]) {
+  return Object.keys(ctx.row).filter(k => !keep.includes(k) && !['updated_at', 'updated_by'].includes(k) && !same(ctx.row[k], ctx.old?.[k]))
+}
+
+/** A change asked for on a line's month: the engine figure and the result are worked out here; once sent it is
+ *  never edited, only replaced by a new one or withdrawn by the person who sent it. */
+async function prepareChange(ctx: Context) {
+  const { row, old } = ctx
+  if (!ctx.isNew) {
+    if (isAdmin(ctx)) return
+    const p = await actor(ctx, await orgOf(ctx), old?.proposed_by)
+    const moved = unchanged(ctx, ['change_status', 'reasons'])
+    if (moved.length || p.name !== old?.proposed_by || old?.change_status !== 'sent' || !['replaced', 'withdrawn'].includes(String(row.change_status)))
+      ctx.reject('A sent change is not edited: send a new one that replaces it, or withdraw it')
+    return
+  }
+  const line = await lineOf(ctx)
+  const p = await reviewer(ctx, row.proposed_by, line)
+  row.proposed_by_role = p.role
+  if (!String(row.explanation ?? '').trim()) ctx.reject('Explain your proposed change', { explanation: 'Required' })
+  if (row.change_scope !== 'month') ctx.reject('A change covers the whole month for now', { change_scope: 'month' })
+  const engine = Number(line.forecast_value_before_tax), qty = Number(line.forecast_qty)
+  let changed: number
+  if (row.change_method === 'percent') {
+    const pct = Number(row.change_percent)
+    if (row.change_percent == null || !Number.isFinite(pct) || pct < -100) ctx.reject('A percent from -100 up', { change_percent: 'Required' })
+    changed = engine * (1 + pct / 100)
+    row.set_value_before_tax = null
+  } else {
+    const v = Number(row.set_value_before_tax)
+    if (row.set_value_before_tax == null || !Number.isFinite(v) || v < 0) ctx.reject('A value of 0 or more, in rupees before tax', { set_value_before_tax: 'Required' })
+    changed = v
+    row.change_percent = null
+  }
+  // quantity moves with value, so the selling price stays the engine's (data model, "From changes to days")
+  Object.assign(row, { engine_value_before_tax: Math.round(engine), engine_qty: Math.round(qty * 10) / 10,
+    changed_value_before_tax: Math.round(changed), changed_qty: engine ? Math.round(qty * changed / engine * 10) / 10 : 0 })
+  if (isAdmin(ctx)) return
+  // Team Leaders send for approval; a Store Manager's own change is final (data model, settled 27-Nov-2026)
+  row.change_status = p.role === 'Team Leader' ? 'sent' : 'approved'
+  Object.assign(row, { decided_by: null, decided_at: null, decision_note: null })
+}
+
+/** One person's answer on a line: theirs alone, inside their own section; a proposed change names its change. */
+async function prepareLineReview(ctx: Context) {
+  const { row, old } = ctx
+  if (!ctx.isNew && String(old?.reviewer) !== String(row.reviewer) && !isAdmin(ctx)) ctx.reject("An answer is the reviewer's own")
+  const line = await lineOf(ctx)
+  const p = await reviewer(ctx, row.reviewer, line)
+  row.reviewer_role = p.role
+  // what the answer was given against, so a later Run of the same month can carry it, or ask again (carry.ts)
+  row.forecast_month = line.forecast_month
+  row.engine_value_before_tax = Math.round(Number(line.forecast_value_before_tax))
+  if (row.answer === 'accepted') { row.forecast_change = null; return }
+  if (row.answer !== 'change_proposed') ctx.reject('Accepted or change proposed', { answer: 'Required' })
+  // The hook API cannot read forecast_change back (a Table with a sub-table, its reasons), so the link is required
+  // here and its line and proposer are not re-checked: a crafted request could only mislabel its own answer.
+  if (!row.forecast_change) ctx.reject('A proposed change names the change you sent on this line', { forecast_change: 'Required' })
+}
+
+/** Why a day went off (#1425): explained by whoever reviews that section, or that subcategory's section, in the Run;
+ *  the causes and tags from the agreed set for its direction, below or above the forecast. The section and store come from the Run, whatever the page sent. */
+async function prepareDayExplanation(ctx: Context) {
+  const { row, old } = ctx
+  if (!ctx.isNew && String(old?.explained_by) !== String(row.explained_by) && !isAdmin(ctx)) ctx.reject("An explanation is its writer's own")
+  // the Run's line (a subcategory's day) or any line of the store (a section's day); the section is checked against
+  // the live org chart (reviews)
+  const filters: [string, string, unknown][] = [['run_id', '=', row.run_id], ['store_code', '=', row.store_code],
+    ...(row.subcategory_name ? [['subcategory_name', '=', row.subcategory_name] as [string, string, unknown]] : [])]
+  const [line] = await ctx.documents.list!('forecasting.forecast_line_month', { fields: ['store_short_code', 'subcategory_name', 'subcategory_code'], filters, limit_page_length: 1 })
+  if (!line) ctx.reject(`${String(row.subcategory_name || row.section_name || 'That section')} is not in Run ${String(row.run_id || '')}`)
+  if (!String(row.section_name ?? '').trim()) ctx.reject('Say which section', { section_name: 'Required' })
+  row.store_name = line.store_short_code
+  const p = await reviewer(ctx, row.explained_by, line)
+  row.explained_by_role = p.role
+  if (!row.explained_date) ctx.reject('Say which day', { explained_date: 'Required' })
+  if (row.direction !== 'below' && row.direction !== 'above') ctx.reject('Say whether the day went below or above the forecast', { direction: 'Required' })
+  const problem = causesProblem(row.direction, linesOf(row.causes), linesOf(row.tags))
+  if (problem) ctx.reject(problem, { causes: problem })
+}
+
+const ANSWERS = ['Forecast Creator', 'Forecast Reviewer']
+/** A question on a line: asked by its reviewer; answered (status, who, when) by the Forecast Creator or Reviewer
+ *  roles, whose answer is a Comment on it; the asker only marks the answer seen. */
+async function prepareQuestion(ctx: Context) {
+  const { row, old } = ctx
+  if (ctx.isNew) {
+    const line = await lineOf(ctx)
+    await reviewer(ctx, row.asked_by, line)
+    if (!String(row.question_text ?? '').trim()) ctx.reject('Write your question', { question_text: 'Required' })
+    Object.assign(row, { question_status: 'open', answered_by: null, answered_by_role: null, answered_at: null, answer_seen_at: null, about: row.about || 'line' })
+    return
+  }
+  if (isAdmin(ctx)) return
+  if (ctx.roles.some(r => ANSWERS.includes(r))) {
+    const moved = unchanged(ctx, ['question_status', 'answered_by', 'answered_by_role', 'answered_at'])
+    if (moved.length) ctx.reject(`An answer changes the status and who answered, not ${moved.join(', ')}`)
+    return
+  }
+  await actor(ctx, await orgOf(ctx), old?.asked_by)
+  const moved = unchanged(ctx, ['answer_seen_at'])
+  if (moved.length) ctx.reject('The asker only marks the answer seen')
+}
+
 export const platformVersion = '2026-10'
-export const validators = { 'forecasting.number': prepareNumber, 'forecasting.decision': prepareDecision, 'forecasting.explanation': prepareExplanation }
+/** Today in India, YYYY-MM-DD. */
+const todayIST = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+/** The app's read operations (/api/app_reads/forecasting/<name>). org_chart: one store's org chart today, from the
+ *  instance's own Tables (baseTables.read), so a page knows each subcategory's section without reading them. */
+export const reads = {
+  org_chart: (ctx: { payload: unknown; baseTables: Parameters<typeof orgChart>[0] }) => {
+    const store = String((ctx.payload as { store?: unknown } | null)?.store ?? '')
+    if (!/^[A-Z0-9]{2,8}$/.test(store)) throw new Error('Name a store by its site code, such as ATK')
+    return orgChart(ctx.baseTables, store, todayIST())
+  },
+}
+export const validators = { 'forecasting.number': prepareNumber, 'forecasting.decision': prepareDecision, 'forecasting.explanation': prepareExplanation,
+  'forecasting.forecast_change': prepareChange, 'forecasting.forecast_line_review': prepareLineReview, 'forecasting.forecast_question': prepareQuestion, 'forecasting.day_explanation': prepareDayExplanation }
 export const actions = {}
-export const jobs = {}
+/** After a new load of the forecast copy (#1418's onNewLoad; Siraj, 28-Nov-2026): the people whose answer this load
+ *  puts more than 10% from the figure they answered are told, one notice each (notices.ts), as the review decides.
+ *  Moves are compared per month, store and subcategory: a new Run has a new run_id, so grouping by Run would make
+ *  every subcategory look new. Reads the answers past their privacy (readsAllRows, ruled 28-Nov) and writes nothing:
+ *  the review itself asks again (carry.ts). Each store's Store Manager today is told too, from the live org chart
+ *  (baseTables, #1428), where the instance has it. */
+interface JobContext {
+  newLoad: { moves(o: { by: string[]; measure: string; threshold?: number }): Promise<{ group: Record<string, string | null>; before: string | null; after: string | null }[]> } | null
+  documents: { list(table: string, args?: { filters?: [string, '=' | 'in', unknown][]; limit?: number }): Promise<Record<string, unknown>[]> }
+  baseTables?: Context['baseTables']
+  people: { list(): Promise<{ person: string; full_name: string | null }[]>; notify(person: string, message: { subject: string; body: string; email?: boolean; path?: string }): Promise<boolean> }
+  setResult(s: string): void
+}
+export const jobs = {
+  async carry_changes(ctx: JobContext) {
+    if (!ctx.newLoad) return
+    const moves = (await ctx.newLoad.moves({ by: ['forecast_month', 'store_code', 'store_short_code', 'subcategory_name'], measure: 'forecast_value_before_tax', threshold: 0 }))
+      .filter(m => m.after != null)
+    if (!moves.length) { ctx.setResult('Feather Forecast is unchanged'); return }
+    const people = Object.fromEntries((await ctx.people.list()).filter(p => p.full_name).map(p => [p.full_name!, p.person]))
+    // each store's Store Managers today (the org chart names them; the store's short code is its Site)
+    const managers: Record<string, string[]> = {}
+    const base = ctx.baseTables
+    if (base && (await (base.available?.('Job Assignment') ?? Promise.resolve(true))))
+      for (const [code, short] of new Map(moves.map(m => [String(m.group.store_code), String(m.group.store_short_code)])))
+        managers[code] = (await orgChart(base, short, todayIST())).storeManagers
+    let told = 0
+    for (const month of [...new Set(moves.map(m => String(m.group.forecast_month).slice(0, 10)))]) {
+      const mine = moves.filter(m => String(m.group.forecast_month).slice(0, 10) === month)
+        .map(m => ({ store_code: String(m.group.store_code), subcategory_name: String(m.group.subcategory_name), before: m.before == null ? null : Number(m.before), after: Number(m.after) }))
+      const answers = (await ctx.documents.list('forecasting.forecast_line_review', { filters: [['forecast_month', '=', month],
+        ['subcategory_name', 'in', [...new Set(mine.map(m => m.subcategory_name))]]], limit: 50000 }))
+        .map(r => ({ store_code: String(r.store_code), subcategory_name: String(r.subcategory_name), reviewer: String(r.reviewer),
+          forecast_month: r.forecast_month == null ? null : r.forecast_month instanceof Date ? r.forecast_month.toISOString().slice(0, 10) : String(r.forecast_month).slice(0, 10),
+          engine_value_before_tax: r.engine_value_before_tax == null || r.engine_value_before_tax === '' ? null : Number(r.engine_value_before_tax) }))
+      for (const n of noticesFor(mine, answers, month, people, managers)) if (await ctx.people.notify(n.person, { subject: n.subject, body: n.body, email: false, path: n.path })) told++
+    }
+    ctx.setResult(`${moves.length} subcategories changed; ${told} people told`)
+  },
+}

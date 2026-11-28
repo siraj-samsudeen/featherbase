@@ -59,7 +59,8 @@ for (const p of real?.people ?? PEOPLE) {
   const email = `${p.id}@forecasting.test`
   const [found] = await sql`select row_id from person where lower(email) = ${email}`
   const id = found ? String(found.row_id) : String((await call<{ row_id: string }>('/api/table/Person', { method: 'POST',
-    body: JSON.stringify({ email, full_name: p.name, enabled: true, roles: [{ role: 'Forecasting Member' }] }) })).row_id)
+    // The made-up Forecast Lead also answers Team Leaders' questions (the Forecast Creator role, #1419).
+    body: JSON.stringify({ email, full_name: p.name, enabled: true, roles: [{ role: 'Forecasting Member' }, ...(p.id === 'farah' ? [{ role: 'Forecast Creator' }] : [])] }) })).row_id)
   await setUserPassword(id, PASSWORD)
 }
 
@@ -68,7 +69,27 @@ for (const p of real?.people ?? PEOPLE) {
 const signIn = `${`http://localhost:${process.env.WEB_PORT ?? ''}`}/featherbase/login?next=%2Fforecasting%2F`
 const page = await fetch(`${api}/api/table/${encodeURIComponent('Home Page')}/forecasting`, { headers: { authorization: `Bearer ${login.token}` } })
 if (page.status === 404) await save('Home Page', { row_id: 'forecasting', label: 'Forecasting', module: 'Forecasting', sequence: 10,
-  shortcuts: JSON.stringify([{ label: 'Open Forecasting', type: 'url', link_to: '/forecasting/' }]) })
+  shortcuts: JSON.stringify([{ label: 'Open Forecasting', type: 'url', link_to: '/forecasting/', description: "Review the month's forecast, section by section" }]) })
+
+// The Team Leader review (#1419) reads the copied warehouse tables. Until the warehouse copy table exists
+// (#1418), a local instance on made-up data fills them from fixtures/team-leader-december.json (Lakeside ·
+// Girls Bottoms, invented figures), with the closed list of change reasons. Added once; a rerun keeps them.
+if (!real) {
+  // The Run's figures are read-only copies of the warehouse feeds now (#1418): only a load writes them, so a made-up
+  // instance has none until one is loaded (fixtures/team-leader-december.json feeds the tests and the story). The
+  // closed list of change reasons is still added here, once.
+  const [loaded] = await sql`select 1 from forecasting.change_reason limit 1`
+  if (!loaded) {
+    // the reasons people pick from are ordinary rows; they keep their codes as ids, so they are created, not saved over
+    const add = (table: string, row: Record<string, unknown>) => call(`/api/table/${encodeURIComponent(table)}`, { method: 'POST', body: JSON.stringify(row) })
+    const reasons: [string, string, string][] = [['stock_short', 'Stock out or short', 'both'], ['stock_arriving', 'Stock arriving', 'both'],
+      ['price_changed', 'Price changed', 'both'], ['display_space', 'Display space', 'both'], ['last_month_one_off', 'Last month was a one-off', 'month'],
+      ['event_or_festival', 'Event or festival', 'both'], ['may_not_happen', 'May not happen', 'day'], ['store_hours', 'Store shut or short hours', 'day'],
+      ['range_dropped', 'Range dropped', 'both'], ['customers_asking', 'Customers asking', 'both'], ['other', 'Other (explain)', 'both']]
+    for (const [i, [reason_code, label, applies_to]] of reasons.entries()) await add('forecasting.change_reason', { row_id: reason_code, reason_code, label, applies_to, sort_order: i + 1 })
+    console.log("Forecasting: the change reasons. The Run's figures come from a load of the read-only copies.")
+  }
+}
 
 if (real) {
   console.log(`Forecasting: a real Run, ${real.people.length} reviewers with local sign-ins (<code>@forecasting.test); no made-up numbers added.

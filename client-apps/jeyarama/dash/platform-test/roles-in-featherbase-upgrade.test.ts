@@ -124,7 +124,7 @@ describe('business roles in Featherbase, on live data', () => {
       expect(await discoverPackages([previous, APP_DIR])).toEqual([])
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
-      expect(plan.migrations.map(m => m.id)).toEqual(['business_roles_in_featherbase', 'dive_failure_detail', 'report_refusals_explained'])
+      expect(plan.migrations.map(m => m.id)).toEqual(['business_roles_in_featherbase', 'dive_failure_detail', 'report_refusals_explained', 'datasets_kept_as_json'])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()

@@ -73,6 +73,13 @@
   --color-series-4: #000000;
   --color-series-5: #78350f;
 
+  /* What a forecast is built from (Forecasting #1419, TL-12): fixed, colour-blind safe (Okabe-Ito), the same on
+     every screen that splits a forecast into its parts. Never a meaning colour. */
+  --color-part-recent: #0072b2;
+  --color-part-step: #e69f00;
+  --color-part-last-year: #009e73;
+  --color-part-adjust: #c4c4c4;
+
   /* Sidebar groups (owner's review, 17-Nov-2026): each group's icons in its own
      hue, so groups read apart at a glance. Way-finding only, never a meaning:
      the selected row stays in the action colour. */
@@ -214,6 +221,7 @@
     --color-series-3: #f472b6;
     --color-series-4: #cbd5e1;
     --color-series-5: #e0a96d;
+    --color-part-adjust: #6b7280;
 
     --color-group-blue: #60a5fa;
     --color-group-teal: #2dd4bf;

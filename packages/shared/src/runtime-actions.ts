@@ -228,8 +228,30 @@ export type RuntimeReadHandler = ((context: RuntimeReadContext) => unknown | Pro
   prepare?: (context: RuntimeReadContext) => unknown | Promise<unknown>
 }
 
+/** #1418: one group of a read-only copy whose total moved between two loads. */
+export interface LoadMove {
+  /** The group's values, by the columns asked for, as text. */
+  readonly group: Readonly<Record<string, string | null>>
+  /** Its totals, as exact decimal text; null when the group is new or gone. */
+  readonly before: string | null
+  readonly after: string | null
+}
+
+/** #1418: a read-only copy's new load, as its app's job is told of it. */
+export interface NewLoad {
+  /** The dataset's name. */
+  readonly dataset: string
+  /** The load it replaced (kept until the next load), or null for the first. */
+  readonly previous: string | null
+  readonly current: string
+  /** The groups whose total of `measure` moved by more than `threshold`
+   *  percent (10 unless given), new and gone groups included; none when
+   *  there is no previous load. */
+  moves(options: { by: string[]; measure: string; threshold?: number }): Promise<LoadMove[]>
+}
+
 /** #700: the grants an app job may declare. A job holds only those it names. */
-export const APP_JOB_GRANTS = ['read_people', 'disable_people', 'email_system_managers'] as const
+export const APP_JOB_GRANTS = ['read_people', 'disable_people', 'email_system_managers', 'notify_people'] as const
 export type AppJobGrant = (typeof APP_JOB_GRANTS)[number]
 
 /** #700: one enabled person, as an app job holding `read_people` sees them. */
@@ -253,6 +275,13 @@ export interface RuntimeJobContext {
   readonly documents: {
     /** Server-selected enabled creators of the declared owner Table only. */
     forEachOwner(callback: (scope: { readonly user: string; readonly documents: RuntimeActionContext['documents'] }) => Promise<void>): Promise<void>
+    /** #1428: every row of one of the app's own Tables the job names in
+     *  `readsAllRows`, past the Table's row privacy (a job has no places),
+     *  read-only. Filters are `[column, '=' | 'in', value]`; at most `limit`
+     *  rows (10,000 unless given, 50,000 at most), in row id order. */
+    list(table: string, args?: { filters?: [string, '=' | 'in', unknown][]; limit?: number }): Promise<ActionRow[]>
+    /** #1428: one such row by its id, or null. */
+    get(table: string, rowId: string): Promise<ActionRow | null>
   }
   /** The job's registered name (`<app>.<job>`), which is also its actor. */
   readonly job: { readonly name: string; readonly run: string; readonly trigger: string }
@@ -261,12 +290,23 @@ export interface RuntimeJobContext {
   readonly secrets: Readonly<Record<string, string>>
   /** The datasets the job declares, every row (a job has no places). */
   readonly datasets: RuntimeReadContext['datasets']
+  /** #1428: the instance Tables the app reads (`baseTables.read`), only the declared columns, read-only. */
+  readonly baseTables: BaseTablesHelper
+  /** #1418: set when this run follows a new load of a read-only copy whose
+   *  dataset names this job as `onNewLoad`; null on any other run. */
+  readonly newLoad: NewLoad | null
   readonly people: {
     /** `read_people`: every enabled person. */
     list(): Promise<AppJobPerson[]>
     /** `disable_people`: disable one person. False when they are already
      *  disabled, gone, or privileged (never disabled by a job). */
     disable(person: string, reason: string): Promise<boolean>
+    /** #1418 `notify_people`: tell one person, by Person ID or email, in the
+     *  app's bell (the subject, linking to `ref_table`/`reference_name` when
+     *  given, one of the app's own Tables) and, with `email: true`, by email
+     *  too (the body; `path` follows the app's address in a link). False,
+     *  and nothing sent, for someone unknown, turned off or built in. */
+    notify(person: string, message: { subject: string; body: string; email?: boolean; path?: string; ref_table?: string; reference_name?: string }): Promise<boolean>
   }
   readonly email: {
     /** `email_system_managers`: mail every System Manager. The count mailed;

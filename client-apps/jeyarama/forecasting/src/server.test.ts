@@ -111,3 +111,71 @@ describe('a loaded Run', () => {
     await expect(call('forecasting.explanation', 'u_lena', { ...why, causes: '' })).rejects.toThrow(/at least one cause/)
   })
 })
+
+describe('a day explanation (#1425)', () => {
+  const REACH = [
+    { full_name: 'Tara', role: 'Team Leader', place: 'North · Kids', reports_to: 'Omar', places_json: JSON.stringify([{ store: 'North', codes: ['C1', 'C2'] }]) },
+    { full_name: 'Omar', role: 'Department Manager', place: 'North', reports_to: '', places_json: JSON.stringify([{ store: 'North', codes: ['C1', 'C2', 'C3'] }]) },
+  ]
+  const LINES = [
+    // the Run's lines, as the read-only copy holds them: no section (that comes live from the org chart)
+    { run_id: 'r', store_code: '9001', store_short_code: 'North', subcategory_code: 'C1', subcategory_name: 'Kids Jean' },
+    { run_id: 'r', store_code: '9001', store_short_code: 'North', subcategory_code: 'C3', subcategory_name: 'Kids Shirt' },
+    // a line the Run merged from several codes: it has none
+    { run_id: 'r', store_code: '9001', store_short_code: 'North', subcategory_code: null, subcategory_name: 'Kids Mixed' },
+  ]
+  const IDS: Record<string, string> = { u_tara: 'Tara', u_omar: 'Omar' }
+  // the live org chart (#1428): Kids Jean (C1) sits in Kids, whose Team Leader is Tara; Kids Shirt (C3) in Tops
+  const ORG: Record<string, Record<string, unknown>[]> = {
+    Site: [{ row_id: 'North', name: 'North', operating_region: 'R' }],
+    Section: [{ row_id: 'N-Kids', name: 'Kids', site: 'North', floor: 'N-1F', status: 'Active' }, { row_id: 'N-Tops', name: 'Tops', site: 'North', floor: 'N-1F', status: 'Active' }],
+    'Store Floor': [{ row_id: 'N-1F', name: 'First Floor', site: 'North', floor_order: 1 }],
+    'Section Subcategory': [{ store: 'North', subcategory: 'C1', section: 'N-Kids', starts_on: '2026-01-01', ends_on: null }, { store: 'North', subcategory: 'C3', section: 'N-Tops', starts_on: '2026-01-01', ends_on: null }],
+    'Job Assignment': [{ employee: 'E1', job: 'Team Leader', site: 'North', section: 'N-Kids', starts_on: '2026-01-01', ends_on: null }],
+    Employee: [{ row_id: 'E1', name: 'Tara' }],
+  }
+  const baseTables = { list: async (table: string, args: { filters?: [string, string, unknown][] }) =>
+    (ORG[table] ?? []).filter(r => (args.filters ?? []).every(([c, op, v]) => (op === 'in' ? (v as unknown[]).includes(r[c]) : r[c] === v))) }
+  const list = async (table: string, args: { filters?: [string, string, unknown][] }) => {
+    const rows: Record<string, unknown>[] = table === 'forecasting.reach' ? REACH : table === 'forecasting.run_line' ? [{ row_id: 'x' }] : table === 'forecasting.forecast_line_month' ? LINES : []
+    return rows.filter(r => (args.filters ?? []).every(([c, , v]) => r[c] === v))
+  }
+  function call(user: string, row: Record<string, unknown>, old?: Record<string, unknown>, base: Context['baseTables'] | null = baseTables) {
+    const ctx: Context = { user, roles: user === 'Administrator' ? ['System Manager'] : ['Forecasting Member'], isNew: !old, row, old,
+      documents: { members: async () => Object.entries(IDS).map(([row_id, full_name]) => ({ row_id, full_name })), list }, baseTables: base ?? undefined,
+      reject(message: string): never { throw new Error(message) } }
+    return validators['forecasting.day_explanation'](ctx).then(() => row)
+  }
+  const day = { run_id: 'r', store_code: '9001', section_name: 'Kids', subcategory_name: null, explained_date: '2026-11-03', direction: 'below',
+    causes: 'Weak store execution', tags: 'Weak store execution › Low footfall', note: 'Rain all evening', explained_by: 'Tara' }
+
+  it("is a Team Leader's of that store, for a section's day or one of its subcategories' days, the store taken from the Run", async () => {
+    await expect(call('u_tara', day)).resolves.toMatchObject({ store_name: 'North', section_name: 'Kids', explained_by_role: 'Team Leader' })
+    await expect(call('u_tara', { ...day, subcategory_name: 'Kids Jean' })).resolves.toMatchObject({ store_name: 'North' })
+  })
+  it("refuses another person's name, a subcategory not in the Run, and a day with no section", async () => {
+    await expect(call('u_tara', { ...day, explained_by: 'Omar' })).rejects.toThrow(/cannot act as Omar/)
+    await expect(call('u_tara', { ...day, subcategory_name: 'Kids Sock' })).rejects.toThrow(/not in Run r/)
+    await expect(call('u_tara', { ...day, section_name: '' })).rejects.toThrow(/which section/)
+  })
+  it("refuses another section's day, or a subcategory of another section, in the same store: the live org chart (#1428)", async () => {
+    await expect(call('u_tara', { ...day, section_name: 'Tops' })).rejects.toThrow(/outside it/)
+    await expect(call('u_tara', { ...day, subcategory_name: 'Kids Shirt' })).rejects.toThrow(/outside it/)
+  })
+  it("files a subcategory's day under its section today, whatever the page sent; refuses a merged line, and refuses without the org chart on a real instance", async () => {
+    await expect(call('u_tara', { ...day, subcategory_name: 'Kids Jean', section_name: 'Tops' })).resolves.toMatchObject({ section_name: 'Kids' })
+    await expect(call('u_tara', { ...day, subcategory_name: 'Kids Mixed' })).rejects.toThrow(/outside it/)
+    await expect(call('u_tara', day, undefined, null)).rejects.toThrow(/outside it/)
+  })
+  it('lets an administrator explain as the Team Leader, and keeps an edit to its writer', async () => {
+    await expect(call('Administrator', { ...day, explained_by: 'Anisha' })).resolves.toMatchObject({ explained_by_role: 'Team Leader' })
+    await expect(call('u_omar', { ...day, explained_by: 'Omar' }, { ...day, row_id: 'DE-1' })).rejects.toThrow(/writer's own/)
+  })
+  it('takes causes and tags only from the agreed set for the day\'s direction', async () => {
+    await expect(call('u_tara', { ...day, causes: '', tags: '' })).rejects.toThrow(/at least one cause/)
+    await expect(call('u_tara', { ...day, causes: 'Weak store execution\nStock not available', tags: 'Weak store execution › Low footfall\nStock not available › Inaccurate stock' })).resolves.toBeTruthy()
+    await expect(call('u_tara', { ...day, direction: 'above', causes: 'Festival or event', tags: 'Festival or event › Salary day' })).resolves.toMatchObject({ direction: 'above' })
+    await expect(call('u_tara', { ...day, direction: 'above' })).rejects.toThrow(/not one of the causes for a day above/)
+    await expect(call('u_tara', { ...day, direction: '' })).rejects.toThrow(/below or above/)
+  })
+})
