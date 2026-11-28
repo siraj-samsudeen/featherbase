@@ -202,7 +202,7 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 .fr-edge { box-shadow: inset 3px 0 0 var(--color-negative); } .fr-edge-over { box-shadow: inset 3px 0 0 var(--color-caution); }
 .fr-weekend { color: var(--fr-group); }
 .fr-day-pill { font-size: 12px; }
-.fr-day-explain { height: 26px; padding: 0 10px; font-size: 12.5px; }
+.fr-day-explain { font-weight: 600; }
 .fr-day-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .fr-day-tag { display: inline-block; padding: 1px 8px 1px 9px; border-radius: 6px; background: var(--color-fill); font-size: 12px; font-weight: 500; }
 .fr-day-small { font-size: 12px; margin: 6px 0 0; }

@@ -4,7 +4,7 @@
 // more than 10% off, by default). Explain: one or more of five causes, each opening its own tags and the evidence it
 // needs, and a note. Shared, so a Store Manager's or RB's page can show a store's or area's days the same way.
 import { Fragment, useState, type ReactNode } from 'react'
-import { Button, ChoiceChip, RecordLink, Segmented, Select, StatusPill, cx } from '@featherbase/shop-floor'
+import { Button, ChipButton, ChoiceChip, RecordLink, Segmented, Select, StatusPill, cx } from '@featherbase/shop-floor'
 import { CAUSES, causeOf, tagOf, TAG_JOIN } from '../causes'
 import { inr } from './model'
 import { OFF_POINTS, dayIsOff, daysOf, edgeOf, explanationFor, lineIsOff, type DayExplanation, type DayFigures, type SubDays } from './days'
@@ -73,7 +73,7 @@ export function ExplainForm({ title, initial, onSave, onCancel }: {
 /** An explanation cell: its tags and Edit, Explain when the day wants a reason, or a dash. */
 function ExplainCell({ e, wants, onEdit }: { e?: DayExplanation; wants: boolean; onEdit: () => void }) {
   if (e) return <><Tags e={e} /> <button type="button" className="fr-link" onClick={ev => { ev.stopPropagation(); onEdit() }}>Edit</button></>
-  if (wants) return <Button className="fr-day-explain" onClick={ev => { ev.stopPropagation(); onEdit() }}>Explain</Button>
+  if (wants) return <ChipButton className="fr-day-explain" onClick={ev => { ev.stopPropagation(); onEdit() }}>Explain</ChipButton>
   return <span className="fr-dim">—</span>
 }
 
