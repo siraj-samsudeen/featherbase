@@ -251,7 +251,7 @@ export interface NewLoad {
 }
 
 /** #700: the grants an app job may declare. A job holds only those it names. */
-export const APP_JOB_GRANTS = ['read_people', 'disable_people', 'email_system_managers'] as const
+export const APP_JOB_GRANTS = ['read_people', 'disable_people', 'email_system_managers', 'notify_people'] as const
 export type AppJobGrant = (typeof APP_JOB_GRANTS)[number]
 
 /** #700: one enabled person, as an app job holding `read_people` sees them. */
@@ -292,6 +292,12 @@ export interface RuntimeJobContext {
     /** `disable_people`: disable one person. False when they are already
      *  disabled, gone, or privileged (never disabled by a job). */
     disable(person: string, reason: string): Promise<boolean>
+    /** #1418 `notify_people`: tell one person, by Person ID or email, in the
+     *  app's bell (the subject, linking to `ref_table`/`reference_name` when
+     *  given, one of the app's own Tables) and, with `email: true`, by email
+     *  too (the body; `path` follows the app's address in a link). False,
+     *  and nothing sent, for someone unknown, turned off or built in. */
+    notify(person: string, message: { subject: string; body: string; email?: boolean; path?: string; ref_table?: string; reference_name?: string }): Promise<boolean>
   }
   readonly email: {
     /** `email_system_managers`: mail every System Manager. The count mailed;

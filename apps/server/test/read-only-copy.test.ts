@@ -365,6 +365,23 @@ describe('after a new load', () => {
 })
 
 describe('reading a copy', () => {
+  const asApp = (client: Parameters<typeof install>[0], path: string, body: unknown) => client.fetch(path, { method: 'POST', body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json', 'X-Featherbase-App-Version': `${APP}@1.0.0` } })
+
+  test('the app’s own code reads its copy, the current load, and never writes it', async ({ admin }) => {
+    await installed(admin, [lines()], [LKS, RVR])
+    await load(LINES)
+    const read = await asApp(admin, `/api/app_reads/${APP}/lines_as_rows`, { payload: {} })
+    expect(await read.json()).toEqual({ result: [{ row_id: 'LKS·GJ01·2026-12-01', run_id: 'Dec-1', value: '1000.00' }] })
+    // A validator checks a note against the copy.
+    await expectRefused(admin.post('/api/save_row', { table: `${APP}.note`, row: { row_id: 'n1', body: 'NOPE·GJ01·2026-12-01' } }), 417, 'No forecast line NOPE·GJ01·2026-12-01 in the current run')
+    expect(await admin.post('/api/save_row', { table: `${APP}.note`, row: { row_id: 'n2', body: 'RVR·GJ01·2026-12-01' } })).toMatchObject({ row_id: 'n2' })
+    const write = await asApp(admin, `/api/app_actions/${APP}/rewrite`, { idempotencyKey: 'rewrite-1', payload: {} })
+    expect(write.status).toBeGreaterThanOrEqual(400)
+    expect(JSON.stringify(await write.json())).toContain(`Action has not declared Table ${LINES}`)
+    expect((await rows(LINES)).map((r) => r.value)).toEqual(['1000.00', '800.00'])
+  })
+
   test('before its first load answers nothing yet', async ({ admin, createUser }) => {
     await installed(admin)
     expect(await readLines(await createUser({ roles: ['Copy Reader'] }), ['LKS'])).toEqual({ status: 200, body: { result: null } })

@@ -20,7 +20,7 @@ function logSkip(app: string, person: string, reason: string, message: Message):
     ...(message.ref_table ? { ref_table: message.ref_table, reference_name: message.reference_name } : {}) }))
 }
 
-async function send(app: string, person: string, message: Message): Promise<void> {
+export async function send(app: string, person: string, message: Message): Promise<void> {
   const [row] = await sql`select email, enabled, built_in from person where row_id = ${person}`
   // A merged-away person is always disabled (person_replaced_is_disabled).
   const skip = !row ? 'unknown_person' : !row.enabled ? 'disabled' : row.built_in ? 'built_in'

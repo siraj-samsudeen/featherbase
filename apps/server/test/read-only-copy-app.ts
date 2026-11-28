@@ -93,10 +93,32 @@ export const jobs = {
     const load = ctx.newLoad
     const moves = load ? await load.moves({ by: ['store_code', 'subcategory_code'], measure: 'value' }) : null
     calls.push({ load: load && { dataset: load.dataset, previous: load.previous, current: load.current }, moves })
+    // The team leader a test names hears of each move.
+    for (const move of moves ?? []) if (globalThis.__copyproofLead)
+      await ctx.people.notify(globalThis.__copyproofLead, { subject: move.group.subcategory_code + ' moved: ' + move.before + ' to ' + move.after, body: 'Your line is waiting again.' })
     ctx.setResult(JSON.stringify(moves))
   },
 }
-export const reads = { lines: (ctx) => ctx.datasets.active('forecast_line_day') }
+export const reads = {
+  lines: (ctx) => ctx.datasets.active('forecast_line_day'),
+  // The app's code reads its copy as a Table: the current load.
+  lines_as_rows: (ctx) => ctx.documents.list('copyproof.forecast_line_day', { filters: [['store_code', '=', 'LKS']], fields: ['row_id', 'run_id', 'value'] }),
+}
+export const actions = {
+  // A copy is never written, even by its own app.
+  async rewrite({ documents }) {
+    const [line] = await documents.list('copyproof.forecast_line_day', { fields: ['row_id', 'updated_at'] })
+    return documents.update('copyproof.forecast_line_day', { row_id: line.row_id, updated_at: line.updated_at, value: '1.00' })
+  },
+}
+export const validators = {
+  // A note names a forecast line, which must be in the current load.
+  async 'copyproof.note'({ row, documents, reject }) {
+    if (!row.body) return
+    const lines = await documents.list('copyproof.forecast_line_day', { filters: [['row_id', '=', row.body]] })
+    if (!lines.length) reject('No forecast line ' + row.body + ' in the current run')
+  },
+}
 `
 
 export const jobCalls = () => ((globalThis as { __copyproofCalls?: unknown[] }).__copyproofCalls ??= []) as
@@ -106,6 +128,7 @@ const folders: string[] = []
 export async function removeFolders(): Promise<void> {
   for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true })
   ;(globalThis as { __copyproofCalls?: unknown[] }).__copyproofCalls = []
+  ;(globalThis as { __copyproofLead?: string }).__copyproofLead = undefined
 }
 
 /** Writes `copyproof` at `version` declaring `datasets`; a later version
@@ -123,9 +146,13 @@ export async function writeApp(datasets: Dataset[], version = '1.0.0'): Promise<
     roles: ['Copy Reader', 'Forecast Loader'],
     permissions: [{ table: `${APP}.note`, role: 'Copy Reader', can_read: true }],
     datasets,
-    jobs: [{ name: 'carry_changes', cadence: 'daily', description: 'Carry changes to a new run and say what moved.' }],
+    jobs: [{ name: 'carry_changes', cadence: 'daily', description: 'Carry changes to a new run and say what moved.', grants: ['notify_people'] }],
     reads: { version: 1, tables: [`${APP}.note`], operations: {
       lines: { policy: { kind: 'person_scope', readRoles: ['Copy Reader'], actionRoles: [] }, authorization: { kind: 'generic' } },
+      lines_as_rows: { policy: { kind: 'table' }, authorization: { kind: 'generic' } },
+    } },
+    actions: { version: 2, tables: [`${APP}.note`], operations: {
+      rewrite: { policy: { kind: 'table' }, authorization: { kind: 'generic' } },
     } },
     migrations,
   }))

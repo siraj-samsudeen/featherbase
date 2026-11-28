@@ -25,6 +25,9 @@ import { admittedToTable } from './mandatory-access'
 import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
 import { getSystemSettings } from './settings'
+import { randomBytes } from 'node:crypto'
+import { publishUserEvent } from './realtime'
+import { send as sendToPerson } from './runtime-mail'
 import { NEW_LOAD_PAYLOAD, copyTarget, declaredCopy, loadMoves } from './read-only-copy'
 
 const distinct = (values: string[]) => new Set(values).size === values.length
@@ -249,6 +252,15 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
           assertNoSecret(ready.kept, reason)
           return disablePerson(actor, person, reason)
         }),
+        notify: (person: string, message: unknown) => {
+          // Read once, as an email is: what is checked is what is sent.
+          const note = snapshotNote(message)
+          return need('notify_people', () => {
+            const checked = validNote(app, note)
+            assertNoSecret(ready.kept, checked)
+            return notifyPerson(app, actor, person, checked)
+          })
+        },
       }),
       email: Object.freeze({
         systemManagers: (message: { subject: string; body: string }) => {
@@ -378,6 +390,47 @@ export async function disablePerson(actor: string, person: string, reason: strin
     await logActivity(actor, `disabled ${person}: ${reason.trim()}`.slice(0, 140))
     return true
   })
+}
+
+type Note = { subject: string; body: string; email?: boolean; path?: string; ref_table?: string; reference_name?: string }
+const NOTE_FIELDS = ['subject', 'body', 'email', 'path', 'ref_table', 'reference_name'] as const
+
+/** A notice's fields, each read exactly once at the call. */
+function snapshotNote(message: unknown): Readonly<Record<string, unknown>> {
+  if (!message || typeof message !== 'object') return Object.freeze({})
+  return Object.freeze(Object.fromEntries(NOTE_FIELDS.map((field) => [field, (message as Record<string, unknown>)[field]])))
+}
+
+/** The snapshot as the platform's own strings, or a refusal. A link names one of the app's own Tables. */
+function validNote(app: string, note: Readonly<Record<string, unknown>>): Readonly<Note> {
+  const { subject, body, email, path, ref_table, reference_name } = note
+  if (typeof subject !== 'string' || !subject.trim() || typeof body !== 'string')
+    throw new AppError('ValidationError', 'A notice needs a subject and a body')
+  if (email !== undefined && typeof email !== 'boolean') throw new AppError('ValidationError', 'A notice\'s email is true or false')
+  if (path !== undefined && (typeof path !== 'string' || !path.startsWith('/'))) throw new AppError('ValidationError', 'A notice\'s path starts with /')
+  if ((ref_table === undefined) !== (reference_name === undefined) || (ref_table !== undefined &&
+      (typeof ref_table !== 'string' || !ref_table.startsWith(`${app}.`) || typeof reference_name !== 'string' || !reference_name)))
+    throw new AppError('ValidationError', 'A notice links to a row of one of the app\'s own Tables, by ref_table and reference_name together')
+  return Object.freeze({ subject: subject.replace(/\s+/g, ' ').trim(), body, email: email as boolean | undefined, path: path as string | undefined,
+    ref_table: ref_table as string | undefined, reference_name: reference_name as string | undefined })
+}
+
+/** #1418 `notify_people`: one bell entry, and an email when asked; recorded
+ *  in the Activity Log under the job. Never for someone turned off or built in. */
+export async function notifyPerson(app: string, actor: string, person: string, note: Readonly<Note>): Promise<boolean> {
+  if (typeof person !== 'string' || !person.trim()) throw new AppError('ValidationError', 'notify needs a person')
+  const [row] = await sql`select row_id, enabled, built_in from person
+    where row_id = ${person} or (${person.includes('@')} and lower(email) = lower(${person.trim()})) order by row_id = ${person} desc limit 1`
+  if (!row || !row.enabled || row.built_in) return false
+  const id = String(row.row_id)
+  await sql`insert into notification_log ${sql({
+    row_id: randomBytes(5).toString('hex'), created_by: actor, updated_by: actor, for_user: id,
+    subject: note.subject.slice(0, 140), ref_table: note.ref_table ?? null, ref_name: note.reference_name ?? null, read: false,
+  } as unknown as Record<string, never>)}`
+  publishUserEvent(id, 'notification', { subject: note.subject.slice(0, 140) })
+  if (note.email) await sendToPerson(app, id, note)
+  await logActivity(actor, `notified ${id}: ${note.subject}`.slice(0, 140))
+  return true
 }
 
 /** `email_system_managers`: one message to each System Manager with an address. */

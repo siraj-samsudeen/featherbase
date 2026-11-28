@@ -60,6 +60,11 @@ export function forgetAppCopies(): void {
   declared.clear()
 }
 
+/** #1418: an app's own read-only copies, which its code may read (never write). */
+export function appCopyTables(app: string): string[] {
+  return [...declared].flatMap(([target, entry]) => (entry.app === app ? [target] : []))
+}
+
 export function declaredCopy(target: string): Declared | undefined {
   return declared.get(target)
 }

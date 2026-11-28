@@ -116,6 +116,19 @@ const HANDLERS: Record<string, string> = {
     ]))
   }`,
   mail_null: `async mail_null(ctx) { await ctx.email.systemManagers(null) }`,
+  notify_them: `async notify_them(ctx) {
+    const told = []
+    told.push(await ctx.people.notify('lead@example.test', { subject: 'GJ01 moved 12%', body: 'Your line went back to waiting.', email: true, path: '/review', ref_table: '${APP}.note', reference_name: 'n1' }))
+    told.push(await ctx.people.notify(globalThis.__fbjobsManager, { subject: 'GJ01 moved 12%', body: 'In the bell only.' }))
+    told.push(await ctx.people.notify('gone@example.test', { subject: 'Not sent', body: 'Turned off.' }))
+    told.push(await ctx.people.notify('nobody@example.test', { subject: 'Not sent', body: 'Unknown.' }))
+    told.push(await ctx.people.notify('Administrator', { subject: 'Not sent', body: 'Built in.' }))
+    const refusals = []
+    for (const [who, note] of [['', { subject: 'x', body: 'y' }], ['lead@example.test', null], ['lead@example.test', { subject: 'x', body: 'y', email: 'yes' }],
+      ['lead@example.test', { subject: 'x', body: 'y', path: 'review' }], ['lead@example.test', { subject: 'x', body: 'y', ref_table: 'other.note', reference_name: 'n1' }]])
+      try { await ctx.people.notify(who, note) } catch (e) { refusals.push(e.message) }
+    ctx.setResult(JSON.stringify({ told, refusals }))
+  }`,
   mail_string: `async mail_string(ctx) { await ctx.email.systemManagers('not a message') }`,
   mail_blank_subject: `async mail_blank_subject(ctx) { await ctx.email.systemManagers({ subject: '  ', body: 'body' }) }`,
   mail_nonstring_subject: `async mail_nonstring_subject(ctx) { await ctx.email.systemManagers({ subject: 42, body: 'body' }) }`,
@@ -519,6 +532,42 @@ describe('what a job mails is what was checked', () => {
     await withToken(runDue)
     expect(await sql`select recipient, body from email_queue where subject = 'Swap'`).toEqual([{ recipient: 'swap@example.test', body: 'original text' }])
     expect(await leaksAnywhere()).toBe(false)
+  })
+})
+
+// #1418: Forecasting's new-run job tells the Team Leader and the Store Manager.
+describe('a job granted notify_people', () => {
+  test('tells a person in the bell, and by email when asked; never someone turned off, unknown or built in', async ({ admin, createUser }) => {
+    const lead = await createUser({ email: 'lead@example.test', roles: [] })
+    const manager = await createUser({ email: 'manager@example.test', roles: [] })
+    const gone = await createUser({ email: 'gone@example.test', roles: [] })
+    await sql`update person set enabled = false where row_id = ${gone.user}`
+    ;(globalThis as { __fbjobsManager?: string }).__fbjobsManager = manager.user!
+    const job: Job = { name: 'notify_them', cadence: 'daily', description: 'Tells people their lines moved.', grants: ['notify_people'] }
+    expect(await discoverPackages([await writeApp({ jobs: [job] })])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    await runDue()
+    const [run] = await sql`select outcome, result from job_execution where method = ${`${APP}.notify_them`} order by started_at desc limit 1`
+    expect(run.outcome).toBe('success')
+    expect(JSON.parse(String(run.result))).toEqual({ told: [true, true, false, false, false], refusals: [
+      'notify needs a person', 'A notice needs a subject and a body', "A notice's email is true or false", "A notice's path starts with /",
+      "A notice links to a row of one of the app's own Tables, by ref_table and reference_name together"] })
+    expect(await sql`select for_user, subject, ref_table, ref_name, read, created_by from notification_log where created_by = ${`${APP}.notify_them`} order by for_user`)
+      .toEqual([lead.user, manager.user].sort().map((person) => ({ for_user: person, subject: 'GJ01 moved 12%', created_by: `${APP}.notify_them`, read: false,
+        ref_table: person === lead.user ? `${APP}.note` : null, ref_name: person === lead.user ? 'n1' : null })))
+    expect(await sql`select recipient, subject from email_queue where subject = 'GJ01 moved 12%'`).toEqual([{ recipient: 'lead@example.test', subject: 'GJ01 moved 12%' }])
+    expect((await sql`select body from email_queue where subject = 'GJ01 moved 12%'`)[0].body).toMatch(/^Your line went back to waiting\.\n\nOpen it here: .+\/review$/)
+    expect((await sql`select count(*)::int as n from activity_log where operation like 'notified %'`)[0].n).toBe(2)
+  })
+
+  test('a job without the grant cannot notify anyone', async ({ admin }) => {
+    const job: Job = { name: 'notify_them', cadence: 'daily', description: 'Tells people, ungranted.' }
+    expect(await discoverPackages([await writeApp({ jobs: [job] })])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    await runDue()
+    const [run] = await sql`select outcome, error from job_execution where method = ${`${APP}.notify_them`} order by started_at desc limit 1`
+    expect(run).toMatchObject({ outcome: 'error', error: expect.stringContaining('has not declared the grant notify_people') })
+    expect(await sql`select 1 from notification_log where created_by = ${`${APP}.notify_them`}`).toEqual([])
   })
 })
 

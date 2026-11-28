@@ -139,6 +139,18 @@ Then the app is told that "GJ01" moved from 1000 to 1120
 And it is not told about "GJ02", which moved 4%
 ```
 
+### Requirement: The app can tell the people a move concerns
+When a new run moves a line, the app SHALL be able to tell the people it concerns, such as the section's team leader and the store's manager, in Featherbase's notices, and by email when the app asks. Nobody who is turned off is told.
+
+#### Scenario: The team leader hears that her line moved
+
+```gherkin
+Given the forecast lines copy holds run "Dec-1" with 1000 for store "LKS", subcategory "GJ01"
+And the app tells the team leader of each subcategory that moves
+When run "Dec-2" replaces it with 1120 for "GJ01"
+Then the team leader has a notice that "GJ01" moved from 1000 to 1120
+```
+
 ### Requirement: An app reads its copy through each person's places
 An app SHALL read a read-only copy's rows as it reads any declared dataset: only the rows for the places the reader covers.
 
