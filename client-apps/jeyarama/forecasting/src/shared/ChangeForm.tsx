@@ -52,12 +52,15 @@ export function ChangeForm({ l, answer, month, onAccept, onPropose, modes = ['mo
   // what is being entered, as a change; null until it is complete
   const amount = parseFloat(value)
   const days = mode === 'days' && from ? daysBetween(from, to && to >= from ? to : from) : []
-  const spec: ChangeSpec | null = Number.isNaN(amount) ? null
+  const entered: ChangeSpec | null = Number.isNaN(amount) ? null
     : mode === 'month_value' ? { scope: 'month', method: 'set_value', value: Math.round(amount * 1e5) }
       : mode === 'month_percent' ? { scope: 'month', method: 'percent', percent: amount }
         : !days.length ? null
           : dayBy === 'percent' ? { scope: 'day', method: 'percent', percent: amount, days, ...(days.length > 1 ? { batch: `${l.rowId}:${from}:${to}` } : {}) }
             : { scope: 'day', method: 'set_value', value: Math.round(amount), days, ...(days.length > 1 ? { batch: `${l.rowId}:${from}:${to}` } : {}) }
+  // a month can't go below nothing: a negative ₹ or a cut past −100% is not a change (−100% closes it)
+  const possible = entered && !('percent' in entered && entered.percent! < -100) && monthAfter(l.fc, month.days, entered) >= 0
+  const spec = possible ? entered : null
   const after = spec ? monthAfter(l.fc, month.days, spec) : null
 
   const reset = () => { setChanging(false); setValue(''); setFrom(''); setTo(''); setReasons([]); setNote(''); setMissing(false) }

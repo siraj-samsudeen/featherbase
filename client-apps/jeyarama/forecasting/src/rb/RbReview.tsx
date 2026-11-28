@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { DrillPane, SplitWithPane, resolvePanePlace } from '@featherbase/shop-floor'
 import { SMALL_UNDER } from '../shared/madeUpChain'
-import { combine, count, foldSmall, inr, storeStepOf, type HelpTopic, type Line } from '../shared/model'
+import { combine, count, foldSmall, inr, isFolded, storeStepOf, type HelpTopic, type Line } from '../shared/model'
 import { multiCategory, valueOnly, type Level } from '../shared/levels'
 import { KpiTiles } from '../shared/KpiTiles'
 import { ReviewFrame, useView } from '../shared/ReviewFrame'
@@ -42,7 +42,12 @@ export function RbReview({ chain, hrefFor, openLine, onOpenLine }: ChainPageProp
   const everyLine = useMemo(() => foldSmall(chain.lines, SMALL_UNDER), [chain.lines])
   const byRow = useMemo(() => new Map(everyLine.map(l => [l.rowId, l])), [everyLine])
   // Kerala first; a link to a Tamil Nadu subcategory opens on Tamil Nadu
-  const [region, setRegion] = useState<Region>(() => (openLine && byRow.get(openLine)?.region === 'Tamil Nadu' ? 'Tamil Nadu' : 'Kerala'))
+  // Kerala first when the Run has it; otherwise its one region, or Both when it names none
+  const [region, setRegion] = useState<Region>(() => {
+    const has = new Set(everyLine.map(l => l.region).filter(Boolean))
+    if (openLine && byRow.get(openLine)?.region === 'Tamil Nadu') return 'Tamil Nadu'
+    return has.has('Kerala') ? 'Kerala' : has.size === 1 ? [...has][0] as Region : 'Both'
+  })
   /** Everything the page shows: the lines of the region picked. */
   const all = useMemo(() => (region === 'Both' ? everyLine : everyLine.filter(l => l.region === region)), [everyLine, region])
   const header = chainHeader(chain, personIn(chain, 'Chief Executive')?.name ?? 'RB', 'Chief Executive')
@@ -115,10 +120,11 @@ export function RbReview({ chain, hrefFor, openLine, onOpenLine }: ChainPageProp
   const subcats = here.reduce((t, l) => t + l.n, 0)
   const nodePane = (key: string, lv: Level, ls: Line[]): Pane => ({ kind: 'node', key, title: nameOf(lv, key), level: lv.name, lines: ls.filter(l => lv.key(l) === key), next: levels[levels.indexOf(lv) + 1] ?? null })
   /** A driver one level down: a node goes in, a subcategory opens its card. */
-  const onKid = (k: Kid) => (k.isNode ? go([...c, k.key]) : setPane({ kind: 'line', l: k.item as Line }))
+  // a folded "Smaller subcategories" row sums unrelated subcategories: it opens no card
+  const onKid = (k: Kid) => (k.isNode ? go([...c, k.key]) : isFolded(k.item as Line) ? undefined : setPane({ kind: 'line', l: k.item as Line }))
   const info = (row: TableRow) => {
     const isNode = row.key.startsWith('node:'), key = row.dataName ?? row.key
-    if (!isNode && !byRow.has(row.key)) return null
+    if (!isNode && (!byRow.has(row.key) || isFolded(byRow.get(row.key)!))) return null
     return <button type="button" className="rb-info" title="Open its card here, without going in" aria-label={`Card for ${key}`}
       onClick={e => { e.stopPropagation(); setPane(isNode && next ? nodePane(key, next, here) : { kind: 'line', l: byRow.get(row.key)! }) }}>ⓘ</button>
   }
@@ -144,7 +150,7 @@ export function RbReview({ chain, hrefFor, openLine, onOpenLine }: ChainPageProp
       {pane.kind === 'line'
         ? <LineCard l={pane.l} storeStep={storeStepOf(everyLine.filter(l => l.store === pane.l.store))} header={header} onHelp={onHelp} />
         : <NodeCard lines={pane.lines} kids={kidsOf(pane.lines, pane.next)} header={header} onHelp={onHelp} inPane
-          onKid={k => (k.isNode ? go([...c, pane.key, k.key]) : setPane({ kind: 'line', l: k.item as Line }))} />}
+          onKid={k => (k.isNode ? go([...c, pane.key, k.key]) : isFolded(k.item as Line) ? undefined : setPane({ kind: 'line', l: k.item as Line }))} />}
     </DrillPane>)
 
   // only the regions the Run has (a local instance may load Kerala alone); Both when there are two
@@ -162,7 +168,7 @@ export function RbReview({ chain, hrefFor, openLine, onOpenLine }: ChainPageProp
 
   const regions = [...new Set(everyLine.map(l => l.region))]
   return (
-    <ReviewFrame testId="rb-review" title={`${region === 'Both' ? regions.join(' and ') : region} · ${header.month.label}`} actions={regionToggle}
+    <ReviewFrame testId="rb-review" unsaved={chain.real} title={`${region === 'Both' ? regions.join(' and ') : region} · ${header.month.label}`} actions={regionToggle}
       status={`${header.person} · ${header.role} · ${new Set(all.map(l => l.store)).size} stores · sales to ${header.cutOff} · before tax`}
       all={all} scope={scope} view={screen}
       onView={v => { setScreen(v); setPane(null); if (v !== 'help') setHelp({ at: null, from: null }) }}

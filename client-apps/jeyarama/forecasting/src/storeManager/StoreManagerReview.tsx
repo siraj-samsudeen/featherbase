@@ -226,7 +226,7 @@ export function StoreManagerReview({ chain, hrefFor, openLine, onOpenLine }: Cha
   ]
 
   return (
-    <ReviewFrame testId="store-manager-review" title={`${STORE} · ${all[0]?.storeName ?? ''} · ${header.month.label}`}
+    <ReviewFrame testId="store-manager-review" unsaved={chain.real} title={`${STORE} · ${all[0]?.storeName ?? ''} · ${header.month.label}`}
       status={`${header.person} · ${header.role} · sales to ${header.cutOff} · before tax`}
       all={all} scope={scope} kinds={KINDS_HERE} views={views} view={screen}
       onView={v => { setScreen(v); setOpen(null); if (v !== 'help') setHelp({ at: null, from: null }) }} />

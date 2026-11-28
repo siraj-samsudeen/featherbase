@@ -215,7 +215,7 @@ export function CategoryHeadReview({ chain, hrefFor, openLine, onOpenLine }: Cha
     { id: 'help', label: 'Help', content: helpTab },
   ]
   return (
-    <ReviewFrame testId="category-head-review" title={`${SUBDIVISIONS.join(', ')} · ${REGION} · ${header.month.label}`}
+    <ReviewFrame testId="category-head-review" unsaved={chain.real} title={`${SUBDIVISIONS.join(', ')} · ${REGION} · ${header.month.label}`}
       status={`${header.person} · ${header.role} · ${categories} categories at ${storeCount} stores · sales to ${header.cutOff} · before tax`}
       all={all} scope={scope} views={views} view={screen}
       onView={v => { setScreen(v); setOpen(null); setRankOpen(null); if (v !== 'help') setHelp({ at: null, from: null }) }} />
