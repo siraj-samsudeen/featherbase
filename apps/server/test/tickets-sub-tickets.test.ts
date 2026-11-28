@@ -37,8 +37,9 @@ describe('Tickets: sub-tickets (#1397)', () => {
   test('the version step adds the parent column without rewriting released steps', async ({ admin, createUser }) => {
     await world(admin, createUser)
     const manifest = JSON.parse(await readFile(resolve(TICKETS_DIRECTORY, 'featherbase.json'), 'utf8'))
-    expect(manifest.migrations.at(-2).id).toBe('no_refused_person_reads')
-    expect(manifest.migrations.at(-1)).toEqual({ id: 'sub_tickets', fromVersion: '0.2.22', toVersion: '0.2.23', operations: [
+    const step = manifest.migrations.findIndex((m: any) => m.id === 'sub_tickets')
+    expect(manifest.migrations[step - 1].id).toBe('no_refused_person_reads')
+    expect(manifest.migrations[step]).toEqual({ id: 'sub_tickets', fromVersion: '0.2.22', toVersion: '0.2.23', operations: [
       { kind: 'addColumn', table: 'tickets.ticket', column: { column_name: 'parent_ticket', label: 'Part of', column_type: 'Reference', reference_table: 'tickets.ticket' } }] })
     expect((await sql`select column_name from information_schema.columns where table_schema = 'tickets' and table_name = 'ticket' and column_name = 'parent_ticket'`).length).toBe(1)
   })

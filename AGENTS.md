@@ -198,6 +198,13 @@ backlog is excluded unless the owner opts it in.
 - **One chrome** (#1227): the top bar (`TopBar`) and the sidebar (Admin's own,
   or `<featherbase-sidebar>` in an app) are the platform's. An app supplies
   only its nav items and page content, and gives the sidebar an `auto` column.
+- **Every prototype or mockup of a Featherbase screen is drawn with the look
+  kit** (#1408): `packages/shop-floor/look-kit/`. Start from its `README.md` and
+  copy `starter.html`. The kit is plain HTML in the shared components' look, so
+  the screen agreed with users is the screen that gets built. A prototype with
+  its own colours, sidebar or control styles is not ready to be agreed. What
+  the kit lacks is marked "not in the kit" on the prototype and listed in the
+  hand-over, never styled by hand.
 
 ### Hard rules
 

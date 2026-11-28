@@ -259,6 +259,35 @@ describe('#1397: the review tickets under one umbrella', () => {
     expect(await umbrellas()).toHaveLength(1)
   })
 
+  // #1463: each review ticket opens the Link MotherDuck accounts screen at its account; the umbrella opens the screen.
+  test('every review ticket and the umbrella link to the Link screen; a later run adds the link to those raised without it, once', async ({ admin }) => {
+    await ready(admin)
+    motherduck([[{ id: 'md-a', username: 'asha_one' }, { id: 'md-b', username: 'bala_two' }]])
+    await syncMotherDuckAccounts()
+    const SCREEN = '/featherbase/admin/link-motherduck-accounts'
+    const links = async () => (await sql`select t.row_id, r.details_json::jsonb -> 'open' as open, r.updated_at from tickets.ticket t
+      join tickets.request r on r.row_id = t.row_id order by t.row_id`).map((r) => ({ ...r }))
+    const [umbrella] = await umbrellas()
+    const byTicket = Object.fromEntries((await sql`select review_ticket, row_id from motherduck_account`).map((r) => [String(r.review_ticket), String(r.row_id)]))
+    for (const l of await links())
+      expect(l.open).toEqual({ label: 'Link in Featherbase', href: l.row_id === umbrella.row_id ? SCREEN : `${SCREEN}?account=${byTicket[String(l.row_id)]}` })
+
+    // As production's tickets were raised: with no link.
+    await sql`update tickets.request set details_json = (details_json::jsonb - 'open')::text`
+    expect((await links()).map((l) => l.open)).toEqual([null, null, null])
+    // No longer Tickets support: the run stops at the first one, saying what to configure, and links none.
+    await sql`update app_setting set value = '[]' where row_id = 'tickets.support_users'`
+    expect((await syncMotherDuckAccounts()).ticket_errors).toEqual([expect.stringMatching(/add it to the Tickets setting support_users/)])
+    expect((await links()).map((l) => l.open)).toEqual([null, null, null])
+    await sql`update app_setting set value = ${JSON.stringify([await motherDuckSyncAccount()])} where row_id = 'tickets.support_users'`
+    expect(await syncMotherDuckAccounts()).toMatchObject({ tickets_raised: [], ticket_errors: [] })
+    const restored = await links()
+    expect(restored.map((l) => (l.open as { href: string }).href).sort()).toEqual([SCREEN, `${SCREEN}?account=md-a`, `${SCREEN}?account=md-b`])
+    // A second run edits nothing.
+    await syncMotherDuckAccounts()
+    expect(await links()).toEqual(restored)
+  })
+
   test('the owner files review tickets raised before the umbrella under it: a dry run lists them, --apply files them once', async ({ admin }) => {
     await ready(admin)
     motherduck([[{ id: 'md-a', username: 'asha_one' }, { id: 'md-b', username: 'bala_two' }]])

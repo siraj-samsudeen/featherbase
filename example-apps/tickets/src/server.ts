@@ -73,7 +73,7 @@ function validate(table: string, ctx: Validation) {
 }
 const kinds = ['generic', 'access', 'freshness', 'quality', 'report', 'source', 'schema', 'pipeline', 'backfill', REPORT_FEEDBACK]
 // Keys a configured field may never take: they carry the request or its gates.
-const protectedKeys = ['original', 'verification', 'approval', 'fulfillment', 'actor', 'by', 'at', 'owner', 'ticket_state', 'root_cause', 'title', 'kind', 'state']
+const protectedKeys = ['original', 'verification', 'approval', 'fulfillment', 'actor', 'by', 'at', 'owner', 'ticket_state', 'root_cause', 'title', 'kind', 'state', 'open']
 const fieldTypes = ['text', 'long text', 'choice', 'date', 'person', 'link']
 const lines = (value: unknown) => String(value ?? '').split('\n').map(line => line.trim()).filter(Boolean)
 // Instance configuration is edited in the generic Admin UI, not through
@@ -336,6 +336,28 @@ async function event(ctx: Context, ticket: Row, operation: string, data: Row) {
   return ctx.documents.create((await place(ctx, ticket.row_id)).event, { ticket: ticket.row_id, operation,
     text: JSON.stringify(data), by: ctx.user, at: new Date().toISOString() })
 }
+/** #1463: a link to where a ticket's work is done, on the same site: a label and a relative /… path. */
+function openLink(ctx: ReadContext, value: unknown): Row {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) ctx.reject('An open link has a label and href only')
+  const link = value as Row
+  if (Object.keys(link).some(key => key !== 'label' && key !== 'href')) ctx.reject('An open link has a label and href only')
+  const label = text(ctx, link.label, 'An open link\'s label')
+  if (label.length > 60) ctx.reject('An open link\'s label is up to 60 characters')
+  // A path on this site only: never a scheme, another host (//host) or a backslash a browser reads as one.
+  if (typeof link.href !== 'string' || !/^\/(?![\/\\])[^\s\\]*$/.test(link.href) || link.href.length > 500)
+    ctx.reject('An open link\'s href must be a relative path on this site, starting with /')
+  return { label, href: link.href }
+}
+/** Takes `open` out of details a caller gave, so the type checks the rest; undefined when not given, null to remove it. */
+function takeLink(ctx: ReadContext, value: unknown): { rest: unknown; link: Row | null | undefined } {
+  if (value === undefined || value === null || typeof value !== 'object' || Array.isArray(value) || !('open' in value)) return { rest: value, link: undefined }
+  const { open, ...rest } = value as Row
+  return { rest, link: open === null ? null : openLink(ctx, open) }
+}
+const withLink = (details: Row, link: Row | null | undefined) => {
+  const { open: _, ...rest } = details
+  return link ? { ...rest, open: link } : rest
+}
 /** #1397: the parent a ticket may sit under, one level deep; `self` is the ticket being re-parented. */
 async function parentFor(ctx: Context, value: unknown, self?: Row): Promise<string> {
   const id = text(ctx, value, 'Parent ticket')
@@ -549,8 +571,10 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     const types = await configuredTypes(ctx)
     const category = kind(ctx, p.kind ?? 'generic', types)
     const type = types.get(category)
-    const structured = type ? await typedDetails(ctx, type, object(ctx, p.details ?? {}))
-      : category === REPORT_FEEDBACK ? reportFeedbackDetails(p.details, ctx.reject) : details(ctx, p.details ?? {})
+    // #1463: an open link is checked on its own; the type checks the rest.
+    const given = takeLink(ctx, p.details)
+    const structured = withLink(type ? await typedDetails(ctx, type, object(ctx, given.rest ?? {}))
+      : category === REPORT_FEEDBACK ? reportFeedbackDetails(given.rest, ctx.reject) : details(ctx, given.rest ?? {}), given.link)
     const assignee = type ? await routed(ctx, type, structured) : null
     const parent = p.parent_ticket === undefined || p.parent_ticket === null ? null : await parentFor(ctx, p.parent_ticket)
     const ticket = await ctx.documents.create('tickets.ticket', { title, owner: raiser, kind: category, ...(parent ? { parent_ticket: parent } : {}),
@@ -565,8 +589,15 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     return { ticket }
   },
   async edit(ctx) {
-    const p = input(ctx, ['row_id', 'updated_at', 'title', 'kind', 'details', 'assigned_to', 'public_update', 'state', 'original', 'parent_ticket'])
-    const { ticket, request, structured, support, where } = await current(ctx, p, false)
+    // A copy: the payload is frozen, and the open link is taken out of its details below.
+    const p = { ...input(ctx, ['row_id', 'updated_at', 'title', 'kind', 'details', 'assigned_to', 'public_update', 'state', 'original', 'parent_ticket']) }
+    const { ticket, request, structured: stored, support, where } = await current(ctx, p, false)
+    // #1463: the open link is set or kept apart from the type's own details, which never know it.
+    const { open: kept, ...structured } = stored
+    const given = takeLink(ctx, p.details)
+    const linkChanged = given.link !== undefined
+    if (linkChanged) p.details = Object.keys(given.rest as Row).length ? given.rest : undefined
+    const link = linkChanged ? given.link : (kept as Row | undefined)
     if (!support && ['kind', 'assigned_to', 'public_update', 'state', 'parent_ticket'].some(key => p[key] !== undefined)) ctx.reject('Only support may triage, file under a parent or publish progress')
     const types = await configuredTypes(ctx)
     const category = p.kind === undefined ? String(ticket.kind) : kind(ctx, p.kind, types, ticket.kind)
@@ -587,10 +618,11 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
       if (changed) ctx.reject(`${type.fields.find(f => f.name === changed)!.label} is recorded by an action, not here`)
     }
     const intake = type ? Object.fromEntries(Object.entries(merged).filter(([key]) => !actionFieldNames(type).has(key))) : merged
-    const next = type ? (p.details === undefined && category === ticket.kind ? structured : { ...await typedDetails(ctx, type, intake), ...recorded })
+    const checked = type ? (p.details === undefined && category === ticket.kind ? structured : { ...await typedDetails(ctx, type, intake), ...recorded })
       // #1240: feedback on a report keeps its checked shape whoever edits it, and whatever it was before.
       : category === REPORT_FEEDBACK ? (p.details === undefined && category === ticket.kind ? structured : reportFeedbackDetails(merged, ctx.reject))
       : p.details === undefined ? structured : { ...structured, ...details(ctx, p.details) }
+    const next = withLink(checked, link)
     // Only a configured type moves between states directly, and only among its own.
     if (p.state !== undefined && (!type || !type.states.includes(String(p.state)))) ctx.reject('Choose one of this type\'s states')
     // Never turn an access decision into an ordinary-resolution bypass.
@@ -607,7 +639,7 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
       if (kept) await ctx.documents.update(PRIVATE.request, { row_id: kept.row_id, updated_at: kept.updated_at, original,
         original_history: JSON.stringify([...history_of(kept), { text: kept.original, replaced_by: ctx.user, replaced_at: new Date().toISOString() }]) })
     }
-    if (p.details !== undefined || category !== ticket.kind || reworded) await ctx.documents.update(where.request, {
+    if (p.details !== undefined || linkChanged || category !== ticket.kind || reworded) await ctx.documents.update(where.request, {
       row_id: request.row_id, updated_at: request.updated_at, details_json: JSON.stringify(next), ...wording,
       ...(where.open ? {} : {
         verification_key: recipientChanged ? randomUUID() : request.verification_key,
@@ -615,7 +647,7 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
       }),
     })
     // Every edit is attributed history, including the requester's own scope or recipient change.
-    await event(ctx, ticket, 'edit', { before: structured, details: next, kind: category,
+    await event(ctx, ticket, 'edit', { before: stored, details: next, kind: category,
       ...(reworded ? { original_before: request.original, original } : {}),
       ...(p.assigned_to !== undefined ? { assigned_to: p.assigned_to } : {}), ...(p.state !== undefined ? { state: p.state } : {}),
       ...(p.parent_ticket !== undefined ? { parent_ticket: p.parent_ticket } : {}) })

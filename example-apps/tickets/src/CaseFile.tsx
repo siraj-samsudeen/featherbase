@@ -437,6 +437,9 @@ export function CaseFile({
   // #1230: the requester and assignee link to their Person record for a viewer who may open it.
   const openPeople = useOpenablePeople([ticket.owner, ticket.assigned_to])
   const covered = detail.coveredRows as Covered | undefined
+  const link = (detail.details as RecordData | undefined)?.open as { label?: unknown; href?: unknown } | undefined
+  const openLink = link && typeof link.label === 'string' && typeof link.href === 'string' && link.href.startsWith('/') && !link.href.startsWith('//')
+    ? { label: link.label, href: link.href } : null
   const parent = detail.parent as Ticket | undefined,
     children = (detail.children as Ticket[] | undefined) ?? []
   useEffect(() => setPicked(current), [current, ticket.updated_at, ticket.row_id])
@@ -576,6 +579,10 @@ export function CaseFile({
             </button>
           </div>
         )}
+        {/* #1463: where this ticket's work is done, as its details give it (a path on this site; the server checks it). */}
+        {openLink && (
+          <a className="open-link" href={openLink.href} target="_blank" rel="noreferrer">{openLink.label} →</a>
+        )}
         <TicketActions
           actions={actions}
           choose={(chosen) => {
@@ -653,7 +660,8 @@ export function CaseFile({
                         )
                       : Object.fromEntries(
                           Object.entries(structured ?? {}).filter(
-                            ([key]) => key !== 'original',
+                            // #1463: the open link is drawn as its button in the header, not as a detail.
+                            ([key]) => key !== 'original' && key !== 'open',
                           ),
                         )
                   }

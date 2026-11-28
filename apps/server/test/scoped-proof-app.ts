@@ -1,6 +1,6 @@
 // #1454: the `scopedproof` app (a Table about places, mapped on store and section) and the place provider, for the
 // place-scope tests and their spec scenarios. Every row is made up.
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { TestClient } from 'feather-testing-postgres'
@@ -51,6 +51,16 @@ export async function installed(admin: TestClient) {
     ['a3', 'S1', 'kids', 'south kids'], ['a4', 'S1', 'mens', 'south mens']])
     await admin.post('/api/save_row', { table: ANSWER, row: { row_id, store, section, body, notes: 'made up',
       reasons: row_id === 'a1' || row_id === 'a4' ? [{ code: `${row_id}-stockout` }, { code: `${row_id}-festival` }] : [] } })
+}
+
+/** A copy of the place provider that declares an identifier system the instance lacks: it is "not set up yet". */
+export async function notSetUpProvider(): Promise<string> {
+  const copy = await mkdtemp(resolve('test/.scoped-proof-roster-'))
+  folders.push(copy)
+  await cp(provider, copy, { recursive: true })
+  const declared = JSON.parse(await readFile(join(copy, 'featherbase.json'), 'utf8'))
+  await writeFile(join(copy, 'featherbase.json'), JSON.stringify({ ...declared, scopeProvider: { ...declared.scopeProvider, identifiers: ['missing-badge'] } }))
+  return copy
 }
 
 /** Every made-up person's places, while `run` runs: the provider answers `places` for everyone. */

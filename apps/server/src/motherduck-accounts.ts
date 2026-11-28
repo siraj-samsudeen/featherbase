@@ -247,6 +247,9 @@ async function attempt(result: MotherDuckSyncResult, account: unknown, step: () 
 }
 
 const UMBRELLA_TITLE = 'MotherDuck accounts to link to people'
+// #1463: where a review ticket's work is done; the screen highlights the account it names.
+const LINK_SCREEN = '/featherbase/admin/link-motherduck-accounts'
+const openLink = (account?: string) => ({ label: 'Link in Featherbase', href: account ? `${LINK_SCREEN}?account=${encodeURIComponent(account)}` : LINK_SCREEN })
 const OPEN = (column: string) => sql`${sql(column)} not in ('Resolved', 'Closed')`
 
 /** #1397: the one umbrella ticket the review tickets sit under, found by the marker in its
@@ -266,7 +269,7 @@ async function openUmbrella(actor: string, assignee: string | null): Promise<str
       'Link each by setting Person on its MotherDuck Account; its ticket then closes itself, and this one closes when none is left.',
     ].join('\n\n')
     // A stopped run that raised it is found again above, so the key only guards a replay within a run.
-    await ticketAction(actor, 'create', { title: UMBRELLA_TITLE, original, details: { motherduck_umbrella: 'accounts' }, ...(assignee ? { raiser: assignee } : {}) },
+    await ticketAction(actor, 'create', { title: UMBRELLA_TITLE, original, details: { motherduck_umbrella: 'accounts', open: openLink() }, ...(assignee ? { raiser: assignee } : {}) },
       `motherduck-umbrella-${today()}`)
     umbrella = await findUmbrella(actor)
   } else if (['Resolved', 'Closed'].includes(String(umbrella.ticket_state))) {
@@ -317,7 +320,7 @@ async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promi
       // Raised for the reviewer: a ticket's request is private to the person it is
       // raised for and Tickets support, and the reviewer must read who it may be.
       if (!orphan) umbrella ??= await openUmbrella(actor, assignee)
-      const payload = { title, original, details: { motherduck_account: String(a.row_id) }, ...(assignee ? { raiser: assignee } : {}),
+      const payload = { title, original, details: { motherduck_account: String(a.row_id), open: openLink(String(a.row_id)) }, ...(assignee ? { raiser: assignee } : {}),
         ...(umbrella ? { parent_ticket: umbrella } : {}) }
       const ticket = orphan ? String(orphan.row_id) : String((await ticketAction<{ ticket: { row_id: string } }>(actor, 'create', payload,
         `motherduck-account-${String(a.row_id)}-${createHash('sha256').update(JSON.stringify(payload)).digest('hex').slice(0, 16)}`)).ticket.row_id)
@@ -354,6 +357,18 @@ async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promi
         `motherduck-account-resolve-${String(a.review_ticket)}-${iso(a.updated_at)}`)
       result.tickets_resolved.push(String(a.review_ticket))
     })
+  }
+  // #1463: an open ticket raised before the link (production's, say) gets it, once; the umbrella too.
+  const unlinked = await sql`select a.username, a.row_id as account, t.row_id, t.updated_at from motherduck_account a
+    join tickets.ticket t on t.row_id = a.review_ticket join tickets.request r on r.row_id = t.row_id
+    where not (r.details_json::jsonb ? 'open') and t.ticket_state not in ('Resolved', 'Closed')
+    union all select ${UMBRELLA_TITLE}, null, t.row_id, t.updated_at from tickets.ticket t join tickets.request r on r.row_id = t.row_id
+    where t.created_by = ${actor} and r.details_json::jsonb ? 'motherduck_umbrella' and not (r.details_json::jsonb ? 'open')
+      and t.ticket_state not in ('Resolved', 'Closed')`
+  for (const t of unlinked) {
+    const going = await attempt(result, t.username, () => ticketAction(actor, 'edit', { row_id: String(t.row_id), updated_at: iso(t.updated_at),
+      details: { open: openLink(t.account == null ? undefined : String(t.account)) } }, `motherduck-account-open-link-${String(t.row_id)}-${iso(t.updated_at)}`))
+    if (!going) return
   }
   // The umbrella closes when none of its tickets is open; the next one raised opens it again.
   const open = await findUmbrella(actor)
