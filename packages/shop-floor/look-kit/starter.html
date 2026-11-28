@@ -1,0 +1,411 @@
+<!doctype html>
+<!--
+  Starter prototype for the Featherbase look kit: "Review The Month".
+  A Team Leader reviews next month's forecast for their sections and accepts or changes each figure.
+
+  To start your own screen, copy this file beside featherbase-look.css and featherbase-look.js, then:
+    1. Replace the JSON in the data slot (id="fb-data") with your own made-up rows.
+    2. Rewrite the draw functions in the script (headline(), table(), detail() ...) for your screen.
+       render() draws everything inside <main> from `data` and `view`; never type a name or figure into the markup.
+    3. Keep the person's choices in `answers` (beside the data), never in `data`.
+  Every control comes from index.html. The <style> block below is layout only.
+  All names and figures here are made up.
+-->
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review The Month</title>
+<link rel="stylesheet" href="featherbase-look.css">
+<style>
+  /* Layout only: where the kit's controls sit. No colour, font, border, radius or shadow.
+     This screen needs one rule of its own: the two fields of the Change It form side by side. */
+  .answer-fields { display: grid; grid-template-columns: 12rem 1fr; gap: 0.75rem; }
+</style>
+</head>
+<body>
+<div class="fb-shell">
+  <aside class="fb-shell-placeholder" aria-label="Featherbase shell">
+    <strong>Featherbase shell</strong>
+    <span>The platform draws the sidebar here.</span>
+  </aside>
+  <!-- render() fills this. -->
+  <main class="fb-page" id="screen"></main>
+</div>
+
+<!-- ==== The data slot: every name and figure on the screen. Flat rows, raw values. ==== -->
+<script type="application/json" id="fb-data">
+{
+  "month": "2026-12-01",
+  "today": "2026-11-27",
+  "built_on": "2026-11-25",
+  "due_on": "2026-11-29",
+  "store_id": "2101",
+  "store_name": "2101 Riverbend",
+  "viewer_person_id": "RB-20417",
+  "people": [
+    { "person_id": "RB-20417", "person": "Divya Natarajan", "role": "Team Leader", "place": "Riverbend" },
+    { "person_id": "HO-00352", "person": "Suresh Babu", "role": "Planner", "place": "Head Office" },
+    { "person_id": "HO-00388", "person": "Lakshmi Varadan", "role": "Planner", "place": "Head Office" }
+  ],
+  "sections": [
+    { "section_id": "S01", "section": "Sarees", "planner_person_id": "HO-00352", "forecast_value": 420000, "forecast_pieces": 312, "last_month_value": 385000, "last_month_pieces": 290, "last_year_value": 360000, "last_year_pieces": 270, "target_value": 430000, "target_pieces": 320 },
+    { "section_id": "S02", "section": "Kurtis", "planner_person_id": "HO-00352", "forecast_value": 195000, "forecast_pieces": 428, "last_month_value": 210000, "last_month_pieces": 455, "last_year_value": 172000, "last_year_pieces": 380, "target_value": 205000, "target_pieces": 440 },
+    { "section_id": "S03", "section": "Men Shirts", "planner_person_id": "HO-00388", "forecast_value": 236000, "forecast_pieces": 590, "last_month_value": 198000, "last_month_pieces": 505, "last_year_value": 214000, "last_year_pieces": 548, "target_value": 240000, "target_pieces": 600 },
+    { "section_id": "S04", "section": "Men Trousers", "planner_person_id": "HO-00388", "forecast_value": 158000, "forecast_pieces": 262, "last_month_value": 149000, "last_month_pieces": 248, "last_year_value": 151000, "last_year_pieces": 255, "target_value": 150000, "target_pieces": 250 },
+    { "section_id": "S05", "section": "Kids Wear", "planner_person_id": "HO-00352", "forecast_value": 88500, "forecast_pieces": 265, "last_month_value": 86200, "last_month_pieces": 258, "last_year_value": 91000, "last_year_pieces": 280, "target_value": 95000, "target_pieces": 290 },
+    { "section_id": "S06", "section": "Footwear", "planner_person_id": "HO-00388", "forecast_value": 112000, "forecast_pieces": 140, "last_month_value": 96500, "last_month_pieces": 122, "last_year_value": 104000, "last_year_pieces": 131, "target_value": 120000, "target_pieces": 150 },
+    { "section_id": "S07", "section": "Innerwear", "planner_person_id": "HO-00352", "forecast_value": 64000, "forecast_pieces": 820, "last_month_value": 61800, "last_month_pieces": 790, "last_year_value": 58900, "last_year_pieces": 760, "target_value": 62000, "target_pieces": 800 }
+  ],
+  "built_from": [
+    { "section_id": "S01", "part": "Last year's December", "value": 193200 },
+    { "section_id": "S01", "part": "This year's growth", "value": 130200 },
+    { "section_id": "S01", "part": "Wedding season", "value": 96600 },
+    { "section_id": "S02", "part": "Last year's December", "value": 110000 },
+    { "section_id": "S02", "part": "This year's growth", "value": 52000 },
+    { "section_id": "S02", "part": "Wedding season", "value": 33000 },
+    { "section_id": "S03", "part": "Last year's December", "value": 120000 },
+    { "section_id": "S03", "part": "This year's growth", "value": 74000 },
+    { "section_id": "S03", "part": "Year-end offers", "value": 42000 },
+    { "section_id": "S04", "part": "Last year's December", "value": 85000 },
+    { "section_id": "S04", "part": "This year's growth", "value": 48000 },
+    { "section_id": "S04", "part": "Year-end offers", "value": 25000 },
+    { "section_id": "S05", "part": "Last year's December", "value": 52000 },
+    { "section_id": "S05", "part": "This year's growth", "value": 24500 },
+    { "section_id": "S05", "part": "School holidays", "value": 12000 },
+    { "section_id": "S06", "part": "Last year's December", "value": 60000 },
+    { "section_id": "S06", "part": "This year's growth", "value": 32000 },
+    { "section_id": "S06", "part": "Year-end offers", "value": 20000 },
+    { "section_id": "S07", "part": "Last year's December", "value": 38000 },
+    { "section_id": "S07", "part": "This year's growth", "value": 18000 },
+    { "section_id": "S07", "part": "Winter range", "value": 8000 }
+  ],
+  "answers": [
+    { "section_id": "S04", "answer": "accepted", "value": null, "pieces": null, "note": "", "answered_by": "RB-20417", "answered_on": "2026-11-26" },
+    { "section_id": "S06", "answer": "changed", "value": 105000, "pieces": null, "note": "Two sizes short until mid-December.", "answered_by": "RB-20417", "answered_on": "2026-11-26" }
+  ]
+}
+</script>
+<script src="featherbase-look.js"></script>
+<script>
+  // ==== State ====
+  const data = fbLook.data()
+  const people = new Map(data.people.map((p) => [p.person_id, p]))
+  const sections = data.sections
+
+  // The person's answers, beside the data (seeded from the saved answers, never written back into `data`).
+  const answers = new Map(data.answers.map((a) => [a.section_id, { ...a }]))
+
+  // The view: the toggles, the open rows, and any half-filled Change It form (kept so a re-render keeps it).
+  const view = {
+    measure: 'value',            // 'value' | 'pieces'
+    compare: 'all',              // 'all' | 'last_month' | 'last_year' | 'target'
+    open: new Set(['S01']),      // rows opened in place; one is open when the page loads
+    drafts: new Map(),           // section_id -> { measure, figure, note, error }
+  }
+
+  const COMPARISONS = [
+    { key: 'last_month', label: 'Last Month' },
+    { key: 'last_year', label: 'Last Year' },
+    { key: 'target', label: 'Target' },
+  ]
+
+  // ==== Small helpers ====
+  const esc = fbLook.escape
+  const fmt = (x, measure = view.measure) => (measure === 'value' ? fbLook.inr(x) : fbLook.count(x))
+  const unit = (measure) => (measure === 'value' ? 'Value (₹)' : 'Pieces')
+
+  /** The figure in effect for a section: the person's changed figure if they gave one, else the forecast. */
+  function figure(section, measure = view.measure) {
+    const answer = answers.get(section.section_id)
+    const changed = answer && answer.answer === 'changed' && answer[measure] != null
+    return changed ? answer[measure] : section['forecast_' + measure]
+  }
+
+  /** "+9.1%" or "-7.1%", coloured by meaning (above or below what it is compared with). */
+  function changeCell(now, before, extra = '') {
+    if (!before) return `<td class="fb-num ${extra}">—</td>`
+    const change = ((now - before) / before) * 100
+    const tone = change >= 0 ? 'fb-positive' : 'fb-negative'
+    return `<td class="fb-num ${tone} ${extra}">${fbLook.pct(change, { signed: true })}</td>`
+  }
+
+  function recordLink(table, row, name) {
+    return `<a class="fb-record-link" href="#" data-table="${esc(table)}" data-row="${esc(row)}"><span class="fb-record-name">${esc(name)}</span></a>`
+  }
+
+  /** A person: name as a link, then code · role · place (house rule 6). */
+  function personLabel(personId, stacked = false) {
+    const p = people.get(personId)
+    const detail = `${esc(p.person_id)} · ${esc(p.role)} · ${esc(p.place)}`
+    return stacked
+      ? `<span class="fb-person"><a class="fb-record-link fb-record-link--two-lines" href="#" data-table="Person" data-row="${esc(p.person_id)}"><span class="fb-record-name">${esc(p.person)}</span><span class="fb-record-detail">${detail}</span></a></span>`
+      : `<span class="fb-person"><a class="fb-record-link" href="#" data-table="Person" data-row="${esc(p.person_id)}"><span class="fb-record-name">${esc(p.person)}</span> <span class="fb-record-detail">· ${detail}</span></a></span>`
+  }
+
+  function answerPill(sectionId) {
+    const answer = answers.get(sectionId)
+    if (!answer) return '<span class="fb-pill fb-pill--missing">Not answered</span>'
+    return answer.answer === 'accepted'
+      ? '<span class="fb-pill fb-pill--positive">Accepted</span>'
+      : '<span class="fb-pill">Changed</span>'
+  }
+
+  // ==== Draw the screen ====
+  function render() {
+    const answered = sections.filter((s) => answers.has(s.section_id)).length
+    // The page's blocks, one under the other; fb-page spaces them.
+    document.getElementById('screen').innerHTML = `
+      ${pageHeader(answered)}
+      <div class="fb-notice fb-notice--caution" role="status"><div>Sample data: every name and figure on this page is made up.</div></div>
+      ${headline()}
+      ${toggleRow()}
+      ${table()}`
+  }
+
+  function pageHeader(answered) {
+    return `
+      <header class="fb-page-header">
+        <div class="fb-page-header-row">
+          <div class="fb-page-header-lead">
+            <h1 class="fb-title">Review The Month</h1>
+            <div class="fb-count"><span id="answered-count">${answered} of ${sections.length} answered</span></div>
+          </div>
+        </div>
+        <div class="fb-status">${recordLink('Store', data.store_id, data.store_name)} · Forecast for ${esc(fbLook.month(data.month))}, built ${fbLook.date(data.built_on)} · Answers due ${fbLook.date(data.due_on)}</div>
+      </header>`
+  }
+
+  /** Answer first: the month's total against target and last year, in the chosen measure. */
+  function headline() {
+    const m = view.measure
+    const total = sections.reduce((sum, s) => sum + figure(s, m), 0)
+    const target = sections.reduce((sum, s) => sum + s['target_' + m], 0)
+    const lastYear = sections.reduce((sum, s) => sum + s['last_year_' + m], 0)
+    const ofTarget = (total / target) * 100
+    // The components' bands: below 90% of target is negative, 90% up to 100% caution, 100% and over positive.
+    const tone = ofTarget >= 100 ? 'positive' : ofTarget >= 90 ? 'caution' : 'negative'
+    // The meter's scale stretches past 100 when the figure does, and the line sits on that scale.
+    const scale = Math.max(100, ofTarget)
+    const vsYear = ((total - lastYear) / lastYear) * 100
+    const words = m === 'value' ? fmt(total) : `${fmt(total)} pieces`
+    return `
+      <section class="fb-headline fb-headline--${tone}" aria-labelledby="headline">
+        <p class="fb-headline-label">${esc(fbLook.month(data.month))} forecast · ${esc(data.store_name)} · your ${sections.length} sections</p>
+        <h2 class="fb-headline-conclusion" id="headline">${words}, ${fbLook.pct(vsYear, { signed: true })} on last year</h2>
+        <p class="fb-headline-detail">${fbLook.pct(ofTarget)} of target: ${fmt(total)} forecast of ${fmt(target)} · last year ${fmt(lastYear)}</p>
+        <div class="fb-meter" role="meter" aria-label="Forecast against target" aria-valuemin="0" aria-valuemax="${scale.toFixed(1)}" aria-valuenow="${ofTarget.toFixed(1)}">
+          <div class="fb-meter-fill" style="width: ${((ofTarget / scale) * 100).toFixed(1)}%"></div>
+          <div class="fb-meter-marker" style="left: ${((90 / scale) * 100).toFixed(1)}%"></div>
+        </div>
+        <p class="fb-meter-note">Line marks 90% of target</p>
+      </section>`
+  }
+
+  function segmented(name, label, choices) {
+    const buttons = choices
+      .map(([value, text]) => `<button type="button" id="${name}-${value}" aria-pressed="${view[name] === value}" data-value="${value}">${text}</button>`)
+      .join('')
+    return `<div class="fb-toolbar-item"><span class="fb-label-text" id="${name}-label">${label}</span><div class="fb-segmented" role="group" aria-labelledby="${name}-label" data-name="${name}">${buttons}</div></div>`
+  }
+
+  function toggleRow() {
+    return `
+      <div class="fb-toolbar">
+        ${segmented('measure', 'Show', [['value', 'Value'], ['pieces', 'Pieces']])}
+        ${segmented('compare', 'Compare With', [['all', 'All'], ['last_month', 'Last Month'], ['last_year', 'Last Year'], ['target', 'Target']])}
+      </div>`
+  }
+
+  /** The banded table: Forecast | each comparison chosen, then the Answer. */
+  function table() {
+    const m = view.measure
+    const shown = COMPARISONS.filter((c) => view.compare === 'all' || view.compare === c.key)
+    const columns = 1 + 2 + shown.length * 2 + 1
+    const total = sections.reduce((sum, s) => sum + figure(s, m), 0)
+
+    const bands = `
+      <tr class="fb-bands">
+        <th class="fb-band-none"></th>
+        <th colspan="2" class="fb-band-start">Forecast</th>
+        ${shown.map((c) => `<th colspan="2" class="fb-band-start">${c.label}</th>`).join('')}
+        <th class="fb-band-start fb-band-none"></th>
+      </tr>`
+    const heads = `
+      <tr>
+        <th scope="col" class="fb-band-none">Section</th>
+        <th scope="col" class="fb-num fb-band-start">${unit(m)}</th>
+        <th scope="col" class="fb-num">Share</th>
+        ${shown.map(() => `<th scope="col" class="fb-num fb-band-start">${unit(m)}</th><th scope="col" class="fb-num">Change</th>`).join('')}
+        <th scope="col" class="fb-band-start fb-band-none">Answer</th>
+      </tr>`
+
+    const rows = sections.map((s) => {
+      const id = s.section_id
+      const open = view.open.has(id)
+      const now = figure(s, m)
+      return `
+        <tr data-section="${id}">
+          <th scope="row"><button type="button" class="fb-row-toggle" id="toggle-${id}" aria-expanded="${open}" aria-label="Show how ${esc(s.section)} was built"></button>${recordLink('Section', id, s.section)}</th>
+          <td class="fb-num fb-band-start fb-strong">${fmt(now)}</td>
+          <td class="fb-num">${fbLook.pct((now / total) * 100)}</td>
+          ${shown.map((c) => `<td class="fb-num fb-band-start">${fmt(s[c.key + '_' + m])}</td>${changeCell(now, s[c.key + '_' + m])}`).join('')}
+          <td class="fb-band-start">${answerPill(id)}</td>
+        </tr>
+        <tr class="fb-row-detail" ${open ? '' : 'hidden'}>
+          <td colspan="${columns}">${detail(s)}</td>
+        </tr>`
+    }).join('')
+
+    return `
+      <div class="fb-table-scroll" role="region" aria-label="Forecast by section" tabindex="0">
+        <table class="fb-table fb-table--banded">
+          <thead>${bands}${heads}</thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`
+  }
+
+  /** The opened row: how the figure was built (left), the accept-or-change answer (right). */
+  function detail(s) {
+    return `
+      <div class="fb-row-detail-body">
+        <div class="fb-stack fb-stack--tight">
+          <h3 class="fb-section-title">How This Figure Was Built</h3>
+          ${builtFrom(s)}
+          <p class="fb-text fb-muted">Built by ${personLabel(s.planner_person_id)} on ${fbLook.date(data.built_on)}</p>
+        </div>
+        <div class="fb-stack fb-stack--tight">
+          <h3 class="fb-section-title">Your Answer</h3>
+          ${view.drafts.has(s.section_id) ? changeForm(s) : answerSummary(s)}
+        </div>
+      </div>`
+  }
+
+  function builtFrom(s) {
+    const parts = data.built_from.filter((p) => p.section_id === s.section_id)
+    const sum = parts.reduce((total, p) => total + p.value, 0)
+    const shares = parts.map((p) => (p.value / sum) * 100)
+    const words = parts.map((p, i) => `${p.part} ${fbLook.pct(shares[i])}`).join(', ')
+    const legend = parts.map((p, i) => `
+      <span class="fb-legend-swatch fb-series-${(i % 5) + 1}"></span><span>${esc(p.part)}</span><span class="fb-num fb-muted">${fbLook.pct(shares[i])}</span><span class="fb-num">${fbLook.inr(p.value)}</span>`).join('')
+    return `
+      <div class="fb-built-from">
+        <div class="fb-donut-wrap">
+          <div class="fb-donut" role="img" aria-label="Built from: ${esc(words)}" style="--fb-donut: ${fbLook.donut(shares)}"></div>
+          <div class="fb-donut-label"><strong>${fbLook.inr(s.forecast_value)}</strong>Forecast</div>
+        </div>
+        <div class="fb-built-from-detail"><div class="fb-legend">${legend}</div></div>
+      </div>`
+  }
+
+  function answerSummary(s) {
+    const id = s.section_id
+    const answer = answers.get(id)
+    let said = '<p class="fb-text">Not answered yet. Accept the forecast, or change it and say why.</p>'
+    if (answer && answer.answer === 'accepted') {
+      said = `<div class="fb-notice fb-notice--positive" role="status"><div>Accepted ${fbLook.inr(s.forecast_value)} as forecast, ${fbLook.date(answer.answered_on)}, by ${personLabel(answer.answered_by)}</div></div>`
+    } else if (answer) {
+      const m = answer.value != null ? 'value' : 'pieces'
+      const was = s['forecast_' + m]
+      said = `<div class="fb-notice" role="status"><div>Changed ${fmt(was, m)} to ${fmt(answer[m], m)}${m === 'pieces' ? ' pieces' : ''}, ${fbLook.date(answer.answered_on)}, by ${personLabel(answer.answered_by)}</div></div>
+        ${answer.note ? `<p class="fb-text">Note: ${esc(answer.note)}</p>` : ''}`
+    }
+    const accepted = answer && answer.answer === 'accepted'
+    return `
+      ${said}
+      <div class="fb-row">
+        ${accepted ? '' : `<button type="button" class="fb-button fb-button--primary" id="accept-${id}" data-act="accept" data-section="${id}">Accept ${fmt(s['forecast_' + view.measure])}</button>`}
+        <button type="button" class="fb-button" id="change-${id}" data-act="change" data-section="${id}">Change It</button>
+      </div>`
+  }
+
+  function changeForm(s) {
+    const id = s.section_id
+    const draft = view.drafts.get(id)
+    const error = draft.error
+    return `
+      <p class="fb-text fb-muted">The forecast is ${fmt(s['forecast_' + draft.measure], draft.measure)}${draft.measure === 'pieces' ? ' pieces' : ''}.</p>
+      <div class="answer-fields">
+        <div>
+          <label class="fb-label" for="figure-${id}">New Figure, ${unit(draft.measure)}</label>
+          <input class="fb-input" id="figure-${id}" type="text" inputmode="numeric" value="${esc(draft.figure)}" data-draft="figure" data-section="${id}"
+            ${error ? `aria-invalid="true" aria-describedby="figure-${id}-error"` : ''}>
+          ${error ? `<p class="fb-error" id="figure-${id}-error">${esc(error)}</p>` : ''}
+        </div>
+        <div>
+          <label class="fb-label" for="note-${id}">Note</label>
+          <textarea class="fb-input" id="note-${id}" placeholder="Why the figure should change" data-draft="note" data-section="${id}">${esc(draft.note)}</textarea>
+        </div>
+      </div>
+      <div class="fb-row">
+        <button type="button" class="fb-button fb-button--primary" id="save-${id}" data-act="save" data-section="${id}">Save</button>
+        <button type="button" class="fb-button" id="cancel-${id}" data-act="cancel" data-section="${id}">Cancel</button>
+      </div>`
+  }
+
+  // ==== What the person does ====
+  /** Redraw, keeping focus on the control that had it (render() replaces the markup). */
+  function redraw(focusId) {
+    const keep = focusId || (document.activeElement && document.activeElement.id)
+    render()
+    const again = keep && document.getElementById(keep)
+    if (again) again.focus()
+  }
+
+  const screen = document.getElementById('screen')
+
+  // A Segmented announces its choice (featherbase-look.js moves aria-pressed and fires fb:change).
+  screen.addEventListener('fb:change', (event) => {
+    const name = event.target.dataset.name
+    if (name) { view[name] = event.detail.value; redraw() }
+  })
+
+  // featherbase-look.js opens and closes the row itself; remember it so the next render keeps it.
+  screen.addEventListener('fb:toggle', (event) => {
+    const id = event.target.dataset.section
+    if (event.detail.open) view.open.add(id); else view.open.delete(id)
+  })
+
+  // Typing in the Change It form is kept as a draft.
+  screen.addEventListener('input', (event) => {
+    const field = event.target.dataset.draft
+    if (field) view.drafts.get(event.target.dataset.section)[field] = event.target.value
+  })
+
+  screen.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-act]')
+    if (!button) return
+    const id = button.dataset.section
+    const section = sections.find((s) => s.section_id === id)
+    const act = button.dataset.act
+
+    if (act === 'accept') {
+      answers.set(id, { section_id: id, answer: 'accepted', value: null, pieces: null, note: '', answered_by: data.viewer_person_id, answered_on: data.today })
+      view.drafts.delete(id)
+      redraw(`change-${id}`)
+    } else if (act === 'change') {
+      view.drafts.set(id, { measure: view.measure, figure: String(figure(section)), note: '', error: '' })
+      redraw(`figure-${id}`)
+    } else if (act === 'cancel') {
+      view.drafts.delete(id)
+      redraw(`change-${id}`)
+    } else if (act === 'save') {
+      const draft = view.drafts.get(id)
+      const amount = Number(String(draft.figure).replace(/[₹,\s]/g, ''))
+      if (!Number.isFinite(amount) || amount <= 0) {
+        draft.error = 'Enter a figure above 0'
+        return redraw(`figure-${id}`)
+      }
+      const answer = { section_id: id, answer: 'changed', value: null, pieces: null, note: draft.note.trim(), answered_by: data.viewer_person_id, answered_on: data.today }
+      answer[draft.measure] = Math.round(amount)
+      answers.set(id, answer)
+      view.drafts.delete(id)
+      redraw(`change-${id}`)
+    }
+  })
+
+  render()
+</script>
+</body>
+</html>
