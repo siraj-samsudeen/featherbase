@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hostedStart, signedIn } from './startup'
+import { hostedStart, signedIn, startFailure } from './startup'
 import { NO_PLACES } from './scoped'
 
 const refused = (status: number) => async () => { throw Object.assign(new Error('refused'), { status }) }
@@ -34,5 +34,22 @@ describe('who the signed-in person is to the app (28-Nov)', () => {
   it('keeps the made-up chart on the legacy Run: a person on it is theirs, anyone else is off it', () => {
     expect(signedIn({ row_id: 'psn_3', full_name: 'Made Up TL' }, onChart, false)).toBe('on-chart')
     expect(signedIn({ row_id: 'psn_4', full_name: 'Someone Else' }, onChart, false)).toBe('off-chart')
+  })
+})
+
+describe('when the first reads fail (28-Nov)', () => {
+  const fail = (status: number, message = 'x') => Object.assign(new Error(message), { status })
+  it('signs in again on a lapsed sign-in, here or hosted', () => {
+    expect(startFailure(fail(401), false)).toBe('sign-in')
+    expect(startFailure(fail(401), true)).toBe('sign-in')
+  })
+  it('on a hosted instance: a refusal is no access, anything else a retry, never the made-up data', () => {
+    expect(startFailure(fail(403), false)).toBe('no-access')
+    expect(startFailure(fail(417, NO_PLACES), false)).toBe('no-access')
+    expect(startFailure(fail(500), false)).toBe('try-again')
+    expect(startFailure(new TypeError('Failed to fetch'), false)).toBe('try-again')
+  })
+  it('falls back to the made-up data only on a local instance', () => {
+    expect(startFailure(fail(500), true)).toBe('made-up')
   })
 })

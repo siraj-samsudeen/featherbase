@@ -1,8 +1,8 @@
 import { createRoot } from 'react-dom/client'
 import { APP_THEME_ATTRIBUTE, THEME_CHANGE_EVENT, paintTheme } from '@featherbase/shop-floor/theme'
-import { listAll, listCopy, readOp, refusedAccess } from './api'
+import { listAll, listCopy, readOp } from './api'
 import { datasetFrom, setCopiesOnly, setDataset, type ReachRow, type RunLineRow } from './dataset'
-import { hostedStart } from './startup'
+import { hostedStart, startFailure } from './startup'
 import './style.css'
 
 // The page takes the theme the person chose in the shared top bar; before it paints, the device's.
@@ -18,6 +18,12 @@ const NoRun = () => (
   <div style={{ padding: 32, font: '15px system-ui', maxWidth: 560 }}>
     <h1 style={{ fontSize: 20 }}>No Run is loaded yet</h1>
     <p>The forecast team loads each month's engine Run and who reviews it; the month opens here once it is loaded.</p>
+  </div>)
+const TryAgain = () => (
+  <div style={{ padding: 32, font: '15px system-ui', maxWidth: 560 }}>
+    <h1 style={{ fontSize: 20 }}>This page couldn't load</h1>
+    <p>Check your connection and try again.</p>
+    <button type="button" onClick={() => window.location.reload()}>Try again</button>
   </div>)
 const NoAccess = () => (
   <div style={{ padding: 32, font: '15px system-ui', maxWidth: 560 }}>
@@ -46,10 +52,12 @@ async function start() {
     }
     setDataset(dataset)
   } catch (e) {
-    if ((e as { status?: number }).status === 401) { window.location.href = `/featherbase/login?next=${encodeURIComponent(location.pathname + location.search)}`; return }
-    // a hosted instance never falls back to the made-up data for someone it refuses (#1454)
-    if (!LOCAL && refusedAccess(e)) { root.render(<NoAccess />); return }
-    setDataset(null) // an older instance without the Tables: the made-up data
+    const failed = startFailure(e, LOCAL)
+    if (failed === 'sign-in') { window.location.href = `/featherbase/login?next=${encodeURIComponent(location.pathname + location.search)}`; return }
+    // a hosted instance never falls back to the made-up data (#1454): a refusal is no access, anything else a retry
+    if (failed === 'no-access') { root.render(<NoAccess />); return }
+    if (failed === 'try-again') { root.render(<TryAgain />); return }
+    setDataset(null) // a local instance without the Tables: the made-up data
   }
   const { ForecastingApp } = await import('./App')
   root.render(<ForecastingApp />)

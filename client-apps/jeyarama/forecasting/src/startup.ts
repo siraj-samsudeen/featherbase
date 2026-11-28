@@ -24,3 +24,13 @@ export function signedIn(u: { row_id?: string; full_name?: string; roles?: strin
   if (u.full_name && onChart(u.full_name)) return 'on-chart'
   return copiesOnly ? 'copies' : 'off-chart'
 }
+
+/** What the page does when its first reads fail (#1454, 28-Nov): a lapsed sign-in signs in again; a refused read is
+ *  no access; on a hosted instance anything else asks to try again, never the made-up data (which would tell a real
+ *  person "you are not on the forecasting org chart"); only a local instance falls back to the made-up data. */
+export type StartFailure = 'sign-in' | 'no-access' | 'try-again' | 'made-up'
+export function startFailure(e: unknown, local: boolean): StartFailure {
+  if ((e as { status?: number }).status === 401) return 'sign-in'
+  if (local) return 'made-up'
+  return refusedAccess(e) ? 'no-access' : 'try-again'
+}
