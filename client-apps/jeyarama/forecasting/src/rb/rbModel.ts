@@ -1,8 +1,7 @@
-// The RB review's own logic (the agreed prototype rb_review.template.html): its levels, the drill's breadcrumb,
-// opening the tree to a search scope, the made-up review progress per store, and the numbers of the answer that
-// opens Answer First. Pure functions; RbReview.tsx draws them.
+// The RB review's own logic (the agreed prototype rb_review.template.html): its levels, the breadcrumb, where a
+// search scope puts you, and the made-up review progress per store. Pure functions; RbReview.tsx draws them.
 import { hash, type SectionInfo } from '../shared/madeUpChain'
-import { combine, inr, pc, type Group, type Line } from '../shared/model'
+import type { Line } from '../shared/model'
 import { LEVEL, pathTo, type Level } from '../shared/levels'
 
 /** Inside a store: as it is bought (Division › Subdivision › Category) or by Team Leader section. */
@@ -75,47 +74,4 @@ export function storeProgress(lines: Line[], waitingIn: (lines: Line[]) => numbe
       oldest: madeUp ? 1 + Math.round(hash(`${store}o`) * 3) : 0, questions: madeUp ? Math.round(hash(`${store}q`) * 2.4) : 0,
     }
   }).sort((a, b) => b.waiting - a.waiting || a.store.localeCompare(b.store))
-}
-
-// ---- the answer (Answer First) ----------------------------------------------------------------------
-const byGap = <T extends { fc: number; aop: number }>(xs: T[]) => [...xs].sort((a, b) => (a.fc - a.aop) - (b.fc - b.aop))
-const ofPlan = (o: { fc: number; aop: number }) => (o.aop ? Math.round(o.fc / o.aop * 100) : 0)
-const money = (v: number) => inr(Math.abs(v))
-const shortOrAbove = (gap: number) => `${money(gap)} ${gap < 0 ? 'short' : 'above'}`
-
-/** Nodes of one key (store, division, region), each summed, furthest behind AOP first. */
-export const gapNodes = (lines: Line[], key: (l: Line) => string): Group[] =>
-  byGap([...new Set(lines.map(key))].map(k => combine(lines.filter(l => key(l) === k), -1, k)))
-
-export interface AnswerFacts {
-  headline: string
-  regions: { name: string; words: string }[]
-  stores: { top: { store: string; gap: string }[]; carry: string; share: number; onPlan: string }
-  divisions: { first: { name: string; gap: string }; second: { name: string; gap: string } | null; share: number }
-  answered: number; waiting: number; questions: number
-}
-
-/** The answer's sentences (the prototype's answer()): the month against AOP and last year, then the regions, the
- *  five stores furthest behind, the two divisions furthest behind, and what waits up the chain. */
-export function answerFacts(lines: Line[], month: string, progress: StoreProgress[], openQuestions: number): AnswerFacts {
-  const T = combine(lines, -1), gap = T.fc - T.aop
-  const regions = gapNodes(lines, l => l.region), stores = gapNodes(lines, l => l.store), divisions = gapNodes(lines, l => l.division)
-  const top = stores.slice(0, 5), topGap = top.reduce((t, s) => t + s.fc - s.aop, 0), above = stores.filter(s => s.fc >= s.aop).length
-  const share = (v: number) => (gap ? Math.round(v / gap * 100) : 0)
-  const [d1, d2] = divisions
-  const totalLines = progress.reduce((t, x) => t + x.lines, 0)
-  return {
-    headline: `${month} is forecast at ${inr(T.fc)}: ${money(gap)} ${gap < 0 ? 'short of' : 'above'} AOP (${ofPlan(T)}% of plan) and ${pc(T.fc, T.ly)} on last year.`,
-    regions: regions.map(r => ({ name: r.name, words: `is ${shortOrAbove(r.fc - r.aop)} (${ofPlan(r)}% of AOP, ${pc(r.fc, r.ly)} on last year)` })),
-    stores: {
-      top: top.map(s => ({ store: s.name, gap: money(s.fc - s.aop) })), carry: money(topGap), share: share(topGap),
-      onPlan: above ? `${above} of ${stores.length} stores are on or above plan.` : 'No store is on plan.',
-    },
-    divisions: {
-      first: { name: d1.name, gap: money(d1.fc - d1.aop) }, second: d2 ? { name: d2.name, gap: money(d2.fc - d2.aop) } : null,
-      share: share(d1.fc - d1.aop + (d2 ? d2.fc - d2.aop : 0)),
-    },
-    answered: totalLines ? Math.round(progress.reduce((t, x) => t + x.answered * x.lines, 0) / totalLines) : 0,
-    waiting: progress.reduce((t, x) => t + x.waiting, 0), questions: openQuestions,
-  }
 }

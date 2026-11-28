@@ -41,7 +41,7 @@ export const SORTERS: Record<SortKey, (a: { fc: number; ly: number; aop: number 
 }
 type Block = [string, string, string, string]
 
-export function MeasureTable({ header, view, rows, total, totalLabel = 'Section', firstHeading = 'Subcategory', open, onToggle, panel, flash, vsAop = false, sort, onSort }: {
+export function MeasureTable({ header, view, rows, total, totalLabel = 'Section', firstHeading = 'Subcategory', open, onToggle, panel, flash, vsAop = false, sort, onSort, valueOnly, rowEnd }: {
   header: Header; view: ViewChoices; rows: TableRow[]; total: Item; totalLabel?: string; firstHeading?: string
   /** The managers' columns: AOP always shown, and Feather Forecast against it under Value vs (no Gap to AOP column:
    *  the KPI tile carries the gap, owner 27-Nov-2026). */
@@ -49,6 +49,10 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
   /** The heading the rows are sorted by (marked ↓); with onSort the three headings sort when clicked. */
   sort?: SortKey; onSort?: (k: SortKey) => void
   open: string | null; onToggle: (key: string | null) => void
+  /** A row whose quantity means nothing (pieces of different categories, RB 28-Nov) shows its value only. */
+  valueOnly?: (item: Item) => boolean
+  /** A last cell on each row (RB's ⓘ, opening the row's card in the side pane). */
+  rowEnd?: (row: TableRow) => ReactNode
   /** The panel an open row shows, given its width (the visible table's). */
   panel: (row: TableRow, width: number | undefined) => ReactNode
   /** A row to scroll to the top and flash; a new `n` flashes it again. */
@@ -85,10 +89,11 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
   const measures = ({ all: ['v', 'q', 'a'], vq: ['v', 'q'], v: ['v'], q: ['q'] } as const)[view.measure]
   const showAop = view.aop || vsAop
   const vs = showAop ? 3 : 2
-  const columns = 1 + blocks.length * measures.length + vs + 1
+  const columns = 1 + blocks.length * measures.length + vs + 1 + (rowEnd ? 1 : 0)
   const cell = (l: Item, [k, q]: Block, m: 'v' | 'q' | 'a', first: boolean, cls: string) => {
     const v = (l as unknown as Record<string, number>)[k], qty = (l as unknown as Record<string, number>)[q]
-    return <td key={`${k}${m}`} className={`${first ? 'fr-b0 ' : ''}${cls}`}>{m === 'v' ? inr(v) : m === 'q' ? count(qty) : asp(v, qty)}</td>
+    const blank = m !== 'v' && valueOnly?.(l)
+    return <td key={`${k}${m}`} className={`${first ? 'fr-b0 ' : ''}${cls}`}>{blank ? '' : m === 'v' ? inr(v) : m === 'q' ? count(qty) : asp(v, qty)}</td>
   }
   const figures = (l: Item, strong: boolean) => <>
     {blocks.map((b, bi) => measures.map((m, mi) => cell(l, b, m, mi === 0, strong && bi === 0 ? 'fr-fc' : strong ? 'fr-dim' : '')))}
@@ -104,12 +109,12 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
           <tr className="fr-blocks"><th />
             {blocks.map((b, i) => <th key={b[2]} colSpan={measures.length} className="fr-b0">{i === 0 && onSort ? sortable('size', b[2], `${b[3]}, biggest first`) : <Hover text={b[3]}>{b[2]}</Hover>}</th>)}
             <th colSpan={vs} className="fr-b0"><Hover text={`Feather Forecast's value against last year, last month${showAop ? ' and the AOP' : ''}`}>Value vs</Hover></th>
-            <th className="fr-b0">Built from</th></tr>
+            <th className="fr-b0">Built from</th>{rowEnd && <th />}</tr>
           <tr><th><span className="fr-first" title={firstHeading}>{firstHeading}</span></th>
             {blocks.map(b => measures.map((m, i) => <th key={b[2] + m} className={i === 0 ? 'fr-b0' : ''}>{{ v: 'Value', q: 'Qty', a: 'ASP' }[m]}</th>))}
             <th className="fr-b0">{onSort ? sortable('ly', vsAop ? <>Last<br />year</> : 'Last year', `${month.name} ${month.year - 1}, biggest change in rupees first`) : <Hover text={`${month.name} ${month.year - 1}`}>Last year</Hover>}</th>
             <th><Hover text={`Last 28 days at ${month.name}'s ${month.days} days`}>{vsAop ? <>Last<br />month</> : 'Last month'}</Hover></th>
-            {showAop && <th>{onSort ? sortable('aop', 'AOP', 'Feather Forecast against the annual plan, furthest behind first') : <Hover text={`The annual plan for ${month.label}`}>AOP</Hover>}</th>}<th className="fr-b0" /></tr>
+            {showAop && <th>{onSort ? sortable('aop', 'AOP', 'Feather Forecast against the annual plan, furthest behind first') : <Hover text={`The annual plan for ${month.label}`}>AOP</Hover>}</th>}<th className="fr-b0" />{rowEnd && <th />}</tr>
         </thead>
         <tbody>{rows.map(r => {
           const isOpen = r.onClick ? Boolean(r.expanded) : open === r.key, look = r.look ?? []
@@ -124,11 +129,12 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
                   {r.sub && <span className="fr-sub" style={r.depth ? { marginLeft: 22 } : undefined}>{r.sub}</span>}
                 </td>
                 {figures(r.item, true)}
+                {rowEnd && <td className="fr-rowend">{rowEnd(r)}</td>}
               </tr>
               {isOpen && !r.onClick && <tr className="fr-panelrow"><td colSpan={columns}>{panel(r, width)}</td></tr>}
             </Fragment>)
         })}</tbody>
-        <tfoot><tr><td>{totalLabel}</td>{figures(total, false)}</tr></tfoot>
+        <tfoot><tr><td>{totalLabel}</td>{figures(total, false)}{rowEnd && <td />}</tr></tfoot>
       </table>
     </div>
   )

@@ -42,6 +42,12 @@ export interface ReviewTreeProps {
   smallUnder?: number
   /** Drill one level at a time: clicking a node calls this instead of opening it in place. */
   onDrill?: (n: TreeNode) => void
+  /** A subcategory's click calls this instead of opening its panel in place (RB opens it in the side pane). */
+  onLine?: (l: Line) => void
+  /** False: no groups at all, not even the G1 tags (RB's one-level table). */
+  groups?: boolean
+  valueOnly?: (item: Line | Group) => boolean
+  rowEnd?: (row: TableRow) => ReactNode
 }
 
 const pillsOf = (x: ReactNode) => (Array.isArray(x) ? (x.length ? x : undefined) : x || undefined)
@@ -61,7 +67,7 @@ export function ReviewTree(p: ReviewTreeProps) {
   const leafRow = (l: Line, depth: number, look: TableRow['look'] = [], tag?: ReactNode): TableRow => isFolded(l)
     ? { key: l.rowId, item: l, depth, opens: false, label: <b>{l.name}</b>, sub: `${l.n} under ${inr(p.smallUnder ?? 0)} each · ${l.category}` }
     : {
-      key: l.rowId, dataName: l.name, item: l, depth, look,
+      key: l.rowId, dataName: l.name, item: l, depth, look, ...(p.onLine ? { onClick: () => p.onLine!(l) } : {}),
       label: <>{tag}{p.leafLabel ? p.leafLabel(l) : <RecordLink table={LINE_TABLE} rowId={l.rowId} name={l.name} href={p.hrefFor(l)} onNavigate={() => {}} />}</>,
       // the pills go on the line under the name, as the prototypes draw them, so a deep name keeps its room
       sub: pillsOf(p.linePills?.(l)),
@@ -75,7 +81,7 @@ export function ReviewTree(p: ReviewTreeProps) {
   /** A node's subcategories, with the groups of one store's lines in the Groups view picked. */
   const leaves = (ls: Line[], depth: number): TableRow[] => {
     const sorted = [...ls].sort(order)
-    const oneStore = !p.leafLabel && new Set(ls.map(l => l.store)).size === 1
+    const oneStore = p.groups !== false && !p.leafLabel && new Set(ls.map(l => l.store)).size === 1
     const groups = oneStore ? groupsOf(ls.filter(l => !isFolded(l))) : []
     const groupOf = (l: Line) => groups.find(g => g.members.some(m => m.rowId === l.rowId))
     const rows: TableRow[] = []
@@ -127,6 +133,6 @@ export function ReviewTree(p: ReviewTreeProps) {
   }
   return (
     <MeasureTable header={header} view={view} rows={rows} total={total} totalLabel={p.totalLabel} firstHeading={p.firstHeading ?? headingOf(levels)}
-      open={open} onToggle={p.onOpen} panel={panel} flash={p.flash} vsAop sort={sort} onSort={p.onSort} />
+      open={open} onToggle={p.onOpen} panel={panel} flash={p.flash} vsAop sort={sort} onSort={p.onSort} valueOnly={p.valueOnly} rowEnd={p.rowEnd} />
   )
 }

@@ -1,29 +1,29 @@
-/* RB only (the agreed prototype rb_review.template.html): the answer block, the gap-to-AOP bars, the drill's
-   breadcrumb line and the pending progress bar. Shop Floor tokens only. */
-.rb-answer { background: var(--color-subtle); border-radius: 12px; padding: 16px 20px; margin: 0 0 16px; }
-.rb-answer h2 { margin: 0 0 8px; font-size: 18px; line-height: 26px; font-weight: 600; }
-.rb-answer ol { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6; list-style: decimal; }
-.rb-answer li { margin: 2px 0; }
-.rb-answer li b { font-weight: 600; }
-.rb-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; margin: 0 0 8px; }
-@media (max-width: 1100px) { .rb-two { grid-template-columns: 1fr; } }
-
-.rb-bars { display: grid; grid-template-columns: max-content minmax(60px, 1fr) max-content max-content; gap: 3px 10px; align-items: center;
-  font-size: 13px; font-variant-numeric: tabular-nums; }
-.rb-bar { display: contents; }
-.rb-bar > * { padding: 3px 0; }
-.rb-bar .rb-bn { text-align: left; color: var(--color-ink); font-weight: 500; white-space: nowrap; background: none; border: 0; cursor: default; font: inherit; font-weight: 500; }
-button.rb-bn { cursor: pointer; }
-button.rb-bn:hover { color: var(--color-action); text-decoration: underline; }
-button.rb-bn:focus-visible { outline: 2px solid var(--color-focus); border-radius: 4px; }
-.rb-bt { height: 12px; padding: 0 !important; border-radius: 3px; background: var(--color-fill-hover); }
-.rb-bt > i { display: block; height: 100%; border-radius: 3px; background: var(--rb-tone); }
-.rb-bv { text-align: right; }
-.rb-bp { text-align: right; color: var(--color-ink-muted); }
-
+/* RB only (the agreed prototype rb_review.template.html): the breadcrumb, the card for where you stand, its drivers,
+   the ⓘ on each row, and the pending progress bar. Shop Floor tokens only. */
 .rb-crumbs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; font-size: 14px; }
 .rb-crumbs ol { font-size: 14px; }
 
 .rb-prog { display: inline-block; width: 80px; height: 8px; border-radius: 4px; background: var(--color-fill-hover); vertical-align: middle; margin-right: 8px; overflow: hidden; }
 .rb-prog > i { display: block; height: 100%; background: var(--color-action); }
 .rb-qlist { display: flex; flex-direction: column; gap: 10px; }
+
+.rb-sec { display: flex; align-items: baseline; gap: 8px; font-size: 16px; font-weight: 600; margin: 18px 0 8px; }
+.rb-sec .fr-dim { font-size: 13px; font-weight: 400; }
+.rb-card { background: var(--color-subtle); border-radius: 12px; padding: 16px 18px; margin: 4px 0 18px; }
+.rb-card .fr-cols { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 24px; }
+.rb-card-pane { background: transparent; padding: 0; margin: 0; }
+.rb-card-pane .fr-cols, .rb-card-narrow .fr-cols { grid-template-columns: 1fr; }
+.rb-drv { margin: 6px 0 12px; }
+.rb-drvh { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.rb-drv ol { margin: 0; padding-left: 20px; font-size: 13px; list-style: none; }
+.rb-drv li { margin: 3px 0; }
+.rb-drv li .fr-link { margin-right: 8px; }
+.rb-drv li .fr-dim { margin-left: 8px; }
+.rb-up { color: var(--color-positive); font-variant-numeric: tabular-nums; }
+.rb-down { color: var(--color-negative); font-variant-numeric: tabular-nums; }
+.rb-info { appearance: none; border: 0; background: transparent; color: var(--color-ink-subtle); font-size: 15px; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+.rb-info:hover { background: var(--color-subtle); color: var(--color-action); }
+.fr-rowend { width: 32px; text-align: center; }
+/* the side pane is ~460px: the explanation's Part column gives way so Adds and Share stay in view */
+.rb-card-pane .fr-build td:first-child { min-width: 140px; }
+.rb-card-pane .fr-mini th, .rb-card-pane .fr-mini td { padding-left: 5px; padding-right: 5px; }

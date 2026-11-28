@@ -1,8 +1,8 @@
 // The RB review's own logic: levels, breadcrumb, opening the tree to a scope, progress per store, the answer.
 import { describe, expect, it } from 'vitest'
 import { madeUpChain, SMALL_UNDER } from '../shared/madeUpChain'
-import { combine, foldSmall, inr } from '../shared/model'
-import { answerFacts, crumbHint, crumbSteps, focusScope, gapNodes, idsOf, linesAt, rbLevels, storeProgress } from './rbModel'
+import { foldSmall } from '../shared/model'
+import { crumbHint, crumbSteps, focusScope, idsOf, linesAt, rbLevels, storeProgress } from './rbModel'
 
 const { lines: raw, sections } = madeUpChain()
 const lines = foldSmall(raw, SMALL_UNDER)
@@ -55,24 +55,12 @@ describe('opening the tree to a scope', () => {
   })
 })
 
-describe('progress and the answer', () => {
+describe('progress', () => {
   const progress = storeProgress(lines, ls => ls.filter(l => l.store === 'LKS').length ? 6 : 0)
   it('has every store once, the most waiting first, counting folded subcategories', () => {
     expect(progress).toHaveLength(8)
     expect(progress[0].store).toBe('LKS')
     expect(progress.reduce((t, x) => t + x.lines, 0)).toBe(raw.length)
     for (const x of progress) expect(x.answered).toBeGreaterThanOrEqual(25)
-  })
-  it('says where the gap to AOP is', () => {
-    const f = answerFacts(lines, 'December', progress, 3)
-    const T = combine(lines, -1), gap = T.fc - T.aop
-    expect(f.headline).toContain(`December is forecast at ${inr(T.fc)}: ${inr(Math.abs(gap))}`)
-    expect(f.regions.map(r => r.name).sort()).toEqual(['Kerala', 'Tamil Nadu'])
-    expect(f.stores.top).toHaveLength(5)
-    const stores = gapNodes(lines, l => l.store)
-    expect(f.stores.top[0].store).toBe(stores[0].name)
-    expect(stores[0].fc - stores[0].aop).toBeLessThanOrEqual(stores[1].fc - stores[1].aop)
-    expect(f.waiting).toBe(6)
-    expect(f.questions).toBe(3)
   })
 })

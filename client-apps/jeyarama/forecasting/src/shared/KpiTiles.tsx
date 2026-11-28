@@ -24,22 +24,24 @@ export function Tile({ name, value, lines, className, valueClass, testId }: { na
   )
 }
 
-export function KpiTiles({ total, header, approvedDelta = 0, extra }: {
+export function KpiTiles({ total, header, approvedDelta = 0, extra, valueOnly = false }: {
   total: Total; header: Header
   /** What approved changes add to Feather Forecast (may be negative). */
   approvedDelta?: number
   /** The page's own tile(s), after Gap to AOP. */
   extra?: ReactNode
+  /** Value only: the total spans more than one category, whose pieces do not add up (RB, 28-Nov). */
+  valueOnly?: boolean
 }) {
   const t = total, after = t.fc + approvedDelta
   const tone = aopTone({ fc: after, aop: t.aop })
   return (
     <div className="fr-kpis" data-testid="kpi-tiles">
-      <Tile name="Feather Forecast" value={inr(t.fc)} className="fr-kpi-lead" lines={[`${count(t.fq)} qty · ASP ${asp(t.fc, t.fq)}`,
+      <Tile name="Feather Forecast" value={inr(t.fc)} className="fr-kpi-lead" lines={[valueOnly ? null : `${count(t.fq)} qty · ASP ${asp(t.fc, t.fq)}`,
         approvedDelta ? <b>With approved changes {inr(after)}</b> : null]} />
-      <Tile name="Last year" value={inr(t.ly)} lines={[`${count(t.lyq)} qty · ASP ${asp(t.ly, t.lyq)}`, `Forecast ${pc(t.fc, t.ly)}`]} />
-      <Tile name="Last month" value={inr(t.r31)} lines={[`${count(t.r31q)} qty · ASP ${asp(t.r31, t.r31q)}`, `Forecast ${pc(t.fc, t.r31)}`]} />
-      <Tile name="AOP" value={inr(t.aop)} lines={[`${count(t.aq)} qty · ASP ${asp(t.aop, t.aq)}`, `Forecast is ${t.aop ? Math.round(after / t.aop * 100) : '—'}% of AOP`]} />
+      <Tile name="Last year" value={inr(t.ly)} lines={[valueOnly ? null : `${count(t.lyq)} qty · ASP ${asp(t.ly, t.lyq)}`, `Forecast ${pc(t.fc, t.ly)}`]} />
+      <Tile name="Last month" value={inr(t.r31)} lines={[valueOnly ? null : `${count(t.r31q)} qty · ASP ${asp(t.r31, t.r31q)}`, `Forecast ${pc(t.fc, t.r31)}`]} />
+      <Tile name="AOP" value={inr(t.aop)} lines={[valueOnly ? null : `${count(t.aq)} qty · ASP ${asp(t.aop, t.aq)}`, `Forecast is ${t.aop ? Math.round(after / t.aop * 100) : '—'}% of AOP`]} />
       <Tile name="Gap to AOP" value={t.aop ? inr(after - t.aop) : '—'} className={TINT[tone]} valueClass={INK[tone]} testId="kpi-gap"
         lines={[after >= t.aop ? 'On or above the plan' : `To catch up in ${header.month.name}`]} />
       {extra}
