@@ -20,6 +20,11 @@ export async function readOp<T>(name: string, payload: Record<string, unknown> =
   return (await request<{ result: T }>(`/api/app_reads/forecasting/${encodeURIComponent(name)}`, 'POST', { payload })).result
 }
 
+/** How many rows of a Table hold each value of `field`, among the rows the person may read: one call, however many rows. */
+export async function countBy(table: string, field: string, filters: Filter[]): Promise<{ label: string; value: number }[]> {
+  return (await request<{ data: { label: string; value: number }[] }>('/api/dashboard/chart', 'POST', { table, group_by: field, filters })).data
+}
+
 /** Every row of a Table, page by page. */
 export async function listAll<T>(table: string, fields: string[]): Promise<T[]> {
   const page = (start: number) => request<{ data: T[]; total: number }>(`/api/table/${encodeURIComponent(table)}?${new URLSearchParams({

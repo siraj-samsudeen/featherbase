@@ -3,7 +3,7 @@
 // subcategory is in from the live org chart (the org_chart read), and the person's own answers and questions; writes
 // forecast_change, forecast_line_review and forecast_question through the server, which checks every row
 // (server.ts). The answer to a question is the newest Comment on it.
-import { getRow, listWhere, readOp, saveRow } from '../api'
+import { countBy, getRow, listWhere, readOp, saveRow } from '../api'
 import { day, linesFrom, monthOfRun, type LineMonthRow, type OtherModelRow, type PlanRow, type RunRow, type SalesRow, type Line } from '../shared/model'
 import { ITEM_HEALTH_FIELDS, needsAttention, type Finding, type ItemHealthRow } from '../shared/findings'
 import { ITEM_FIELDS, MIX_FIELDS, STOCK_FIELDS, daysLeft, stockAsOf, type BandMixRow, type StockBandRow, type TopItemRow } from '../shared/bands'
@@ -57,16 +57,18 @@ export async function loadStore(store?: string | null): Promise<StoreSummary | n
   const runs = await officialRuns()
   const run = runs[0]
   if (!run) return null
-  // the month's Runs, one per region: a store is in one of them
-  const rows = await listWhere<{ run_id: string; store_code: string; store_short_code: string; subcategory_code: string | null; subcategory_name: string; forecast_value_before_tax: number | string }>(
-    'forecasting.forecast_line_month', ['run_id', 'store_code', 'store_short_code', 'subcategory_code', 'subcategory_name', 'forecast_value_before_tax'], [['run_id', 'in', runs.filter(r => r.horizon_from === run.horizon_from).map(r => r.run_id)]])
-  const count = new Map<string, number>()
-  for (const r of rows) count.set(r.store_short_code, (count.get(r.store_short_code) ?? 0) + 1)
+  // the month's Runs, one per region: a store is in one of them. The stores and their sizes come from one grouped
+  // count, and only the chosen store's lines are read (the whole month is ~19,000 lines, 39 pages one after another)
+  const monthRuns = ['run_id', 'in', runs.filter(r => r.horizon_from === run.horizon_from).map(r => r.run_id)] as [string, string, unknown]
+  const count = new Map((await countBy('forecasting.forecast_line_month', 'store_short_code', [monthRuns])).filter(c => c.label).map(c => [c.label, c.value]))
   const stores = [...count.keys()].sort()
   const chosen = store && count.has(store) ? store : [...count.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
   if (!chosen) return null
-  const at0 = rows.find(r => r.store_short_code === chosen)!, storeRun = runs.find(r => r.run_id === at0.run_id) ?? run
-  const mine = rows.filter(r => r.store_short_code === chosen && r.run_id === storeRun.run_id)
+  const rows = await listWhere<{ run_id: string; store_code: string; store_short_code: string; subcategory_code: string | null; subcategory_name: string; forecast_value_before_tax: number | string }>(
+    'forecasting.forecast_line_month', ['run_id', 'store_code', 'store_short_code', 'subcategory_code', 'subcategory_name', 'forecast_value_before_tax'], [['store_short_code', '=', chosen], monthRuns])
+  if (!rows.length) return null
+  const at0 = rows[0], storeRun = runs.find(r => r.run_id === at0.run_id) ?? run
+  const mine = rows.filter(r => r.run_id === storeRun.run_id)
   const month = storeRun.horizon_from.slice(0, 10)
   const [org, stored] = await Promise.all([
     orgOf(chosen),
