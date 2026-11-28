@@ -263,7 +263,8 @@ describe('asking for a load', () => {
     const first = await requestAndRun(admin, LINES)
     expect(first.execution.result).toMatch(/^Loaded 1 rows as load [0-9a-f-]{36}$/)
     expect((await sql`select triggered_by from dataset_snapshot where dataset = ${LINES} and state = 'active'`)[0].triggered_by).toBe(admin.user)
-    expect(await loadState(admin, LINES)).toMatchObject({ app: APP, source: 'copyproof-warehouse', run_check: true, run: { run_id: 'Dec-1' }, rows: 1, failed: null, pending: null })
+    expect(await loadState(admin, LINES)).toMatchObject({ app: APP, app_title: 'Copy proof', source: 'copyproof-warehouse', can_open_source: true,
+      run_check: true, run: { run_id: 'Dec-1' }, rows: 1, failed: null, pending: null })
   })
 
   test('needs a copy named, and is one load at a time', async ({ admin }) => {

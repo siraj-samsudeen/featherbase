@@ -10,7 +10,8 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { FinalJobFailure, enqueue, registerJob } from './jobs'
 import { registerCollectionAction } from './actions'
-import { getRoles } from './permissions'
+import { getRoles, hasPermission } from './permissions'
+import { packageTitle } from './runtime-packages'
 import { checkCopy, declaredCopy } from './read-only-copy'
 import type { SessionUser } from './auth'
 
@@ -63,7 +64,10 @@ export async function loadState(user: SessionUser, target: string) {
     and built_at > ${active?.activated_at ?? new Date(0)} order by built_at desc limit 1`
   return {
     app: entry.app,
+    app_title: packageTitle(entry.app) ?? entry.app,
     source: entry.dataset.source,
+    // The bar links the Data Source only for someone who may open it.
+    can_open_source: await hasPermission(user.row_id, 'Data Source', 'read'),
     run_check: Boolean(entry.dataset.runKey),
     run: copy?.last_run_key ? JSON.parse(String(copy.last_run_key)) as Record<string, unknown> : null,
     loaded_at: active ? new Date(active.activated_at as string).toISOString() : null,
