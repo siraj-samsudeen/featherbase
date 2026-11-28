@@ -35,6 +35,7 @@ const SYSTEM_WRITTEN = [
   'Access Log',
   'Access Request',
   'Activity Log',
+  'App Role From Org Chart',
   'Background Job',
   'Change Proposal',
   'Change Proposal Approver',

@@ -1155,6 +1155,12 @@
           }
         }
       ]
+    },
+    {
+      "id": "roles_from_org_chart",
+      "fromVersion": "0.14.0",
+      "toVersion": "0.15.0",
+      "operations": []
     }
   ],
   "tables": [
@@ -4255,5 +4261,8 @@
         "subcategory": "subcategory_code"
       }
     }
+  ],
+  "orgChartRoles": [
+    "Forecasting Member"
   ]
 }

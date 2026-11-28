@@ -190,6 +190,8 @@ const manifestSchema = z.object({
   datasets: datasetsDeclaration.optional(),
   // #1454: the app's own Tables its person_scope reads list within the reader's places.
   scopedTables: scopedTablesDeclaration.optional(),
+  // #1453: the app's roles everyone the org chart gives a place holds, once the instance turns it on.
+  orgChartRoles: z.array(z.string().min(1)).refine((roles) => new Set(roles).size === roles.length, 'Each org chart role is named once').optional(),
   // #642 (E4): the outside sites the app's own pages may frame.
   frameOrigins: z.array(frameOrigin).optional(),
   // #642 (E8): the app's controls in the shared top bar.
@@ -389,6 +391,11 @@ async function assertOnlyScopeProvider(pkg: RuntimePackage) {
     `Only one enabled app may provide people's scope; ${others.map(r => String(r.name)).join(', ')} already does`)
 }
 
+/** #1453: each active app's roles from the org chart, as it declares them. */
+export function orgChartRoleDeclarations(): { app: string; roles: string[] }[] {
+  return [...packages.values()].flatMap((pkg) => (pkg.manifest.orgChartRoles?.length ? [{ app: pkg.name, roles: [...pkg.manifest.orgChartRoles] }] : []))
+}
+
 /** #1454: whether an app's files are loaded and serving now (its Tables' place scope can be read). */
 export function isAppLoaded(app: string): boolean {
   return packages.has(app)
@@ -579,6 +586,9 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   validateAppJobs(manifest.name, manifest, declaredSecrets)
   validateAppCopies(manifest.name, manifest)
   validateScopedTables(manifest.name, manifest.tables, manifest.scopedTables)
+  for (const role of manifest.orgChartRoles ?? [])
+    if (!(manifest.roles ?? []).includes(role) || PLATFORM_ROLES.includes(role))
+      throw new Error(`orgChartRoles names ${role}, which is not one of the app's own roles`)
   for (const declaration of [manifest.actions, manifest.reads]) {
     if (!declaration) continue
     if (!manifest.server) throw new Error('Declared operations require a server module')
