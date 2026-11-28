@@ -793,6 +793,8 @@ describe('the command line, command by command', () => {
   test('motherduck:umbrella is a dry run unless --apply (#1397)', async () => {
     expect(await cli(['motherduck:umbrella'])).toBe('MotherDuck umbrella: none yet (raised on --apply) · 0 open review tickets under no parent\n'
       + 'not filed: the Tickets app is not installed, so there are no review tickets to file\nmotherduck umbrella: dry run; nothing was changed\n')
+    expect(await cli(['motherduck:umbrella', '--apply'])).toBe('MotherDuck umbrella: none yet (raised on --apply) · 0 open review tickets under no parent\n'
+      + 'filed 0 under no umbrella\nnot filed: the Tickets app is not installed, so there are no review tickets to file\nmotherduck umbrella: applied\n')
   })
 
   test('leavers:check is a dry run unless --apply, and --accept takes a count', async () => {
