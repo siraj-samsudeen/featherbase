@@ -204,7 +204,8 @@ try {
   // choosing a destination closes it again. Wider, the sidebar is always there.
   const goTo = async (page, nav, exact = typeof nav === 'string') => {
     if ((page.viewportSize()?.width ?? 1440) < 768) await page.getByRole('button', { name: 'Toggle menu' }).click()
-    await page.getByRole('button', { name: nav, exact }).click()
+    // #1385: the rows are links the shared sidebar draws from Tasker's data.
+    await page.locator('featherbase-sidebar').getByRole('link', { name: nav, exact }).click()
   }
   await collectContext(context)
   const page = await context.newPage()
@@ -257,7 +258,7 @@ try {
   await page.screenshot({ path: resolve(output, 'seeded-my-work.png'), fullPage: true })
 
   await goTo(page, 'Projects', false)
-  await page.getByRole('navigation', { name: 'Task views' }).getByRole('button', { name: 'September stock review', exact: true }).click()
+  await goTo(page, /^September stock review(?: ?\d+)?$/)
   await expect(page.getByText('Reconcile the first stock variance')).toBeVisible()
   await expect(page.getByLabel('Starred projects').getByRole('button', { name: 'September stock review' })).toBeVisible()
   await page.getByRole('button', { name: 'Rename' }).click()

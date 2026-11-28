@@ -97,7 +97,7 @@ tour('Tasker: a team runs its work', async ({ story, request }) => {
   let arun: Page = meena
   await s.chapter('Start a project', 30_000, async () => {
     await s.step(`Meena starts "${PROJECT}" with just a name`, async () => {
-      await meena.getByRole('link', { name: /^Projects\d*$/ }).first().click()
+      await meena.getByRole('link', { name: /^Projects$/ }).first().click()
       await meena.getByRole('textbox', { name: 'New project' }).fill(PROJECT)
       await meena.keyboard.press('Enter')
       await expect(meena.getByRole('heading', { name: PROJECT })).toBeVisible()

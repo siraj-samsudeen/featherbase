@@ -9,7 +9,8 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   // choosing a destination closes it again. Wider, the sidebar is always there.
   async function goTo(nav) {
     if ((page.viewportSize()?.width ?? 1440) < 768) await page.getByRole('button', { name: 'Toggle menu' }).click()
-    await page.getByRole('button', { name: nav, exact: typeof nav === 'string' }).click()
+    // #1385: the rows are links the shared sidebar draws from Tasker's data.
+    await page.locator('featherbase-sidebar').getByRole('link', { name: nav, exact: typeof nav === 'string' }).click()
   }
   async function capture(name, expected) {
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}: horizontal page overflow`)
@@ -27,7 +28,7 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   for (const width of [1440, 375]) {
     const size = width === 375 ? 'mobile' : 'desktop'
     await page.setViewportSize({ width, height: 900 })
-    for (const [nav, slug] of [[/^Inbox/, 'inbox'], [/^My Work/, 'my-work'], ['Together', 'together'], [/^Personal tasks/, 'personal'], ['Projects', 'projects']]) {
+    for (const [nav, slug] of [[/^Inbox/, 'inbox'], [/^My Work/, 'my-work'], ['Together', 'together'], [/^Personal Tasks/, 'personal'], ['Projects', 'projects']]) {
       await goTo(nav)
       await capture(`${size}-${slug}`, `Readable ${slug} navigation surface, closed detail, no horizontal overflow`)
     }
@@ -72,7 +73,7 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   await goTo(/^My Work/)
   await expect(page.getByRole('link', { name: title, exact: true })).toHaveCount(1)
   await capture('desktop-taken-my-work', 'Taken task appears exactly once in My Work after persisted assignment read-back')
-  await goTo(/^Personal tasks/)
+  await goTo(/^Personal Tasks/)
   await expect(page.getByRole('link', { name: title, exact: true })).toHaveCount(0)
   await goTo(/^Inbox/)
   await page.getByRole('link', { name: title, exact: true }).click()
@@ -308,7 +309,7 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   await search.fill('Saved view matching')
   await page.getByRole('button', { name: 'Update view', exact: true }).click()
   await expect.poll(async () => (await api('/api/user_settings/tasker.saved-views')).settings.views[0].setup.search).toBe('Saved view matching')
-  await page.getByRole('button', { name: /^Views/ }).click()
+  await goTo(/^Views/)
   const savedEntry = page.locator('.tasker-saved-view-directory article').filter({ hasText: 'Urgent blocked evidence' })
   await savedEntry.getByRole('button', { name: 'Rename', exact: true }).click()
   await page.getByRole('textbox', { name: 'Rename saved view' }).fill('Renamed evidence')
@@ -336,11 +337,11 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
     { nav: /^Inbox/, name: 'Inbox boundary', included: matching.task_title, excluded: scopedProject.task_title },
     { nav: /^My Work/, name: 'Work boundary', included: 'Corrected Take observation', excluded: ordinary.task_title },
     { nav: 'Together', name: 'Together boundary', included: sharedBoundary.task_title, excluded: matching.task_title },
-    { nav: /^Personal tasks/, name: 'Personal boundary', included: scopedPersonal.task_title, excluded: matching.task_title },
-    { nav: 'Blank context proof', name: 'Project boundary', included: scopedProject.task_title, excluded: matching.task_title },
+    { nav: /^Personal Tasks/, name: 'Personal boundary', included: scopedPersonal.task_title, excluded: matching.task_title },
+    { nav: /^Blank context proof(?: ?\d+)?$/, name: 'Project boundary', included: scopedProject.task_title, excluded: matching.task_title },
   ]
   for (const boundary of boundaries) {
-    await page.getByRole('navigation', { name: 'Task views' }).getByRole('button', { name: boundary.nav, exact: typeof boundary.nav === 'string' }).click()
+    await goTo(boundary.nav)
     await page.getByRole('button', { name: 'Save view', exact: true }).click()
     await page.getByLabel('View name', { exact: true }).fill(boundary.name)
     await page.getByLabel('Across all tasks', { exact: true }).check()
@@ -350,11 +351,11 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
     await page.reload()
     await expect(page.getByRole('link', { name: boundary.included, exact: true })).toBeVisible()
     if (boundary.excluded) await expect(page.getByRole('link', { name: boundary.excluded, exact: true })).toHaveCount(0)
-    await page.getByRole('button', { name: /^Views/ }).click()
+    await goTo(/^Views/)
     await page.getByRole('button', { name: new RegExp(`^${boundary.name}`) }).click()
     await expect(page.getByRole('link', { name: boundary.included, exact: true })).toBeVisible()
     await page.getByRole('combobox', { name: 'Task view', exact: true }).selectOption('')
-    await page.getByRole('navigation', { name: 'Task views' }).getByRole('button', { name: /^Inbox/ }).click()
+    await goTo(/^Inbox/)
     await expect(page.getByRole('combobox', { name: 'Task view', exact: true })).toHaveValue('')
     const saved = (await api('/api/user_settings/tasker.saved-views')).settings.views.find(view => view.name === boundary.name)
     await page.getByRole('combobox', { name: 'Task view', exact: true }).selectOption(saved.id)
@@ -388,12 +389,12 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
     const row = await api(`/api/table/tasker.task/${id}`)
     await page.goto(`${origin}/tasker/#task=${encodeURIComponent(id)}`)
     await page.getByRole('link', { name: 'Close', exact: true }).click()
-    await page.getByRole('button', { name: row.shared ? 'Together' : row.personal_tasks_owner ? /^Personal tasks/ : /^Inbox/, exact: row.shared }).click()
+    await goTo(row.shared ? 'Together' : row.personal_tasks_owner ? /^Personal Tasks/ : /^Inbox/)
     await page.getByRole('button', { name: `Add to My Focus: ${row.task_title}`, exact: true }).click()
   }
   await expect.poll(async () => (await api('/api/user_settings/Task%20Management%20Focus')).settings.task_ids).toEqual(originalFocus)
 
-  await page.getByRole('button', { name: 'Blank context proof', exact: true }).click()
+  await goTo(/^Blank context proof(?: ?\d+)?$/)
   await page.getByRole('button', { name: '☆ Add to tabs', exact: true }).click()
   await expect.poll(async () => (await api('/api/user_settings/tasker.projects')).settings.project_ids.at(-1)).toBe(projectId)
   const originalTabs = (await api('/api/user_settings/tasker.projects')).settings.project_ids

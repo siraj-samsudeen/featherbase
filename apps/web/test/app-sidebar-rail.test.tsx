@@ -7,10 +7,10 @@ import { act, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, vi } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
-import { setSession } from '../src/lib/api'
+import { api, setSession } from '../src/lib/api'
 import { mountBar } from '../src/bar/mount'
 import { FeatherbaseSidebar } from '../src/bar/sidebar'
-import { setSidebarRows, type SidebarRows } from '@featherbase/shop-floor/sidebar'
+import { readSidebarRows, setSidebarRows, type SidebarRows } from '@featherbase/shop-floor/sidebar'
 import { SIDEBAR_ROWS_GLOBAL } from 'shared'
 import { test, expect } from './pg-test'
 
@@ -48,14 +48,14 @@ const ROWS: SidebarRows = {
   ],
 }
 
-function openAppPage(as: TestClient, rows: SidebarRows = ROWS) {
+function openAppPage(as: TestClient, rows: SidebarRows = ROWS, leave?: (href: string) => void) {
   setSession(as.token!, { row_id: as.user!, email: null, full_name: null })
   setSidebarRows(rows)
   const host = document.createElement('featherbase-bar')
   host.dataset.app = 'tickets'
   host.dataset.title = 'Tickets'
   document.body.prepend(host)
-  mounted = mountBar(host)
+  mounted = mountBar(host, leave && { leave })
   const sidebar = document.createElement('featherbase-sidebar')
   sidebar.setAttribute('aria-label', 'Ticket views')
   document.body.append(sidebar)
@@ -282,6 +282,49 @@ test("a row named after one of the platform's pieces, or going to another site, 
   await framed(sidebar)
   const sections = shadow(sidebar).getByTestId('sidebar-slot-sections')
   expect(within(sections).getAllByRole('link').map((link) => link.textContent)).toEqual(['All Tickets'])
+})
+
+test("a row's own rows are drawn under it, and the open one is marked", async ({ admin }) => {
+  const { sidebar } = openAppPage(admin, { current: '#project=b', sections: [{ id: 'tasks', items: [
+    { label: 'Projects', address: '#projects', icon: 'folder', children: [
+      { label: 'Shelf Labels', address: '#project=a', count: 2 },
+      { label: 'Window Display', address: '#project=b' },
+    ] },
+  ] }] })
+  await shadow(sidebar).findByRole('link', { name: 'Projects' })
+  expect(shadow(sidebar).getByRole('link', { name: 'Window Display' })).toHaveAttribute('aria-current', 'page')
+  expect(shadow(sidebar).getByRole('link', { name: 'Shelf Labels2' })).not.toHaveAttribute('aria-current')
+  expect(shadow(sidebar).getByRole('link', { name: 'Projects' })).not.toHaveAttribute('aria-current')
+})
+
+test('the rows the app gave last can be read back, as its own tests do', async ({ admin }) => {
+  const { sidebar } = openAppPage(admin)
+  await framed(sidebar)
+  expect(readSidebarRows()).toEqual(ROWS)
+})
+
+test('a row or a section whose icon the platform does not know is drawn with the list icon', async ({ admin }) => {
+  const { sidebar } = openAppPage(admin, { sections: [
+    { id: 'views', items: [{ label: 'All Tickets', address: '#all', icon: 'rocket' as never }] },
+    { id: 'types', title: 'Types', icon: 'rocket' as never, items: [{ label: 'Backfill', address: '#backfill', icon: 'tag' }] },
+  ] })
+  await framed(sidebar)
+  const sections = shadow(sidebar).getByTestId('sidebar-slot-sections')
+  expect(within(sections).getAllByRole('link').map((link) => link.textContent)).toEqual(['All Tickets', 'Backfill'])
+  expect(within(sections).getByRole('link', { name: 'All Tickets' }).querySelector('svg')).not.toBeNull()
+})
+
+test("a row to an Admin page opens it through the platform's way there, not as a plain link", async ({ admin }) => {
+  const leave = vi.fn()
+  const { sidebar } = openAppPage(admin, { sections: [{ id: 'pages', items: [
+    { label: 'All Tickets', address: '#all', icon: 'inbox' },
+    { label: 'Edit The Register', address: '/featherbase/admin/table/example.asset', icon: 'table' },
+  ] }] }, leave)
+  await framed(sidebar)
+  const row = shadow(sidebar).getByRole('link', { name: 'Edit The Register' })
+  expect(row).toHaveAttribute('href', '/featherbase/admin/table/example.asset')
+  expect(fireEvent.click(row)).toBe(false)
+  await waitFor(() => expect(leave).toHaveBeenCalledWith('/featherbase/admin/table/example.asset'))
 })
 
 test('a sidebar the app moves within its page keeps its frame', async ({ admin }) => {
