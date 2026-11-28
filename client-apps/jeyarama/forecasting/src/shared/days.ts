@@ -57,9 +57,11 @@ export function daysOf(subs: SubDays[], days: number): DayFigures[] {
 }
 
 /** In the days: a day more than 10% off, either way, has an edge and wants a reason. */
-export const dayIsOff = (d: Pick<DayFigures, 'off'>) => Math.abs(d.off ?? 0) > OFF_POINTS
+/** A % off as the page shows it, to one decimal: what is read as −10.0% is not more than 10% off. */
+const shown = (x: number | null) => Math.abs(Math.round((x ?? 0) * 10) / 10)
+export const dayIsOff = (d: Pick<DayFigures, 'off'>) => shown(d.off) > OFF_POINTS
 /** On one day: a subcategory more than 10% off that day or over the month to date is shown, and wants a reason. */
-export const lineIsOff = (d: Pick<DayFigures, 'off' | 'mtdOff'>) => Math.abs(d.off ?? 0) > OFF_POINTS || Math.abs(d.mtdOff ?? 0) > OFF_POINTS
+export const lineIsOff = (d: Pick<DayFigures, 'off' | 'mtdOff'>) => shown(d.off) > OFF_POINTS || shown(d.mtdOff) > OFF_POINTS
 /** The day's own % off decides its edge: under (red) or over (amber); none within 10%. */
 export const edgeOf = (off: number | null) => (off == null || Math.abs(off) <= OFF_POINTS ? null : off < 0 ? 'under' : 'over')
 

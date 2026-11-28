@@ -60,4 +60,10 @@ describe('the day review (#1425)', () => {
     expect(causesProblem('above', ['Weak store execution'], [])).toBe('Weak store execution is not one of the causes for a day above the forecast')
     expect(causesProblem('below', ['Promotion or offer'], [])).toBe('Promotion or offer is not one of the causes for a day below the forecast')
   })
+
+  it('counts a day off by what the page shows: −10.04% reads −10.0%, not more than 10% off', () => {
+    expect(dayIsOff({ off: -10.04 })).toBe(false)
+    expect(dayIsOff({ off: -10.06 })).toBe(true)
+    expect(lineIsOff({ off: 3, mtdOff: 10.04 })).toBe(false)
+  })
 })

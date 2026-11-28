@@ -60,7 +60,8 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
     ...(view.aop ? [['aop', 'aq', 'AOP', `The annual plan for ${month.label}`] as Block] : []),
   ]
   const measures = ({ all: ['v', 'q', 'a'], vq: ['v', 'q'], v: ['v'], q: ['q'] } as const)[view.measure]
-  const vs = view.aop ? 3 : 2
+  // Value vs stays against last year and last month, AOP on or off (prototype b93dacc16)
+  const vs = 2
   const columns = 1 + blocks.length * measures.length + vs + 1
   const cell = (l: Item, [k, q]: Block, m: 'v' | 'q' | 'a', first: boolean, cls: string) => {
     const v = (l as unknown as Record<string, number>)[k], qty = (l as unknown as Record<string, number>)[q]
@@ -68,7 +69,7 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
   }
   const figures = (l: Item, strong: boolean) => <>
     {blocks.map((b, bi) => measures.map((m, mi) => cell(l, b, m, mi === 0, strong && bi === 0 ? 'fr-fc' : strong ? 'fr-dim' : '')))}
-    <td className="fr-b0">{pc(l.fc, l.ly)}</td><td>{pc(l.fc, l.r31)}</td>{view.aop && <td>{pc(l.fc, l.aop)}</td>}
+    <td className="fr-b0">{pc(l.fc, l.ly)}</td><td>{pc(l.fc, l.r31)}</td>
     <td className="fr-b0"><PartsBar parts={shares(l)} shape={view.shape} /></td>
   </>
 
@@ -78,13 +79,13 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
         <thead>
           <tr className="fr-blocks"><th />
             {blocks.map(b => <th key={b[2]} colSpan={measures.length} className="fr-b0"><Hover text={b[3]}>{b[2]}</Hover></th>)}
-            <th colSpan={vs} className="fr-b0"><Hover text={`Feather Forecast's value against last year, last month${view.aop ? ' and the AOP' : ''}`}>Value vs</Hover></th>
+            <th colSpan={vs} className="fr-b0"><Hover text="Feather Forecast's value against last year and last month">Value vs</Hover></th>
             <th className="fr-b0">Built from</th></tr>
           <tr><th>{firstHeading}</th>
             {blocks.map(b => measures.map((m, i) => <th key={b[2] + m} className={i === 0 ? 'fr-b0' : ''}>{{ v: 'Value', q: 'Qty', a: 'ASP' }[m]}</th>))}
             <th className="fr-b0"><Hover text={`${month.name} ${month.year - 1}`}>Last year</Hover></th>
             <th><Hover text={`Last 28 days at ${month.name}'s ${month.days} days`}>Last month</Hover></th>
-            {view.aop && <th><Hover text={`The annual plan for ${month.label}`}>AOP</Hover></th>}<th className="fr-b0" /></tr>
+            <th className="fr-b0" /></tr>
         </thead>
         <tbody>{rows.map(r => {
           const isOpen = open === r.key, look = r.look ?? []

@@ -64,7 +64,7 @@ export function PriceBands({ line, header, open: openFromPage, onOpen }: { line:
             </Fragment>)
         })}</tbody>
       </table>
-      <p className="fr-dim fr-foot">Red: stock runs out before {m.days}-{m.name.slice(0, 3)} ({left} days from {asOf}) at {m.name}'s forecast pace. Share of sales and share of stock are in pieces, over the bands that sell; “Never sold (90 d)” and bands without a published price are left out so they don't distort the shares. Stock should follow sales: a gap of more than {GAP_POINTS} points is red when stock is short of its sales share and purple when it holds too much. Click a band for its top five items.</p>
+      <p className="fr-dim fr-foot">Red: stock runs out before {m.days}-{m.name.slice(0, 3)} ({left} days from {asOf}) at {m.name}'s forecast pace. Share of sales and share of stock are in pieces, over the bands that sell; "Never sold (90 d)" and bands without a published price are left out so they don't distort the shares. Stock should follow sales: a gap of more than {GAP_POINTS} points is red when stock is short of its sales share and purple when it holds too much. Click a band for its top five items.</p>
     </section>
   )
 }
