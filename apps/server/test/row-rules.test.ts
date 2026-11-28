@@ -11,6 +11,7 @@ import { createUserWithRole, expectRefused, grantRole, makeTable, searchHits, ta
 import { connectAgent, issueToken } from './agent-driver'
 import { dropExploreSource, EXPLORE_STORE, exploreSource } from './explore-source'
 import { discoverPackages } from '../src/runtime-packages'
+import { setAppEnabled } from '../src/apps'
 import { eventVisibleTo } from '../src/realtime'
 import { getList } from '../src/query'
 import { getDoc, saveDoc } from '../src/document'
@@ -399,6 +400,13 @@ describe('#1459 an app declares its Tables\' rules', () => {
     const lines = (await admin.get<{ data: { table: string; from: string }[] }>('/api/row_rules')).data
     expect(lines.find((l) => l.table === NOTE.name)?.from).toBe('instance')
     expect(lines.find((l) => l.table === LOG.name)?.from).toBe('app')
+  })
+
+  test('a turned-off app\'s Tables are listed with no rule, as they are read', async ({ admin }) => {
+    expect(await install(admin, { [NOTE.name]: { kind: 'own' }, [LOG.name]: { kind: 'all' } })).toEqual([])
+    await setAppEnabled(APP, false)
+    const lines = (await admin.get<{ data: { table: string; rule: unknown; from: string }[] }>('/api/row_rules')).data
+    expect(lines.find((l) => l.table === LOG.name)).toMatchObject({ rule: null, from: 'none' })
   })
 
   test('the declaration names the app\'s own Tables and columns the rule can use', async ({ admin }) => {
