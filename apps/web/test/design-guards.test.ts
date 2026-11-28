@@ -460,12 +460,14 @@ describe('the Admin shell', () => {
   const rail = source('src/components/SidebarRail.tsx')
   // #1385 (slice 2): Recently Opened, Frequent and Saved Views, the platform's sidebar defaults.
   const defaults = source('src/components/SidebarDefaults.tsx')
+  // #1385 (slice 3): the one sidebar frame, which the Admin, the account pages and every app draw.
+  const frame = source('src/components/SidebarAside.tsx')
   test("#1253: a page with a sidebar has no top bar: the bar draws into the sidebar's top and foot", () => {
     expect(topBar).toMatch(/createPortal\([\s\S]{0,800}slots\.top/)
     expect(topBar).toMatch(/createPortal\([\s\S]{0,800}slots\.foot/)
     // The sidebar is still 240px, a 56px rail, beside the page.
     expect(shell).toMatch(/<SidebarAside testid="admin-sidebar"/)
-    expect(shell).toMatch(/data-testid=\{testid\}[\s\S]{0,600}\bmd:w-60\b/)
+    expect(frame).toMatch(/data-testid=\{testid\}[\s\S]{0,600}\bmd:w-60\b/)
   })
 
   test('#1253: the command bar opens as a wide box in the middle of the screen', () => {
@@ -487,7 +489,7 @@ describe('the Admin shell', () => {
     const nav = tagWith(shell, 'home-page-nav')
     expect(nav).toMatch(/\bshrink-0\b/)
     expect(nav).not.toMatch(/\bflex-1\b|overflow-y-auto/)
-    expect(tagWith(shell, 'sidebar-links')).toMatch(/\bmin-h-0 flex-1 overflow-y-auto\b/)
+    expect(tagWith(frame, 'sidebar-links')).toMatch(/\bmin-h-0 flex-1 overflow-y-auto\b/)
   })
 
   // #1236: the switcher is a menu button with each app's icon and purpose, not a select.

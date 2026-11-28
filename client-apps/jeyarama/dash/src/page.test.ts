@@ -55,6 +55,19 @@ describe('the page', () => {
       .toEqual([{ kind: 'failed' }, { kind: 'failed' }])
   })
 
+  // #1423: a refusal says why, from either read, never "couldn't open".
+  it.each<[string, Parameters<typeof pageView>[0], unknown]>([
+    ['the reader reaches nothing yet', { embed: undefined, report: report('no_reach') }, { kind: 'refused', why: 'no_reach' }],
+    ['the report is not set up', { embed: undefined, report: report('report_not_set_up') }, { kind: 'refused', why: 'report_not_set_up' }],
+    ['the session refuses a reader who reaches nothing', { embed: { ok: true, value: { refused: 'no_reach' } }, report: report('ready') }, { kind: 'refused', why: 'no_reach' }],
+    ['the session refuses a report not set up', { embed: { ok: true, value: { refused: 'report_not_set_up' } }, report: report('ready') }, { kind: 'refused', why: 'report_not_set_up' }],
+    ['the session refuses a whole-stores report', { embed: { ok: true, value: { refused: 'whole_stores_only' } }, report: report('ready') }, { kind: 'empty', why: 'whole_stores_only' }],
+    ['the session refuses a store not theirs', { embed: { ok: true, value: { refused: 'not_your_store' } }, report: report('ready') }, { kind: 'no_access' }],
+    ['the session refuses a report not theirs', { embed: { ok: true, value: { refused: 'no_access' } }, report: report('ready') }, { kind: 'no_access' }],
+  ])('says why when %s', (_why, input, view) => {
+    expect(pageView(input)).toEqual(view)
+  })
+
   // #1269: MotherDuck refused the reader's reach as too large.
   it('says the reach is too large where it would say only "couldn\'t open"', () => {
     const tooLarge = { ok: true as const, value: { too_large: true } }
@@ -438,8 +451,9 @@ describe('a report whose reader or row refuses it', () => {
     expect(said('no_access')).toEqual({ kind: 'no_access' })
   })
 
-  it("counts a report whose row isn't set up as failed", () => {
-    expect(said('report_not_set_up')).toEqual({ kind: 'failed' })
+  // #1423: not "couldn't open": the report isn't set up yet, and whoever runs Dash can fix it.
+  it("says a report whose row isn't set up isn't set up yet", () => {
+    expect(said('report_not_set_up')).toEqual({ kind: 'refused', why: 'report_not_set_up' })
   })
 })
 

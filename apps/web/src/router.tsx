@@ -1110,17 +1110,13 @@ function PermissionsPage() {
 // #100: `prefill` seeds a NEW row's initial values (JSON object of column →
 // value) — the "+ New Attendance from this Employee" affordance. Validated
 // like filters: URLs are user input, so anything that isn't a plain object
-// is discarded rather than crashing the form.
-function parsePrefill(raw: string | undefined): Record<string, unknown> | undefined {
-  if (!raw) return undefined
-  try {
-    const value: unknown = JSON.parse(raw)
-    if (value && typeof value === 'object' && !Array.isArray(value))
-      return value as Record<string, unknown>
-  } catch {
-    /* fall through */
-  }
-  return undefined
+// is discarded rather than crashing the form. It stays an object in the
+// route's search, so the address reads ?prefill={"store":"ATK"} rather than
+// an escaped JSON string (#1419); a string, as older links wrote it, still parses.
+function parsePrefill(raw: unknown): Record<string, unknown> | undefined {
+  let value = raw
+  if (typeof value === 'string') try { value = JSON.parse(value) } catch { return undefined }
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined
 }
 
 // UI-004/UI-005: the generic FormView renders and saves every Table.
@@ -1129,7 +1125,7 @@ const docRoute = createRoute({
   path: 'table/$table/row/$name',
   ...rowAddress,
   validateSearch: (search: Record<string, unknown>) => withPath(search, {
-    prefill: searchString(search.prefill),
+    prefill: parsePrefill(search.prefill),
   }),
   component: tablePage(TableFormPage),
 })
@@ -1147,7 +1143,7 @@ function TableFormPage() {
   // from one ?prefill= URL to another (or clearing it, e.g. g then n)
   // remounts the form instead of retaining the previous form's values.
   // Parsing is memoized so the object isn't rebuilt every render.
-  const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
+  const parsedPrefill = prefill
   // #772: Data Source's New page is the guided connect page; a MotherDuck
   // source's page shows its token by last four only (any other source keeps the form).
   if (table === 'Data Source') {
@@ -1163,7 +1159,7 @@ function TableFormPage() {
         <NavPathBar />
         <PaneSplit onFocus={(pane) => nav.push({ screen: 'row', table: pane.table, row: pane.row, ...(nav.step.view ? { view: nav.step.view } : {}) })}>
           <FormView
-            key={`${table}/${name}/${prefill ?? ''}`}
+            key={`${table}/${name}/${prefill ? JSON.stringify(prefill) : ''}`}
             table={table}
             name={name}
             prefill={parsedPrefill}
@@ -1178,14 +1174,14 @@ const newRowRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'table/$table/new',
   ...tableAddress,
-  validateSearch: (search: Record<string, unknown>) => ({ prefill: searchString(search.prefill) }),
+  validateSearch: (search: Record<string, unknown>) => ({ prefill: parsePrefill(search.prefill) }),
   component: tablePage(NewRowPage),
 })
 
 function NewRowPage() {
   const { table, tableMeta } = useTableAddress()
   const { prefill } = newRowRoute.useSearch()
-  const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
+  const parsedPrefill = prefill
   // #1021: a view holds no rows; a new row is added to its base.
   if (tableMeta.kind === 'view' && tableMeta.view_of)
     return (
@@ -1203,7 +1199,7 @@ function NewRowPage() {
       </div>
     )
   if (table === 'Data Source') return <div data-testid="doc-page"><ConnectSource /></div>
-  return <div data-testid="doc-page"><FormView key={`${table}/new/${prefill ?? ''}`} table={table} name="" isNew prefill={parsedPrefill} /></div>
+  return <div data-testid="doc-page"><FormView key={`${table}/new/${prefill ? JSON.stringify(prefill) : ''}`} table={table} name="" isNew prefill={parsedPrefill} /></div>
 }
 
 // #1276 (B3): Explore is retired. An old Explore address opens the list it

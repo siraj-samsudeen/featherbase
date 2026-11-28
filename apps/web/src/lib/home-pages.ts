@@ -11,6 +11,8 @@ export interface HomePageShortcut {
   label: string
   type?: string // table | report | dashboard | url
   link_to: string
+  /** What the card says under its label; without it, the kind of place it opens. */
+  description?: string
 }
 
 interface HomePageCard {

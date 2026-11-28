@@ -27,6 +27,10 @@ function routeFor(s: HomePageShortcut): string {
   }
 }
 
+/** Under a shortcut's label: its own description, else the kind of place it opens, in words (never the raw type). */
+const KIND: Record<string, string> = { table: 'Table', report: 'Report', dashboard: 'Dashboard', url: 'Page' }
+const shortcutNote = (s: HomePageShortcut) => s.description?.trim() || KIND[s.type ?? 'table'] || 'Page'
+
 export function HomePageView({ name }: { name: string }) {
   const navigate = useNavigate()
   const pages = useHomePages()
@@ -122,7 +126,7 @@ export function HomePageView({ name }: { name: string }) {
             // where the Admin's router would answer "Page not found".
             <a key={s.label} href={s.link_to} data-testid={`shortcut-${s.label}`} className={cardClasses('block p-4 text-left transition hover:bg-hover')}>
               <div className="text-sm font-medium text-ink">{s.label}</div>
-              <div className="mt-1 text-xs text-ink-muted">{s.type}</div>
+              <div className="mt-1 text-xs text-ink-muted">{shortcutNote(s)}</div>
             </a>
           ) : (
             <button
@@ -132,7 +136,7 @@ export function HomePageView({ name }: { name: string }) {
               className={cardClasses('p-4 text-left transition hover:bg-hover')}
             >
               <div className="text-sm font-medium text-ink">{s.label}</div>
-              <div className="mt-1 text-xs text-ink-muted">{s.type ?? 'table'}</div>
+              <div className="mt-1 text-xs text-ink-muted">{shortcutNote(s)}</div>
             </button>
           ))}
         </div>

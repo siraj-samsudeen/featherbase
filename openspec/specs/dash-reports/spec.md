@@ -28,7 +28,7 @@ Dash SHALL send a Dive only the filters its report row names, filled from the re
 #### Scenario: A whole-stores report for a section reader
 
 - **WHEN** a Team Leader opens the whole-stores report from its address
-- **THEN** the page says the report covers whole stores, so it isn't available for their job, and nothing is sent to the Dive
+- **THEN** the page says the report covers whole stores only, and nothing is sent to the Dive
 
 ### Requirement: Reach follows the person's current job
 A reader's reach SHALL come from their current job assignments: their section's subcategories for Staff and Team Leaders, their floor's sections for Floor Managers, the whole store for Store Managers, the stores of their cluster for Cluster Managers, and every store for directors. Head office staff SHALL reach nothing, unless they hold the Dash All-Stores Reader role.
@@ -55,12 +55,12 @@ A report that takes no filter SHALL open for someone given it even when their jo
 - **THEN** the first opens and the second is refused
 
 ### Requirement: A report that can't open says so
-A report whose Dive can't open SHALL say the report couldn't open, with a way to try again. When the reader's request gets no answer at all, because it failed on the way or ran out of time, Dash SHALL instead say it couldn't be reached and ask the reader to check their connection, with a way to try again. A report the reader can't open, or that doesn't exist, SHALL say they can't open it.
+A report whose Dive can't open SHALL say the report couldn't open, with a way to try again. When the reader's request gets no answer at all, because it failed on the way or ran out of time, Dash SHALL instead say it couldn't be reached and ask the reader to check their connection, with a way to try again.
 
 #### Scenario: An unknown report
 
 - **WHEN** a reader with reports opens an address naming a report that doesn't exist
-- **THEN** they are told they can't open this report, and their own reports stay listed
+- **THEN** they are told they don't have this report, and their own reports stay listed
 
 #### Scenario: The Dive can't be reached
 
@@ -71,6 +71,14 @@ A report whose Dive can't open SHALL say the report couldn't open, with a way to
 
 - **WHEN** the same Team Leader opens the sales report while their connection is down
 - **THEN** the page says Dash couldn't be reached and to check their connection, offers to try again, and does not say the report couldn't open
+
+### Requirement: A refused report says why
+A report Dash refuses SHALL say why in plain words: the reader doesn't have it, nothing is set up for them yet, or the report isn't set up yet. Each refusal SHALL be recorded for whoever runs Dash, with the person, the report and the reason.
+
+#### Scenario: Nothing set up for the reader yet
+
+- **WHEN** a Department Manager whose department's sections aren't confirmed yet opens the sales report
+- **THEN** the page says they have no stores or sections set up for this report yet and to ask their Store Manager to confirm their department's sections, and does not say the report couldn't open
 
 ### Requirement: Staff screens name stores, never codes
 Dash SHALL name a store by its name and a subcategory by its name on every staff screen, never by a plant, short or subcategory code.

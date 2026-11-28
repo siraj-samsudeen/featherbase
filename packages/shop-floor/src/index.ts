@@ -44,3 +44,5 @@ export { LinkLine, LinkSection, TickMark, ToneChip, type ChipTone } from './Link
 export { FindingCard, type FindingTone } from './FindingCard'
 export { cellClasses, headCellClasses, RowDensityContext, TABLE_CLASSES, useRowDensity, type RowDensity } from './TableLook'
 export { placeCard, useTopLayer, type TopLayerPlace } from './TopLayer'
+export { PartsBar, partsText, type Part } from './PartsBar'
+export { ChipButton, ChoiceChip } from './ChipButton'

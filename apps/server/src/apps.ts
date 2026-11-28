@@ -549,6 +549,12 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
     if (meta.kind !== 'sub_table' && (!ownsClientRoot || Object.hasOwn(runtimeManifest?.records ?? {}, meta.name)))
       await ensureHomePageForTable(meta.name, meta.module)
   }
+  // #1418: its read-only copies come with its Tables, before its grants, so a
+  // grant may name one; each is empty until someone loads it.
+  if (manifest.runtime_package) {
+    const { selectedDatasets } = await import('./runtime-packages')
+    await (await import('./read-only-copy')).syncAppCopies(manifest.name, selectedDatasets(manifest.name))
+  }
   const access = await provisionAccess(manifest)
   // Wire its doc_events, scheduler jobs, and method overrides BEFORE the
   // fixtures materialize, so fixture saves run under the app's own hooks the

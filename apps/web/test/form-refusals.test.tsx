@@ -238,9 +238,10 @@ test('a Reference search the server refuses offers no matches rather than failin
   await renderApp(`/featherbase/admin/table/frf-visit/row/visit-1`, clerk)
   await waitFor(() => expect(field('depot')).toBeInTheDocument(), { timeout: 8000 })
   fireEvent.change(field('depot'), { target: { value: 'Ko' } })
+  // the search has gone out by now (it waits 150ms); the server's refusal then closes the list, however slow it is
   await new Promise((r) => setTimeout(r, 400))
+  await waitFor(() => expect(screen.queryByTestId('link-options-depot')).not.toBeInTheDocument(), { timeout: 8000 })
   expect(screen.queryAllByTestId('link-option')).toHaveLength(0)
-  expect(screen.queryByTestId('link-options-depot')).not.toBeInTheDocument()
 })
 
 test('a file attached to a row deleted meanwhile is refused and nothing is attached', async ({ admin }) => {
