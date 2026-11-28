@@ -20,7 +20,9 @@ export function BuildUp({ l, month, storeStep, onHelp }: { l: Item; month: Heade
   // one table that can be checked by hand (Siraj, 28-Nov): its own value × weight used = adds, the adds summing to
   // Feather Forecast exactly and the shares to exactly 100% (explanation.ts)
   const st = l.step ?? storeStep, e = explain(l.bases, l.rebal, l.price, l.fc)
-  const rupees = (v: number) => `${v < 0 ? '−' : ''}₹${count(Math.abs(Math.round(v)))}`
+  // summary amounts on the lakh/crore ladder, as everywhere on these screens (ADR 750); the adds still sum to the
+  // forecast exactly underneath (explanation.ts), only their display is readable
+  const rupees = (v: number) => inr(Math.round(v))
   // above one subcategory the steps differ: their range, as the prototype's card ("×0.57 to ×2")
   const steps = isGroup(l) ? l.members.map(m => m.step).filter(Boolean) : []
   const range = steps.length ? (Math.min(...steps) === Math.max(...steps) ? ` (×${steps[0]})` : ` (×${Math.min(...steps)} to ×${Math.max(...steps)})`) : ''
