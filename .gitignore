@@ -46,3 +46,6 @@ apps/server/test/.*/
 apps/web/tours-report/
 # pnpm check:scenarios: which runner proves each spec scenario
 scenarios-report/
+
+# Dash's platform tests are copied here while they run (client-apps/jeyarama/dash/scripts/platform-test.sh)
+apps/server/test/dash-platform-*/
