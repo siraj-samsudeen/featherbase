@@ -88,14 +88,19 @@ const Figures = ({ f }: { f: DayFigures }) => <>
   <td className="fr-mtd">{inr(f.mtdFc)}</td><td className="fr-mtd">{f.mtdSold == null ? '—' : inr(f.mtdSold)}</td><td className="fr-mtd"><Off x={f.mtdOff} /></td>
 </>
 
-export function DayReview({ section, subs, month, explanations, rowIdOf, onSave }: {
+export function DayReview({ section, subs, month, explanations, rowIdOf, onSave, monthLink, initialScope = '', onScope }: {
   section: string; subs: SubDays[]; month: DayMonth; explanations: DayExplanation[]
   /** A subcategory's row in the Run, for its RecordLink. */
   rowIdOf: (sub: string) => string | undefined
   onSave: (d: ExplainDraft, replacing?: DayExplanation) => Promise<void>
+  /** The month's review, first in the breadcrumb above the days ("December › Kurti"); none: the scope alone. */
+  monthLink?: { label: string; href: string }
+  /** Whose days open first: the section ('') or one subcategory; a change is reported to `onScope`. */
+  initialScope?: string; onScope?: (scope: string) => void
 }) {
   const loaded = subs.length ? subs[0].sold.findIndex(s => s == null) : 0, lastLoaded = loaded === -1 ? month.days : loaded
-  const [scope, setScope] = useState<string>('')
+  const [scope, setScopeState] = useState<string>(subs.some(s => s.name === initialScope) ? initialScope : '')
+  const setScope = (s: string) => { setScopeState(s); onScope?.(s) }
   const [mode, setMode] = useState<'all' | 'one'>('all')
   const [day, setDay] = useState(Math.max(1, lastLoaded))
   const [only, setOnly] = useState(true)
@@ -181,7 +186,10 @@ export function DayReview({ section, subs, month, explanations, rowIdOf, onSave 
 
   const bar: ReactNode = (
     <div className="fr-day-bar">
-      <p><b>{scopeName}</b> <span className="fr-dim">· {inScope.length} {inScope.length === 1 ? 'subcategory' : 'subcategories'}</span></p>
+      <nav aria-label="Where you are" className="fr-day-crumb" data-testid="crumbs">
+        {monthLink && <><a className="fr-link" href={monthLink.href}>{monthLink.label}</a> <span className="fr-dim">›</span> </>}
+        <b>{scope && rowIdOf(scope) ? <RecordLink table="forecasting.forecast_line_month" rowId={rowIdOf(scope)!} name={scope} onNavigate={() => {}} /> : scopeName}</b>
+        {' '}<span className="fr-dim">· {inScope.length} {inScope.length === 1 ? 'subcategory' : 'subcategories'}</span></nav>
       <div className="fr-day-controls">
         <Select aria-label="Whose days" value={scope} onChange={e => { setScope(e.target.value); setEditing(null) }}>
           <option value="">{section} (section)</option>

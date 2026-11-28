@@ -276,7 +276,7 @@ export function ForecastingApp() {
               reviewHref={(line, band) => `${address('section', sectionInAddress())}#${new URLSearchParams({ open: line, ...(band ? { band } : {}) })}`}
               onReview={href => { history.pushState(null, '', href); window.dispatchEvent(new PopStateEvent('popstate')) }} />
             : view === 'days' ? <DayReviewPage key={asSection ? asSection.place : viewer.id} viewer={asSection ?? viewer}
-              href={line => address('section', { line, ...sectionInAddress() })} />
+              href={line => address('section', { line, ...sectionInAddress() })} monthHref={address('section', sectionInAddress())} />
             : view === 'forecasts' ? (DATASET ? <ReviewMonthPage ctx={ctx} /> : <WorkspacePage ctx={ctx} />)
               : view === 'numbers' ? <NumbersPage ctx={ctx} />
               : view === 'mine' ? <MyNumbersPage key={viewer.id} ctx={ctx} onSeen={() => setSeen(t => t + 1)} />
