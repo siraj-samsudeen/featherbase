@@ -7,7 +7,14 @@ const lines = linesFrom({ lines: fixture.forecast_line_month, sales: fixture.sal
 const line = (name: string, category: string, growth: number): Line => ({ ...lines[0], name, category, growth })
 
 describe('the Team Leader model (#1419)', () => {
-  it("reads the other models as the warehouse names them (xgboost, lightgbm), by day or summed to the month", () => {
+  it('reads the other models as the warehouse names them (xgboost, lightgbm)', () => {
+    const others = (fixture.other_model_day as { model: string }[]).map(o => ({ ...o, model: o.model.toLowerCase() }))
+    const lower = linesFrom({ lines: fixture.forecast_line_month, sales: [], plans: [], others } as unknown as CopiedRows, '9001')
+    expect(lower.every(l => l.xgb > 0 && l.lgbm > 0)).toBe(true)
+    expect(lower.map(l => [l.xgb, l.lgbm])).toEqual(lines.map(l => [l.xgb, l.lgbm]))
+  })
+
+  it("gives the same other models from the day rows and from the same rows summed to the month (other_model_month)", () => {
     const at = { lines: fixture.forecast_line_month, sales: [], plans: [] }
     const days = (fixture.other_model_day as { model: string }[]).map(o => ({ ...o, model: o.model.toLowerCase() }))
     // the month copy: the same days summed per model, store and subcategory, as fb_other_models_month sums them
