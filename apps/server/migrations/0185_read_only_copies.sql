@@ -33,4 +33,6 @@ alter table featherbase.table_copy add constraint table_copy_source_check check 
     else query is not null and data_source is null
   end);
 
-create schema if not exists featherbase_copy;
+-- The loads' schema, featherbase_copy, is made with the first copy an app
+-- installs (read-only-copy.ts), as an app's own schema is: a database this
+-- migration has run on holds nothing else new.

@@ -91,6 +91,7 @@ function storedColumns(dataset: DatasetDeclaration): string {
 }
 
 async function createLoads(target: string, dataset: DatasetDeclaration): Promise<void> {
+  await sql.unsafe(`create schema if not exists ${q(COPY_SCHEMA)}`)
   await sql.unsafe(`create table ${loadsRelation(target)} (snapshot_id varchar(140) not null, row_id text not null, ${storedColumns(dataset)})
     partition by list (snapshot_id)`)
 }
