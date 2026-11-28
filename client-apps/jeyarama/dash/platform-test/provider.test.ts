@@ -38,7 +38,7 @@ async function setup(admin: TestClient, createUser: (o: { email: string }) => Pr
   for (const [code, name, cluster, operating_region] of [['LKS', 'Lakeside', 'NORTH', 'East'], ['HIL', 'Hillview', 'NORTH', 'East'], ['RIV', 'Riverside', 'SOUTH', 'West']])
     await save('Site', { code, name, is_store: true, cluster, operating_region })
   await save('Site', { code: 'WHS', name: 'Warehouse', is_store: false, cluster: 'NORTH' })
-  await save('Site', { code: 'HOF', name: 'Head Office', is_store: false })
+  await save('Site', { code: 'HOF', name: 'Head Office', is_store: false, operating_region: 'East' })
   for (const [plant_code, plant_type, site] of [['9901', 'Store', 'LKS'], ['9981', 'Warehouse', 'LKS'], ['9902', 'Store', 'HIL'], ['9903', 'Store', 'RIV'], ['9980', 'Warehouse', 'WHS']])
     await save('Plant', { plant_code, plant_type, site })
   for (const [row_id, name] of [['LKS-F1', 'Ground'], ['LKS-F2', 'First']]) await save('Store Floor', { row_id, name, site: 'LKS' })
@@ -164,17 +164,20 @@ describe('the org_chart scope provider on the platform, per job (#967)', () => {
     await expect(resolvePersonScope(await reader([{ job: 'Cluster Manager', site: 'HOF' }]), await binding())).rejects.toMatchObject(new NoPersonScope('scope'))
   })
 
-  test('a Director, Managing Director or Chief Operating Officer gets all stores, wherever their job row sits', async ({ admin, createUser }) => {
+  // #1458 (owner, 28-Nov-2026): their own region only; Owner Directors (business roles) see the whole company.
+  test("a Director, Managing Director or Chief Operating Officer gets the stores of their job site's region, a head office's too", async ({ admin, createUser }) => {
     const { reader } = await setup(admin, createUser)
-    for (const job of ['Director', 'Managing Director', 'Chief Operating Officer'])
-      expect(stores(await resolvePersonScope(await reader([{ job, site: 'HOF' }]), await binding()))).toEqual(['9901', '9902', '9903'])
+    for (const job of ['Director', 'Managing Director', 'Chief Operating Officer']) {
+      expect(stores(await resolvePersonScope(await reader([{ job, site: 'HOF' }]), await binding()))).toEqual(['9901', '9902'])
+      expect(stores(await resolvePersonScope(await reader([{ job, site: 'RIV' }]), await binding()))).toEqual(['9903'])
+    }
   })
 
   // #1280 (owner, 18-Nov-2026): a site's status, then its kind, decides whether it is an open store; is_store only where neither is set.
   test('a Planned or Closed store, and a site of another kind, are never stores; a Store by kind is', async ({ admin, createUser }) => {
     const { reader, save } = await setup(admin, createUser)
     const site = async (code: string, plant_code: string, row: Record<string, unknown>) => {
-      await save('Site', { code, name: `Made-up ${code}`, ...row })
+      await save('Site', { code, name: `Made-up ${code}`, operating_region: 'East', ...row })
       await save('Plant', { plant_code, plant_type: 'Store', site: code })
     }
     await site('PLN', '9904', { is_store: true, site_kind: 'Store', status: 'Planned' })
@@ -182,7 +185,7 @@ describe('the org_chart scope provider on the platform, per job (#967)', () => {
     // A Group is virtual: even marked is_store, it is no store.
     await site('GHO', '9906', { is_store: true, site_kind: 'Group' })
     await site('NEW', '9907', { is_store: false, site_kind: 'Store', status: 'Open' })
-    expect(stores(await resolvePersonScope(await reader([{ job: 'Director', site: 'HOF' }]), await binding()))).toEqual(['9901', '9902', '9903', '9907'])
+    expect(stores(await resolvePersonScope(await reader([{ job: 'Director', site: 'HOF' }]), await binding()))).toEqual(['9901', '9902', '9907'])
   })
 
   test("a Store Manager or a section's staff at a site that is no open store reach none of its plants", async ({ admin, createUser }) => {
@@ -199,9 +202,9 @@ describe('the org_chart scope provider on the platform, per job (#967)', () => {
 
   test('on an instance whose Site has no site_kind or status yet, is_store alone decides and nothing fails', async ({ admin, createUser }) => {
     const { reader, save } = await setup(admin, createUser, { withoutSiteKind: true })
-    await save('Site', { code: 'OLD', name: 'Made-up OLD', is_store: true })
+    await save('Site', { code: 'OLD', name: 'Made-up OLD', is_store: true, operating_region: 'East' })
     await save('Plant', { plant_code: '9904', plant_type: 'Store', site: 'OLD' })
-    expect(stores(await resolvePersonScope(await reader([{ job: 'Director', site: 'HOF' }]), await binding()))).toEqual(['9901', '9902', '9903', '9904'])
+    expect(stores(await resolvePersonScope(await reader([{ job: 'Director', site: 'HOF' }]), await binding()))).toEqual(['9901', '9902', '9904'])
   })
 
   test('Head office staff reach nothing', async ({ admin, createUser }) => {

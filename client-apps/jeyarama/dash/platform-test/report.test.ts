@@ -40,10 +40,12 @@ async function setup(admin: TestClient, createUser: CreateUserFn) {
   const user = async (name: string) => createUser({ email: `${name}@example.test`, roles: [READER] })
   const people = { manager: await user('p-101'), leader: await user('p-103'), nobody: await user('p-999'), headOffice: await user('p-998') }
   const save = (table: string, row: Record<string, unknown>) => saveRow(admin, table, row)
-  for (const [code, name] of [['LKS', 'Lakeside'], ['HIL', 'Hillview']]) await save('Site', { code, name, is_store: true })
-  await save('Site', { code: 'HOF', name: 'Head Office', is_store: false })
+  for (const region of ['East', 'West']) await save('Operating Region', { region })
+  for (const [code, name, operating_region] of [['LKS', 'Lakeside', 'East'], ['HIL', 'Hillview', 'East'], ['RIV', 'Riverside', 'West']]) await save('Site', { code, name, is_store: true, operating_region })
+  await save('Site', { code: 'HOF', name: 'Head Office', is_store: false, operating_region: 'East' })
   await save('Plant', { plant_code: '9901', plant_type: 'Store', site: 'LKS' })
   await save('Plant', { plant_code: '9902', plant_type: 'Store', site: 'HIL' })
+  await save('Plant', { plant_code: '9903', plant_type: 'Store', site: 'RIV' })
   for (const [row_id, name] of [['LKS-S1', 'Sarees'], ['LKS-S2', 'Lehenga']]) await save('Section', { row_id, name, site: 'LKS', status: 'Active' })
   for (const [code, name] of [['010101001', 'Silk'], ['010101003', 'Bridal']]) await save('Subcategory', { row_id: code, subcategory: name, subcategory_type: 'Merchandise' })
   await save('Section Subcategory', { section_subcategory_id: 'P1', store: 'LKS', subcategory: '010101001', section: 'LKS-S1', starts_on: '2026-01-01' })
@@ -85,8 +87,8 @@ describe('the report reads on the platform', () => {
     await expect(report(leader, { store: '9902' })).rejects.toMatchObject({ status: 417 })
   })
 
-  // #1192: Dash All-Stores Reader reaches every store, through the platform's own scope.
-  test('open every store for a head-office holder of Dash All-Stores Reader, and refuse a plain head-office reader', async ({ admin, createUser }) => {
+  // #1192: Dash All-Stores Reader reaches every store of the holder's region (#1458), through the platform's own scope.
+  test("open every store of their region for a head-office holder of Dash All-Stores Reader, no other region's, and refuse a plain head-office reader", async ({ admin, createUser }) => {
     const { headOffice, save } = await setup(admin, createUser)
     const holder = await createUser({ email: 'p-997@example.test', roles: [READER, 'Dash All-Stores Reader'] })
     await save('Employee', { employee_code: '997', name: 'Made-up Data Steward', person: holder.user, status: 'Current' })
@@ -98,6 +100,7 @@ describe('the report reads on the platform', () => {
     expect([lakeside.status, body.result.state]).toEqual([200, 'ready'])
     expect(body.result.heading).toEqual({ name: 'Lakeside', sections: [], reasons: [{ basis: 'all_stores_reader', sections: [] }] })
     expect((await report(holder, { store: '9902' })).heading?.name).toBe('Hillview')
+    await expect(report(holder, { store: '9903' })).rejects.toMatchObject({ status: 417 })
     expect((await holder.post<{ result: unknown }>('/api/app_reads/dash/reach_problem', { payload: {} })).result).toEqual({ problems: [] })
     expect((await read(headOffice, '9901')).status).toBe(403)
     expect((await headOffice.post<{ result: unknown }>('/api/app_reads/dash/reach_problem', { payload: {} })).result).toEqual({ problems: ['head_office'] })
