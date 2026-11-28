@@ -311,12 +311,13 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
       const run = async () => {
         try { await withSecretsKept(ready.kept, async () => { await handler(context) }) }
         finally {
-          await base.close()
           documentScopeOpen = false
           if (pendingOwners) {
             await pendingOwners.catch(() => {})
             documentFailure ??= new AppError('ValidationError', 'Job returned without awaiting its document owner scope')
           }
+          // Last: it rethrows a base Table refusal the app caught, which must not skip the cleanup above (review, 28-Nov).
+          await base.close()
         }
         if (documentFailure) throw documentFailure
         if (refusedGrant) throw new FinalJobFailure(refusedGrant)
