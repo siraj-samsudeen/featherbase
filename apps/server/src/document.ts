@@ -2113,6 +2113,7 @@ function rowCapabilitiesFor(table: string, name: string, user: string): Promise<
         await assertBoundScope(meta, user, action)
       } else if (meta.kind === 'settings' && action === 'write') {
         await assertPermission(user, table, action)
+        await assertSettingsRule(meta, user)
         return
       } else if (action === 'write' && await isSharedWith(user, table, name, 'write')) {
         return
@@ -2236,10 +2237,18 @@ async function linksOutsideViews(meta: TableMeta, row: RowValues): Promise<strin
   return out
 }
 
+// #1459: a Settings Table's one row is read and saved only by its row rule (every row, or System Managers only), as
+// any other Table's rows are. Its reads and saves do not pass assertUserPermissions, so the rule is asked here.
+async function assertSettingsRule(meta: TableMeta, user: string): Promise<void> {
+  if (await isPrivileged(user)) return
+  if (!(await rowWithinRule(meta, user, {}))) throw await ruleRefusal(meta, {})
+}
+
 // SET-001: read a Settings Table's one instance from the EAV store, applying
 // column defaults for any value not yet set. Its name is the Table name.
 async function getSingle(meta: TableMeta, user: string): Promise<RowValues> {
   await assertPermission(user, meta.name, 'read')
+  await assertSettingsRule(meta, user)
   const rows = await sql`select field, value from single_value where table_name = ${meta.name}`
   const stored = new Map(rows.map((r) => [r.field as string, r.value as string | null]))
   // A Settings Table holds exactly one row, and its Row ID is the Table name.
@@ -2300,6 +2309,7 @@ async function saveSingleImpl(
   await assertSecurityWriter(table, user)
   if (meta.kind !== 'settings') throw new AppError('ValidationError', `${table} is not a Settings Table`)
   await assertPermission(user, table, 'write')
+  await assertSettingsRule(meta, user)
   const writeTiers = await permittedColumns(user, table, 'write', 'Administrator')
   let clean: RowValues = {}
   // #465: one transaction, and a version like any other row's save, so a

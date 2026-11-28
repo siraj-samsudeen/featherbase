@@ -8,6 +8,7 @@ import { archiveTable, unarchiveTable } from './table-archive'
 import { assertSystemManager } from './permissions'
 import { ensureHomePageForTable } from './home-pages'
 import { rowRuleReport, setRowRule } from './row-rule'
+import { logAccess } from './audit'
 import { who, type Env } from './route-context'
 
 export const tableDefRoutes = new Hono<Env>()
@@ -27,6 +28,8 @@ tableDefRoutes.post('/api/table_def', async (c) => {
   const body = (await c.req.json()) as Record<string, unknown>
   rejectSystemClaim(body)
   const meta = await createTable(body)
+  // #1459: who reads its rows is in the Access Log however it was said
+  if (body.row_rule != null) await logAccess(who(c), 'set_row_rule', { table: meta.name, scope: JSON.stringify(body.row_rule).slice(0, 140) })
   // #80: a table you build never vanishes from navigation — its module's
   // home page is created on demand and the table's link appended.
   if (meta.kind !== 'sub_table') await ensureHomePageForTable(meta.name, meta.module)
@@ -123,5 +126,9 @@ tableDefRoutes.put('/api/table_def/:name', async (c) => {
   const { drop_columns, remove_columns, ...def } = body
   if (remove_columns !== undefined && !(Array.isArray(remove_columns) && remove_columns.every((c) => typeof c === 'string')))
     throw new AppError('ValidationError', 'remove_columns must be a list of column names')
-  return c.json(await updateTable(c.req.param('name'), def, { drop_columns, remove_columns }))
+  const updated = await updateTable(c.req.param('name'), def, { drop_columns, remove_columns })
+  // #1459: a rule changed with the rest of the definition is in the Access Log too
+  if (Object.hasOwn(def, 'row_rule'))
+    await logAccess(who(c), 'set_row_rule', { table: updated.name, scope: (def.row_rule == null ? 'cleared' : JSON.stringify(def.row_rule)).slice(0, 140) })
+  return c.json(updated)
 })

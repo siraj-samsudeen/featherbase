@@ -6,7 +6,8 @@ figure used to check it is made up (`pnpm dev jeyarama/dash --made-up-data`); pr
 
 ## Decisions for the owner
 
-Each has a recommendation, and the recommendation is what is built.
+Each has a recommendation, and the recommendation is what is built. (Found on the way: the base branch did not
+load Forecasting, since fixed there; this change removes `scopedTables` and its unused `keys` altogether.)
 
 1. **Existing Tables keep reading whole after the upgrade, said out loud.** The migration gives every
    platform Table and every Table an instance already made the rule `all` (every row, to whoever a grant
@@ -29,14 +30,17 @@ Each has a recommendation, and the recommendation is what is built.
    any Tasker Member reads every shared task. Their mandatory access policies (roles, shared, inherited) stay
    as they are. *Recommended: Equipment by `places` (its place is a store) in its own change; Tasker stays.*
 5. **A screen for the rule.** A System Manager sets a Table's rule through the API or MCP today
-   (`PUT /api/table_def/<table>/row_rule`). The Table builder and the import wizard make a Table with no
-   rule, so it is closed until one is set. A UI change takes the UI route (mockups, checklist, verifier),
+   (`PUT /api/table_def/<table>/row_rule`). The Table builder, the import wizard, and connecting, reflecting or
+   copying an outside database all make a Table with no rule, so it is closed until one is set. A UI change takes the UI route (mockups, checklist, verifier),
    which needs the owner. *Recommended: add "Who reads its rows" to the Table's settings and to both
    creation flows before this reaches a live instance.*
-6. **The base branch does not load Forecasting.** On `issue-1453-app-roles-from-org-chart` the manifest's
-   `scopedTables` names `forecast_month` (a Date) as a key, which the platform refuses, so the whole app is
-   rejected at start. This change removes `scopedTables` (and its unused `keys`), which fixes it here; the
-   two draft PRs below this one still carry it.
+6. **Shares and the rule.** A share opens one row to one person whatever the Table's rule says, and an app's
+   action can make one for a reader the row's owner names. That is what a share has always meant, so it is
+   kept. *Recommended: keep; add "no sharing" to a rule only if a Table turns up that needs it.*
+7. **What an app reads for itself.** An app's declared reads of instance Tables (`baseTables`, the org-chart
+   scope provider) and its jobs run as the platform, not as the person, so the instance Table's rule does not
+   narrow them; what the app then shows each person is the app's business. *Recommended: keep; the app's
+   declaration is what a System Manager approved at install.*
 
 ## What the audit found
 
@@ -101,6 +105,10 @@ What the rule takes in, and what stays beside it:
 - **One place applies it.** `row-rule.ts` gives the SQL condition (`scopedWhere`, so lists, counts, charts,
   search, row titles, related filters, the rows behind a Comment) and the single-row check
   (`assertUserPermissions`, so opening a row and every write). Nothing reads a rule on its own.
+- **A share still opens its one row.** A System Manager's share of a row, or one an app's action makes for a
+  reader its owner names, is the stated exception to the Table's grants and now to its rule: the row, its
+  Comments and Files open to that person; lists and counts do not include it. Whether a rule should be able
+  to forbid sharing is the owner's call (decision 6).
 - **A System Manager is not narrowed**, as Data Scope does not narrow them. The server's own actor is one.
 - **View As** runs a read as the person viewed, so their rule applies; it offers no change, as before.
 - **Jobs and an app's declared reads** of instance Tables (`baseTables`, the scope provider) run as the
@@ -112,7 +120,8 @@ What the rule takes in, and what stays beside it:
   serves; a deleted row, which can no longer be judged, is sent to System Managers only.
 - **A connected Table** (rows on an outside database) is `all` or closed. Its rows are not ours to filter by
   creator or place yet; say so rather than half-apply a rule.
-- **A Settings Table** has one row: `all` or `administrators`.
+- **A Settings Table** has one row: `all` or `administrators`. Its reads and saves take their own path, so the
+  rule is asked there too.
 - **An app declares its rules in its manifest** (`rowRules`, Table → rule), checked when its files load: the
   Table is its own, and the columns exist and suit the kind. The rule is read from the loaded manifest, so
   an upgrade needs no migration step and an app that fails to load closes its Tables.
@@ -124,6 +133,11 @@ What the rule takes in, and what stays beside it:
 - **Values compare as text** for places, as a dataset read's do; only plain columns can be mapped.
 - **Cost.** `all` adds nothing to a query. `own` is one indexed comparison, `places` the same `IN` lists
   #1454 measured, `through` one `IN (subquery)`. Roles and places are read once per request.
+
+- **A refusal never names the row.** A refusal also reaches someone who did not ask by id (an import that
+  matches on a column), and an id can say which store a row belongs to.
+- **Every way of saying a rule is logged**: with the Table when it is made, with its definition when it is
+  changed, or on its own.
 
 ## Moving a live instance
 
@@ -138,6 +152,12 @@ What the rule takes in, and what stays beside it:
    one of its Tables without a rule.
 
 ## Deliberately not handled
+
+- Whether a row exists can still be told from "not found" against "refused", as before this change.
+- A rule changed on one server process reaches another only when that one reloads the Table, as every other
+  Table setting does today.
+- A Sub-table held by another Sub-table follows its immediate parent only.
+- A person may write a row at a place that is not theirs and keeps reading it ("a row they wrote is theirs", #1454).
 
 - A rule per operation (read one way, write another): the grant already carries operations.
 - Rules combined with "or": `whole_for` covers the case that came up.

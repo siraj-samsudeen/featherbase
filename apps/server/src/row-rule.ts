@@ -127,15 +127,15 @@ export async function readsConnectedRows(meta: TableMeta, user: string): Promise
   return (await ruleFor(meta, user))?.kind === 'all'
 }
 
-/** What a refusal says when the rule keeps the row from the person. */
-export async function ruleRefusal(meta: TableMeta, row: Record<string, unknown>): Promise<AppError> {
+/** What a refusal says when the rule keeps the row from the person. It never names the row: a refusal also reaches
+ *  someone who did not ask for it by id (an import matching on a column), and an id can say where a row belongs. */
+export async function ruleRefusal(meta: TableMeta, _row: Record<string, unknown>): Promise<AppError> {
   const rule = await rowRuleOf(meta)
-  const which = `${meta.name} ${String(row.row_id ?? '')}`.trim()
   if (!rule) return new AppError('PermissionError', `${meta.name} has no row rule yet, so only a System Manager reads its rows`)
   if (rule.kind === 'administrators') return new AppError('PermissionError', `Only a System Manager reads ${meta.name} rows`)
-  if (rule.kind === 'places') return new AppError('PermissionError', `${which} is outside the places the org chart gives you`)
-  if (rule.kind === 'through') return new AppError('PermissionError', `${which} belongs to a ${referenceTarget(meta, rule.column) ?? rule.column} row you cannot read`)
-  return new AppError('PermissionError', `${which} is not one of your rows`)
+  if (rule.kind === 'places') return new AppError('PermissionError', `This ${meta.name} row is outside the places the org chart gives you`)
+  if (rule.kind === 'through') return new AppError('PermissionError', `This ${meta.name} row belongs to a ${referenceTarget(meta, rule.column) ?? rule.column} row you cannot read`)
+  return new AppError('PermissionError', `This ${meta.name} row is not one of your rows`)
 }
 
 /** A System Manager's own rule for a Table (any Table: the platform's, the instance's, an app's, a connected one), or
@@ -192,7 +192,9 @@ export async function rowRuleReport(): Promise<RowRuleLine[]> {
       table: String(row.name), app: (row.owner_app as string | null) ?? null, rule,
       from: row.row_rule != null ? 'instance' : rule ? 'app' : 'none',
       readers,
-      everyone_reads_whole: rule?.kind === 'all' && readers.some((role) => everyone.has(role)),
+      // whole to everyone: a read grant everyone holds, on a rule that narrows no one or names a role everyone holds
+      everyone_reads_whole: readers.some((role) => everyone.has(role)) && !!rule &&
+        (rule.kind === 'all' || ('whole_for' in rule && (rule.whole_for ?? []).some((role) => everyone.has(role)))),
     })
   }
   return lines

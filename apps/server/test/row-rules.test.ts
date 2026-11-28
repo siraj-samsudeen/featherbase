@@ -13,6 +13,7 @@ import { dropExploreSource, EXPLORE_STORE, exploreSource } from './explore-sourc
 import { discoverPackages } from '../src/runtime-packages'
 import { eventVisibleTo } from '../src/realtime'
 import { getList } from '../src/query'
+import { getDoc, saveDoc } from '../src/document'
 import { runViewingAs } from '../src/view-as-context'
 import { sql } from '../src/db'
 
@@ -242,6 +243,50 @@ describe('#1459 a System Manager sets a Table\'s rule', () => {
     expect(line(STEP.name)).toBeUndefined()
     // the platform's own Tables each have a rule
     expect(lines.filter((l) => !l.table.startsWith('Rr ') && l.app === null && l.rule === null)).toEqual([])
+  })
+})
+
+describe('#1459 a Settings Table\'s one row follows its rule too', () => {
+  const SETTINGS = tableRef('Rr Defaults')
+
+  test('read and saved by whoever is granted with "all"; by no one but a System Manager without a rule', async ({ admin, createUser }) => {
+    await makeTable(admin, { name: SETTINGS.name, kind: 'settings', columns: ['greeting'] })
+    const reader = await createUserWithRole(admin, createUser, { role: ROLE, table: SETTINGS.name, can_read: true, can_write: true })
+    await saveDoc(SETTINGS.name, { greeting: 'hello' }, 'Administrator')
+    expect(await getDoc(SETTINGS.name, SETTINGS.name, reader.user!)).toMatchObject({ greeting: 'hello' })
+    await saveDoc(SETTINGS.name, { greeting: 'hi' }, reader.user!)
+    for (const rule of [null, { kind: 'administrators' }]) {
+      await admin.put(`${SETTINGS.defUrl}/row_rule`, { row_rule: rule })
+      await expect(getDoc(SETTINGS.name, SETTINGS.name, reader.user!)).rejects.toMatchObject({ type: 'PermissionError' })
+      await expect(saveDoc(SETTINGS.name, { greeting: 'mine now' }, reader.user!)).rejects.toMatchObject({ type: 'PermissionError' })
+      await expectRefused(reader.get(SETTINGS.rowUrl(SETTINGS.name)), 403)
+    }
+    expect(await getDoc(SETTINGS.name, SETTINGS.name, 'Administrator')).toMatchObject({ greeting: 'hi' })
+  })
+})
+
+describe('#1459 a refusal and the record of a rule', () => {
+  test('a refusal never names the row it keeps back', async ({ admin, createUser }) => {
+    const { reader } = await world(admin, createUser, { kind: 'own' })
+    const refused = await expectRefused(reader.get(PROJECT.rowUrl('p2')), 403)
+    expect(refused.message).not.toContain('p2')
+  })
+
+  test('a rule said when a Table is made or changed is in the Access Log, as one set on its own is', async ({ admin }) => {
+    const logged = async () => (await sql`select scope from featherbase.access_log where operation = 'set_row_rule' and ref_table = 'Rr Logged' order by created_at`).map((row) => row.scope)
+    await admin.post('/api/table_def', { name: 'Rr Logged', row_rule: { kind: 'own' }, columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.put('/api/table_def/Rr%20Logged', { name: 'Rr Logged', row_rule: { kind: 'all' }, columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.put('/api/table_def/Rr%20Logged/row_rule', { row_rule: null })
+    expect(await logged()).toEqual(['{"kind":"own"}', '{"kind":"all"}', 'cleared'])
+  })
+
+  test('the report counts a narrowed Table everyone reads whole through a role everyone holds', async ({ admin }) => {
+    await makeTable(admin, { name: 'Rr Wide', columns: ['title'], row_rule: { kind: 'own', whole_for: ['All'] } })
+    await makeTable(admin, { name: 'Rr Narrow', columns: ['title'], row_rule: { kind: 'own' } })
+    await grantRole(admin, { role: 'All', table: ['Rr Wide', 'Rr Narrow'], can_read: true })
+    const lines = (await admin.get<{ data: { table: string; everyone_reads_whole: boolean }[] }>('/api/row_rules')).data
+    expect(lines.find((l) => l.table === 'Rr Wide')?.everyone_reads_whole).toBe(true)
+    expect(lines.find((l) => l.table === 'Rr Narrow')?.everyone_reads_whole).toBe(false)
   })
 })
 
