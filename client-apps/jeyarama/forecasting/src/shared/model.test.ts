@@ -7,6 +7,13 @@ const lines = linesFrom({ lines: fixture.forecast_line_month, sales: fixture.sal
 const line = (name: string, category: string, growth: number): Line => ({ ...lines[0], name, category, growth })
 
 describe('the Team Leader model (#1419)', () => {
+  it('reads the other models as the warehouse names them (xgboost, lightgbm)', () => {
+    const others = (fixture.other_model_day as { model: string }[]).map(o => ({ ...o, model: o.model.toLowerCase() }))
+    const lower = linesFrom({ lines: fixture.forecast_line_month, sales: [], plans: [], others } as unknown as CopiedRows, '9001')
+    expect(lower.every(l => l.xgb > 0 && l.lgbm > 0)).toBe(true)
+    expect(lower.map(l => [l.xgb, l.lgbm])).toEqual(lines.map(l => [l.xgb, l.lgbm]))
+  })
+
   it("builds each line's parts so they add up to Feather Forecast", () => {
     expect(lines).toHaveLength(10)
     for (const l of lines) expect(Math.abs(l.fromRecent + l.lift + l.lyg + l.adj - l.fc)).toBeLessThanOrEqual(2)
