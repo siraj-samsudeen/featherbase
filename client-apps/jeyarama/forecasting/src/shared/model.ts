@@ -215,10 +215,24 @@ export const matches = (l: Pick<Line, 'name' | 'category'>, q: string) => {
   const ws = words(q), text = `${l.name} ${l.category}`.toLowerCase()
   return ws.every(w => text.includes(w))
 }
+/** Whether a section matches what is typed (the Sections landing): every word in its name, in one of its Team
+ *  Leaders' names, or in one of its subcategories. */
+export const sectionMatches = (s: { name: string; teamLeaders: string[]; subcategories: string[] }, q: string) => {
+  const ws = words(q)
+  return [s.name, ...s.teamLeaders, ...s.subcategories].some(t => ws.every(w => t.toLowerCase().includes(w)))
+}
 /** The names nearest to something that matches none, by shared three-letter runs (at most `n`). */
 export function nearest<T extends Pick<Line, 'name'>>(lines: T[], q: string, n = 3): T[] {
   const tri = (s: string) => { const t = new Set<string>(), x = `  ${s.toLowerCase()} `; for (let i = 0; i < x.length - 2; i++) t.add(x.slice(i, i + 3)); return t }
   const a = tri(q)
   return lines.map(l => { const b = tri(l.name); let both = 0; a.forEach(x => { if (b.has(x)) both++ }); return [l, both / (a.size + b.size - both)] as const })
     .sort((x, y) => y[1] - x[1]).slice(0, n).map(([l]) => l)
+}
+
+/** A row's contribution among its siblings (Siraj, 28-Nov: "contribution across similar items in each screen"): its
+ *  value over the siblings' total, as a whole %, "<1%" for a sliver above none; "—" with nothing to divide by. */
+export function contribution(value: number, siblingsTotal: number): string {
+  if (!siblingsTotal) return '—'
+  const p = value / siblingsTotal * 100
+  return p > 0 && p < 1 ? '<1%' : `${Math.round(p)}%`
 }

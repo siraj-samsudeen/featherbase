@@ -45,8 +45,12 @@ export function orgOf(store: string): Promise<OrgChart> {
 const sectionOf = (org: OrgChart, code: string | null) => (code ? org.subcategories[code]?.section ?? null : null)
 
 /** One section of a store for the landing page: where it is, who reviews it, and how far the review has got. */
-export interface SectionSummary { floor: string; floorOrder: number; section: string; teamLeaders: string[]; subcategories: number; reviewed: number; fc: number }
-export interface StoreSummary { run: RunRow; stores: string[]; store: string; month: ReturnType<typeof monthOfRun>; cutOff: string; sections: SectionSummary[]; noSection: { subcategories: number; fc: number } }
+export interface SectionSummary { id: string; floor: string; floorOrder: number; section: string; teamLeaders: string[]; subcategories: number; reviewed: number; fc: number
+  /** Its subcategories' names, for the landing's search. */
+  subcategoryNames: string[] }
+export interface StoreSummary { run: RunRow; stores: string[]; store: string
+  /** The org chart's people → their Employee rows, for the Team Leaders' links. */
+  people: Record<string, string>; month: ReturnType<typeof monthOfRun>; cutOff: string; sections: SectionSummary[]; noSection: { subcategories: number; fc: number } }
 
 /** Every section of a store in the newest official Run (the store named, else the Run's largest), for the landing page. */
 export async function loadStore(store?: string | null): Promise<StoreSummary | null> {
@@ -79,12 +83,12 @@ export async function loadStore(store?: string | null): Promise<StoreSummary | n
   for (const r of mine) {
     const fc = Number(r.forecast_value_before_tax), at = org.sections.find(s => s.id === sectionOf(org, r.subcategory_code))
     if (!at) { noSection = { subcategories: noSection.subcategories + 1, fc: noSection.fc + fc }; continue }
-    const s = bySection.get(at.id) ?? { floor: at.floor, floorOrder: at.floorOrder, section: at.name, subcategories: 0, reviewed: 0, fc: 0, teamLeaders: at.teamLeaders }
-    s.subcategories++; s.fc += fc; if (answered.has(r.subcategory_name)) s.reviewed++
+    const s = bySection.get(at.id) ?? { id: at.id, floor: at.floor, floorOrder: at.floorOrder, section: at.name, subcategories: 0, subcategoryNames: [] as string[], reviewed: 0, fc: 0, teamLeaders: at.teamLeaders }
+    s.subcategories++; s.subcategoryNames.push(r.subcategory_name); s.fc += fc; if (answered.has(r.subcategory_name)) s.reviewed++
     bySection.set(at.id, s)
   }
   const sections = [...bySection.values()].sort((a, b) => a.floorOrder - b.floorOrder || a.floor.localeCompare(b.floor) || b.fc - a.fc)
-  return { run: storeRun, stores, store: chosen, month: monthOfRun(storeRun.horizon_from), cutOff: day(storeRun.origin_date), sections, noSection }
+  return { run: storeRun, stores, store: chosen, people: org.people, month: monthOfRun(storeRun.horizon_from), cutOff: day(storeRun.origin_date), sections, noSection }
 }
 
 /** The place name of a store's subcategories that the org chart puts in no section. */

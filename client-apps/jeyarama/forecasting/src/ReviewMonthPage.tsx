@@ -12,6 +12,7 @@ import { combine } from './combine'
 import { nowIST } from './months'
 import { Page, type Ctx, type NumberRow } from './App'
 import { STATUS_TONE, logRow } from './WorkspacePage'
+import { HowBuilt as SharedHowBuilt, type Adds } from './shared/HowBuilt'
 
 type Level = 'Division' | 'Subdivision' | 'Category' | 'Subcategory'
 const LEVELS: { level: Level; key: 'division' | 'subdivision' | 'category' | 'name'; param: string; all: string }[] = [
@@ -475,27 +476,9 @@ function ExplainRows({ ctx, scope, day, off, title, cols, hot, sold, practice, c
 // ---- How it was built: what each kind of evidence adds, for whatever is in view ----
 function HowBuilt({ scoped, scopeLabel, onDays }: { scoped: Sub[]; scopeLabel: string; onDays: () => void }) {
   const fc = sum(scoped, s => s.engine), aop = sum(scoped, s => s.aop ?? 0)
-  const adds = (codes: string[]) => sum(scoped, s => sum(codes, c => { const p = s.parts[c as keyof Sub['parts']]; return p ? p[0] * p[1] : 0 }))
-  const groups = [
-    { name: "Last year's December", what: "Same date and same Christmas position last year, × this year's growth. Weekday-corrected: a Wednesday is compared with a Wednesday.", codes: ['B1', 'B2'], tone: 'bg-action' },
-    { name: 'The seasonal step', what: 'The last 28 days × the usual November-to-December jump from past years.', codes: ['B6'], tone: 'bg-opportunity' },
-    { name: 'The last few weeks', what: 'The last 28 days, the last four same weekdays, and the same date last month.', codes: ['B3', 'B4', 'B5'], tone: 'bg-positive' },
-  ].map(g => ({ ...g, value: adds(g.codes) }))
-  const other = fc - sum(groups, g => g.value)
-  return (
-    <Card><div className="flex max-w-3xl flex-col gap-3 p-4" data-testid="how-built">
-      <div className="text-lg font-bold">How the engine reached {fmtINR(fc)} for {scopeLabel}</div>
-      <div className="text-sm text-ink-muted">AOP {fmtINR(aop)} · <StatusPill tone={aopTone(fc, aop)}>{aop ? signed(pct(fc, aop)) : 'no AOP'}</StatusPill> · {scoped.length} lines</div>
-      <div className="flex h-7 overflow-hidden rounded-control">{groups.filter(g => g.value / (fc || 1) > 0.005).map(g => (
-        <div key={g.name} className={`${g.tone} flex items-center justify-center text-[12px] font-bold text-white`} style={{ width: `${(g.value / (fc || 1)) * 100}%` }}>{Math.round((g.value / (fc || 1)) * 100)}%</div>))}</div>
-      <div className="flex flex-col gap-2.5">{groups.map(g => (
-        <div key={g.name} className="grid grid-cols-[12px_1fr_auto] items-start gap-2.5"><span className={`mt-1 size-3 rounded-sm ${g.tone}`} />
-          <span><b>{g.name}</b><br /><span className="text-[13px] text-ink-muted">{g.what}</span></span><b className="tabular-nums">{fmtINR(g.value)}</b></div>))}
-        {Math.abs(other) >= 1 && <div className="grid grid-cols-[12px_1fr_auto] gap-2.5"><span /><span className="text-[13px] text-ink-muted">December-only fix, rounding and other steps</span><span className="tabular-nums">{other > 0 ? '+' : '−'}{fmtINR(Math.abs(other))}</span></div>}
-      </div>
-      <p className="text-[13px] text-ink-muted">The bases are named for what they read, never by their codes ({BASES.map(b => b.code).join(', ')}). Last year's actual, November's run rate and the share within the category come once the warehouse is wired.</p>
-      <div><Button variant="secondary" onClick={onDays}>Open its days ›</Button></div>
-    </div></Card>
-  )
+  const adds: Adds = Object.fromEntries(BASES.map(b => [b.code, sum(scoped, s => { const p = s.parts[b.code as keyof Sub['parts']]; return p ? p[0] * p[1] : 0 })]))
+  return <SharedHowBuilt fc={fc} adds={adds} onDays={onDays} title={<>How the engine reached {fmtINR(fc)} for {scopeLabel}</>}
+    facts={<>AOP {fmtINR(aop)} · <StatusPill tone={aopTone(fc, aop)}>{aop ? signed(pct(fc, aop)) : 'no AOP'}</StatusPill> · {scoped.length} lines</>}
+    note={<>The bases are named for what they read, never by their codes ({BASES.map(b => b.code).join(', ')}). Last year's actual, November's run rate and the share within the category come once the warehouse is wired.</>} />
 }
 
