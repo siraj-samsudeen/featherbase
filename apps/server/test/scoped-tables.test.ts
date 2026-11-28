@@ -77,6 +77,9 @@ describe('a Table about places', () => {
       expect(ids(await list(reader))).toEqual(['a1', 'a2', 'a3'])
       // the reader's own filters narrow further, never wider
       expect(ids(await list(reader, ANSWER, [['store', '=', 'S1']]))).toEqual(['a3'])
+      // the list's own total counts the same rows
+      const page = await reader.get<{ total: number }>(`/api/table/${encodeURIComponent(ANSWER)}?${new URLSearchParams({ limit_page_length: '1' })}`)
+      expect(page.total).toBe(3)
       // a count is the same rows
       const counted = await reader.post<{ data: { label: string; value: number }[] }>('/api/dashboard/chart', { table: ANSWER, group_by: 'store', filters: [] })
       expect(Object.fromEntries(counted.data.map((c) => [c.label, c.value]))).toEqual({ N1: 2, S1: 1 })
@@ -98,6 +101,19 @@ describe('a Table about places', () => {
     await withPlaces(NORTH_AND_SOUTH_KIDS, async () => {
       const codes = (await reader.get<{ data: { code: string }[] }>(`/api/table/${encodeURIComponent(REASON)}?${new URLSearchParams({ fields: JSON.stringify(['code']) })}`)).data
       expect(codes.map((c) => c.code).sort()).toEqual(['a1-festival', 'a1-stockout'])
+    })
+  })
+
+  test('a comment on a row is only as readable as the row', async ({ admin, createUser }) => {
+    await installed(admin)
+    for (const name of ['a3', 'a4']) await admin.post('/api/save_row', { table: 'Comment', row: { ref_table: ANSWER, ref_name: name, content: `about ${name}` } })
+    // an administrator lets the role read Comments; which ones is the rows' business
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Comment', role: 'Answer Reader', operation: 'read', scope_mode: 'all', column_rule: 'every' } })
+    const reader = await createUser({ roles: ['Answer Reader'] })
+    await withPlaces(NORTH_AND_SOUTH_KIDS, async () => {
+      const comments = (await reader.get<{ data: { ref_name: string }[] }>(`/api/table/Comment?${new URLSearchParams({
+        fields: JSON.stringify(['ref_name']), filters: JSON.stringify([['ref_table', '=', ANSWER]]) })}`)).data
+      expect(comments.map((c) => c.ref_name)).toEqual(['a3'])
     })
   })
 

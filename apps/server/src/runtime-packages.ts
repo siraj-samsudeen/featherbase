@@ -389,6 +389,11 @@ async function assertOnlyScopeProvider(pkg: RuntimePackage) {
     `Only one enabled app may provide people's scope; ${others.map(r => String(r.name)).join(', ')} already does`)
 }
 
+/** #1454: whether an app's files are loaded and serving now (its Tables' place scope can be read). */
+export function isAppLoaded(app: string): boolean {
+  return packages.has(app)
+}
+
 /** #1454: how an active app's Table is narrowed by places (scope filter → column), or null. A read-only copy maps
  *  its dataset's filters (an unscoped one is read whole); one of the app's own Tables its `scopedTables` entry. */
 export function tablePlaceScope(table: string): Readonly<Record<string, string>> | null {

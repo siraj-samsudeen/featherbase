@@ -116,7 +116,8 @@ export async function eventVisibleTo(principal: string, msg: RealtimeEvent): Pro
 // only {table, row_id} — and clients refetch on any of them, so the last
 // refetch shows the current row either way.
 async function deliverChecked(client: Client, msg: RealtimeEvent, data: string): Promise<void> {
-  if ((await eventVisibleTo(client.user.row_id, msg)) && client.socket.readyState === client.socket.OPEN)
+  const { withPlacesMemo } = await import('./place-scope')
+  if ((await withPlacesMemo(() => eventVisibleTo(client.user.row_id, msg))) && client.socket.readyState === client.socket.OPEN)
     client.socket.send(data)
 }
 

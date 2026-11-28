@@ -20,8 +20,9 @@ export const scopedTablesDeclaration = z.array(scopedTableSchema)
 
 export type ScopedTableDeclaration = z.infer<typeof scopedTableSchema>
 
-/** Column types a row cannot be narrowed by. */
-const UNFILTERABLE = new Set(['Sub-table', 'Section Break', 'Column Break', 'JSON', 'Text', 'Long Text', 'Attach', 'Attach Image'])
+/** Column types a row can be narrowed by: values that compare as the same text in SQL and in code (no dates, no
+ *  decimals, whose text forms differ between the two). */
+const FILTERABLE = new Set(['Data', 'Choice', 'Select', 'Int', 'Reference', 'Link'])
 
 /** Checked when the app's files are loaded: each scoped Table is the app's own, and every key and mapped column is
  *  one of its plain columns. */
@@ -32,7 +33,7 @@ export function validateScopedTables(app: string, tables: readonly { name: strin
     if (!table || !declaration.table.startsWith(`${app}.`)) throw new Error(`The scoped Table ${declaration.table} is not one of the app's own Tables`)
     for (const column of [...declaration.keys, ...Object.values(declaration.filters)]) {
       const found = table.columns.find((c) => c.column_name === column)
-      if (!found || UNFILTERABLE.has(found.column_type))
+      if (!found || !FILTERABLE.has(found.column_type))
         throw new Error(`The scoped Table ${declaration.table} cannot be filtered on ${column}: it is not one of its plain columns`)
     }
   }
