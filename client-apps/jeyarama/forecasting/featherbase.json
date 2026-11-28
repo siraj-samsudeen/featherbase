@@ -2528,6 +2528,12 @@
     "Forecast Creator",
     "Forecast Reviewer"
   ],
+  "settings": [
+    {
+      "name": "linked_tables",
+      "required": false
+    }
+  ],
   "datasets": [
     {
       "name": "forecast_run",

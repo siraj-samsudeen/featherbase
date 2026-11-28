@@ -108,6 +108,16 @@
             "name": "marts"
           }
         ]
+      },
+      {
+        "row_id": "warehouse",
+        "engine": "motherduck",
+        "default_schema": "marts_forecasting.main",
+        "databases": [
+          {
+            "name": "marts_forecasting"
+          }
+        ]
       }
     ],
     "Approval Type": [
@@ -187,6 +197,10 @@
           {
             "row_id": "dash.linked_tables",
             "value": "[\"Employee\", \"Job Assignment\", \"Merchandise Assignment\", \"Buyer Section\", \"Buyer Section Subcategory\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site\", \"Plant\", \"Department\", \"Department Section\", \"Cluster\", \"Designation\"]"
+          },
+          {
+            "row_id": "forecasting.linked_tables",
+            "value": "[\"Site\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Job Assignment\", \"Employee\", \"Merchandise Assignment\"]"
           }
         ]
       }
@@ -214,6 +228,10 @@
           {
             "row_id": "dash.linked_tables",
             "value": "[\"Employee\", \"Job Assignment\", \"Merchandise Assignment\", \"Buyer Section\", \"Buyer Section Subcategory\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site\", \"Plant\", \"Department\", \"Department Section\", \"Cluster\", \"Designation\"]"
+          },
+          {
+            "row_id": "forecasting.linked_tables",
+            "value": "[\"Site\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Job Assignment\", \"Employee\", \"Merchandise Assignment\"]"
           }
         ]
       }
@@ -240,6 +258,10 @@
           {
             "row_id": "dash.linked_tables",
             "value": "[\"Employee\", \"Job Assignment\", \"Merchandise Assignment\", \"Buyer Section\", \"Buyer Section Subcategory\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site\", \"Plant\", \"Department\", \"Department Section\", \"Cluster\", \"Designation\"]"
+          },
+          {
+            "row_id": "forecasting.linked_tables",
+            "value": "[\"Site\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Job Assignment\", \"Employee\", \"Merchandise Assignment\"]"
           }
         ]
       }
