@@ -2462,64 +2462,58 @@
       "can_create": true
     },
     {
-      "table": "Comment",
-      "role": "All",
-      "can_read": true,
-      "can_create": true
-    },
-    {
       "table": "forecasting.forecast_run",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.forecast_line_month",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.forecast_line_day",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.sales_reference",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.annual_plan_line",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.other_model_day",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.actuals_day",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.price_band_mix",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.stock_band",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.price_band_top_item",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     },
     {
       "table": "forecasting.item_health",
-      "role": "All",
+      "role": "Forecasting Member",
       "can_read": true
     }
   ],

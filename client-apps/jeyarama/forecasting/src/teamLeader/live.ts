@@ -170,7 +170,9 @@ export async function loadState(run: RunRow, storeCode: string, person: string, 
   const reviews = Object.values(kept)
   const changes = await Promise.all(reviews.filter(r => r.forecast_change).map(r => getRow<ChangeRow>('forecasting.forecast_change', r.forecast_change!)))
   const comments = asked.length ? await listWhere<CommentRow>('Comment', ['ref_name', 'content', 'created_at'],
-    [['ref_table', '=', 'forecasting.forecast_question'], ['ref_name', 'in', asked.map(q => q.row_id)]], 'created_at asc') : []
+    [['ref_table', '=', 'forecasting.forecast_question'], ['ref_name', 'in', asked.map(q => q.row_id)]], 'created_at asc')
+    // a viewer who may not read Comments sees their questions unanswered rather than no page (the grant is a follow-up)
+    .catch(() => [] as CommentRow[]) : []
   const answers: Record<string, Answer> = {}
   for (const r of reviews) {
     const c = changes.find(x => x.row_id === r.forecast_change)
