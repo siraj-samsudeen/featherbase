@@ -59,6 +59,7 @@ describe('the live org chart (#1419)', () => {
     const org = await orgChart(base, 'LKS', '2026-11-28')
     expect(org.sections.map(s => [s.name, s.floor, s.floorOrder, s.teamLeaders])).toEqual([['Girls', 'First Floor', 1, ['Asha']], ['Saree', 'Ground Floor', 0, []]])
     expect(org.storeManagers).toEqual(['Omar'])
+    expect(org.storeManagerIds).toEqual(['E3'])
     expect(org.stores).toEqual({ LKS: 'Lakeside', HLT: 'Hilltop' })
     expect(org.people).toMatchObject({ Asha: 'E1', Omar: 'E3' })
     expect((await orgChart(base, 'LKS', '2026-11-27')).sections[0].teamLeaders).toEqual(['Asha', 'Bina'])
@@ -66,7 +67,8 @@ describe('the live org chart (#1419)', () => {
 
   it("names the buyer and category head, the subcategory's own head over its category's; a merchandise row's Ends On is the first day it no longer applies", async () => {
     const org = await orgChart(base, 'LKS', '2026-11-28')
-    expect(org.subcategories.S1).toMatchObject({ buyer: 'Kavya', categoryHead: 'Ravi' })
+    expect(org.subcategories.S1).toMatchObject({ buyer: 'Kavya', categoryHead: 'Ravi', categoryHeadId: 'E5' })
+    expect(org.subcategories.S2).toMatchObject({ categoryHeadId: 'E6' })
     expect(org.subcategories.S2).toMatchObject({ buyer: null, categoryHead: 'Lena' })
     expect((await orgChart(base, 'LKS', '2026-11-27')).subcategories.S2.buyer).toBe('Lena')
   })

@@ -61,6 +61,16 @@ describe('Needs Your Attention (#1419, approved 28-Nov-2026)', () => {
     expect(f.find(x => x.kind === 'short')!.action).toContain('; MOT Store MOT holds 50 pcs of Item 1 and sold only 0 in 28 days there, so ask for a transfer')
   })
 
+  it("lists the items a transfer was looked for, so a whole store's page reads only those at the other stores, and finds the same transfer with them", () => {
+    // #4935: the first pass has no other stores' rows; the items it asked about are the ones whose rows to read
+    const l = line([band('a', { stock: 10, q28: 28 })]), own = [item('1', { stock_qty: 10, sales_qty_28d: 28, sales_value_before_tax_28d: 2800 }), item('2', { stock_qty: 0 })]
+    const wanted = new Set<string>()
+    expect(needsAttention([l], own, people, DEC, 'S', wanted).some(x => x.kind === 'xin')).toBe(false)
+    expect([...wanted]).toEqual(['1'])
+    const again = needsAttention([l], [...own, at('1', 'MOT', 50, 0)], people, DEC, 'S')
+    expect(again.find(x => x.kind === 'xin')).toEqual(find(l, own, [at('1', 'MOT', 50, 0)]).find(x => x.kind === 'xin'))
+  })
+
   it('names its store and person as records, so the page can link them: the store by its short code, the person by their Employee row', () => {
     const f = find(line([band('a', { stock: 10, q28: 28 })]), [item('1', { stock_qty: 10, sales_qty_28d: 28, sales_value_before_tax_28d: 2800 })], [at('1', 'MOT', 50, 0)])
     const xin = f.find(x => x.kind === 'xin')!

@@ -2,10 +2,11 @@
 // statuses, never a deleted row, a link by email when it names one person, and
 // one ticket for every other account a person uses, closed once it is linked.
 import { afterEach, describe, expect, vi } from 'vitest'
+import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { overrideVariable } from '../src/env'
-import { _setMotherDuckUsersFetch, candidateLine, personWords, listMotherDuckUsers, motherDuckSyncAccount, MotherDuckSyncStop, syncMotherDuckAccounts, type MotherDuckUser } from '../src/motherduck-accounts'
+import { _setMotherDuckUsersFetch, candidateLine, fileReviewTicketsUnderUmbrella, personWords, listMotherDuckUsers, motherDuckSyncAccount, MotherDuckSyncStop, syncMotherDuckAccounts, type MotherDuckUser } from '../src/motherduck-accounts'
 import { makePerson, patchDoc, searchLines } from './fixtures'
 import { resolve } from 'node:path'
 import { discoverPackages } from '../src/runtime-packages'
@@ -204,6 +205,104 @@ describe('#1346: the MotherDuck account sync', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+// #1397: the review tickets sit under one umbrella ticket, which the sync keeps to one.
+describe('#1397: the review tickets under one umbrella', () => {
+  async function ready(admin: TestClient) {
+    overrideVariable('MOTHERDUCK_TOKEN', 'md-read-token')
+    await discoverPackages([resolve('../..', 'example-apps/tickets')])
+    await admin.post('/api/install_app', { name: 'tickets' })
+    await sql`insert into app_setting (row_id, app, setting, value) values ('tickets.support_users', 'tickets', 'support_users', ${JSON.stringify([await motherDuckSyncAccount()])})
+      on conflict (row_id) do update set value = excluded.value`
+    const reviewer = await makePerson({ email: 'reviewer-1397@example.com', full_name: 'Reviewer Person' })
+    await sql`insert into single_value (table_name, field, value) values ('System Settings', 'motherduck_reviewer', ${reviewer})
+      on conflict (table_name, field) do update set value = excluded.value`
+    return reviewer
+  }
+  const umbrellas = () => sql`select t.row_id, t.title, t.ticket_state, t.owner, t.assigned_to from tickets.ticket t
+    join tickets.request r on r.row_id = t.row_id where r.details_json::jsonb ? 'motherduck_umbrella'`
+  const parents = async () => (await sql`select a.username, t.parent_ticket from motherduck_account a join tickets.ticket t on t.row_id = a.review_ticket order by a.username`)
+    .map((r) => [r.username, r.parent_ticket])
+  async function link(admin: TestClient, id: string, person: string) {
+    const row = await admin.get<Record<string, unknown>>(`/api/table/MotherDuck Account/${id}`)
+    await patchDoc(admin, `/api/table/MotherDuck Account/${id}`, { updated_at: row.updated_at, person })
+  }
+
+  test('every ticket the sync raises sits under one umbrella, resolved when none is open and reopened, never a second', async ({ admin }) => {
+    const reviewer = await ready(admin)
+    const asha = await makePerson({ full_name: 'Asha One' })
+    const bala = await makePerson({ full_name: 'Bala Two' })
+    motherduck([[{ id: 'md-a', username: 'asha_one' }, { id: 'md-b', username: 'bala_two' }]])
+    expect((await syncMotherDuckAccounts()).tickets_raised).toHaveLength(2)
+    const [umbrella, ...more] = await umbrellas()
+    expect(more).toEqual([])
+    expect(umbrella).toMatchObject({ title: 'MotherDuck accounts to link to people', ticket_state: 'New', owner: reviewer, assigned_to: reviewer })
+    expect(await parents()).toEqual([['asha_one', umbrella.row_id], ['bala_two', umbrella.row_id]])
+
+    // Both linked: their tickets close, and so does the umbrella.
+    await link(admin, 'md-a', asha)
+    await link(admin, 'md-b', bala)
+    const closing = await syncMotherDuckAccounts()
+    expect(closing).toMatchObject({ tickets_raised: [], ticket_errors: [] })
+    expect(closing.tickets_resolved.sort()).toEqual([...(await sql`select review_ticket from motherduck_account`).map((r) => String(r.review_ticket)), umbrella.row_id].sort())
+    expect((await umbrellas()).map((u) => u.ticket_state)).toEqual(['Resolved'])
+    expect((await syncMotherDuckAccounts()).tickets_resolved).toEqual([])
+
+    // A new account to link: the same umbrella opens again, and the ticket sits under it.
+    motherduck([[{ id: 'md-a', username: 'asha_one' }, { id: 'md-b', username: 'bala_two' }, { id: 'md-c', username: 'chitra_three' }]])
+    expect((await syncMotherDuckAccounts()).tickets_raised).toHaveLength(1)
+    expect((await umbrellas()).map((u) => [u.row_id, u.ticket_state])).toEqual([[umbrella.row_id, 'In progress']])
+    expect((await parents()).at(-1)).toEqual(['chitra_three', umbrella.row_id])
+    expect(await syncMotherDuckAccounts()).toMatchObject({ tickets_raised: [], tickets_resolved: [], ticket_errors: [] })
+    expect(await umbrellas()).toHaveLength(1)
+  })
+
+  // #1463: each review ticket opens the Link MotherDuck accounts screen at its account; the umbrella opens the screen.
+  test('every review ticket and the umbrella link to the Link screen; a later run adds the link to those raised without it, once', async ({ admin }) => {
+    await ready(admin)
+    motherduck([[{ id: 'md-a', username: 'asha_one' }, { id: 'md-b', username: 'bala_two' }]])
+    await syncMotherDuckAccounts()
+    const SCREEN = '/featherbase/admin/link-motherduck-accounts'
+    const links = async () => (await sql`select t.row_id, r.details_json::jsonb -> 'open' as open, r.updated_at from tickets.ticket t
+      join tickets.request r on r.row_id = t.row_id order by t.row_id`).map((r) => ({ ...r }))
+    const [umbrella] = await umbrellas()
+    const byTicket = Object.fromEntries((await sql`select review_ticket, row_id from motherduck_account`).map((r) => [String(r.review_ticket), String(r.row_id)]))
+    for (const l of await links())
+      expect(l.open).toEqual({ label: 'Link in Featherbase', href: l.row_id === umbrella.row_id ? SCREEN : `${SCREEN}?account=${byTicket[String(l.row_id)]}` })
+
+    // As production's tickets were raised: with no link.
+    await sql`update tickets.request set details_json = (details_json::jsonb - 'open')::text`
+    expect((await links()).map((l) => l.open)).toEqual([null, null, null])
+    // No longer Tickets support: the run stops at the first one, saying what to configure, and links none.
+    await sql`update app_setting set value = '[]' where row_id = 'tickets.support_users'`
+    expect((await syncMotherDuckAccounts()).ticket_errors).toEqual([expect.stringMatching(/add it to the Tickets setting support_users/)])
+    expect((await links()).map((l) => l.open)).toEqual([null, null, null])
+    await sql`update app_setting set value = ${JSON.stringify([await motherDuckSyncAccount()])} where row_id = 'tickets.support_users'`
+    expect(await syncMotherDuckAccounts()).toMatchObject({ tickets_raised: [], ticket_errors: [] })
+    const restored = await links()
+    expect(restored.map((l) => (l.open as { href: string }).href).sort()).toEqual([SCREEN, `${SCREEN}?account=md-a`, `${SCREEN}?account=md-b`])
+    // A second run edits nothing.
+    await syncMotherDuckAccounts()
+    expect(await links()).toEqual(restored)
+  })
+
+  test('the owner files review tickets raised before the umbrella under it: a dry run lists them, --apply files them once', async ({ admin }) => {
+    await ready(admin)
+    motherduck([[{ id: 'md-a', username: 'asha_one' }, { id: 'md-b', username: 'bala_two' }]])
+    await syncMotherDuckAccounts()
+    const [umbrella] = await umbrellas()
+    // As production's tickets were raised: under no parent.
+    await sql`update tickets.ticket set parent_ticket = null where parent_ticket = ${umbrella.row_id}`
+    const tickets = (await sql`select review_ticket from motherduck_account order by username`).map((r) => String(r.review_ticket))
+
+    expect(await fileReviewTicketsUnderUmbrella(false)).toEqual({ umbrella: umbrella.row_id, tickets, filed: [], errors: [] })
+    expect(await parents()).toEqual([['asha_one', null], ['bala_two', null]])
+    expect(await fileReviewTicketsUnderUmbrella(true)).toEqual({ umbrella: umbrella.row_id, tickets, filed: tickets, errors: [] })
+    expect(await parents()).toEqual([['asha_one', umbrella.row_id], ['bala_two', umbrella.row_id]])
+    expect(await fileReviewTicketsUnderUmbrella(true)).toEqual({ umbrella: umbrella.row_id, tickets: [], filed: [], errors: [] })
+    expect(await umbrellas()).toHaveLength(1)
   })
 })
 

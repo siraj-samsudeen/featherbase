@@ -630,6 +630,9 @@ export async function installApp(name: string): Promise<InstallResult> {
       // #620 (D4): the app's role suggestions, written once, here.
       const { roleDefaults } = manifest.runtime_manifest as { roleDefaults?: Record<string, string[]> }
       await (await import('./app-role-bindings')).seedRoleBindings(name, roleDefaults, 'Administrator')
+      // #1453: the roles the org chart gives, turned on at install (ships on)
+      const { orgChartRoles } = manifest.runtime_manifest as { orgChartRoles?: string[] }
+      if (orgChartRoles?.length) await (await import('./org-chart-roles')).seedOrgChartRules(name, orgChartRoles, 'Administrator')
       // #629: the app's glossary terms, under the app.
       const glossaryModule = await import('./glossary')
       const { glossary } = manifest.runtime_manifest as { glossary?: Parameters<typeof glossaryModule.syncAppGlossary>[1] }

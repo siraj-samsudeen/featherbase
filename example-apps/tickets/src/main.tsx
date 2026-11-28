@@ -49,6 +49,8 @@ function App() {
   const [session, setSession] = useState<Session | null>(null),
     [tickets, setTickets] = useState<Ticket[]>([]),
     [everything, setEverything] = useState<Ticket[]>([]),
+    // #1397: which parent each sub-ticket sits under; the queue lists only the parent.
+    [under, setUnder] = useState<Record<string, string>>({}),
     [detail, setDetail] = useState<Detail | null>(null)
   // #1001: an emailed link opens its ticket.
   const [selected, setSelected] = useState(() => new URLSearchParams(window.location.search).get('ticket') ?? ''),
@@ -94,7 +96,7 @@ function App() {
     const sequence = ++queueSequence.current
     const timeout = setTimeout(() => {
       setLoading(true)
-      read<{ tickets: Ticket[] }>('queue', {
+      read<{ tickets: Ticket[]; under?: Record<string, string> }>('queue', {
         search,
         kind,
         state: state || (view === 'assigned' ? 'open' : ''),
@@ -104,6 +106,7 @@ function App() {
           if (sequence === queueSequence.current) {
             learnNames((result as { names?: unknown }).names)
             setTickets(result.tickets)
+            setUnder(result.under ?? {})
             setSelected((id) => id || result.tickets[0]?.row_id || '')
           }
         })
@@ -192,13 +195,13 @@ function App() {
   const visible = tickets.filter(
     (ticket) => view !== 'mine' || ticket.owner === userId,
   )
-  // The open ticket is always one the list shows: a filter that hides it
-  // moves to the first ticket shown, or to none.
+  // The open ticket is always one the list shows, or a sub-ticket of one (#1397):
+  // a filter that hides it moves to the first ticket shown, or to none.
   const visibleIds = visible.map((ticket) => ticket.row_id).join(' ')
   useEffect(() => {
     if (loading) return
     setSelected((id) =>
-      visible.some((ticket) => ticket.row_id === id) ? id : (visible[0]?.row_id ?? ''),
+      visible.some((ticket) => ticket.row_id === id || ticket.row_id === under[id]) ? id : (visible[0]?.row_id ?? ''),
     )
   }, [visibleIds, loading])
   // Sidebar counts: one unfiltered queue read, counted here.
@@ -389,8 +392,8 @@ function App() {
             {visible.map((ticket) => (
               <button
                 key={ticket.row_id}
-                className={`ticket${selected === ticket.row_id ? ' selected' : ''}${isDone(ticket) ? ' done' : ''}`}
-                aria-pressed={selected === ticket.row_id}
+                className={`ticket${selected === ticket.row_id || under[selected] === ticket.row_id ? ' selected' : ''}${isDone(ticket) ? ' done' : ''}`}
+                aria-pressed={selected === ticket.row_id || under[selected] === ticket.row_id}
                 onClick={() => {
                   if (!busy) {
                     setSelected(ticket.row_id)
@@ -405,7 +408,10 @@ function App() {
                   <StatePill ticket={ticket} />
                 </span>
                 <span className="ticket-meta">
-                  {[short(ticket.row_id), kindLabel(ticket.kind), ticket.assigned_to ? person(ticket.assigned_to) : 'Unassigned']
+                  {[short(ticket.row_id), kindLabel(ticket.kind), ticket.assigned_to ? person(ticket.assigned_to) : 'Unassigned',
+                    // #1397: a parent counts its sub-tickets; a sub-ticket a search found names its parent.
+                    ...(ticket.sub_tickets ? [`${ticket.sub_tickets.count} ${ticket.sub_tickets.count === 1 ? 'sub-ticket' : 'sub-tickets'}, ${ticket.sub_tickets.open} open`] : []),
+                    ...(ticket.parent_ticket ? [`under ${short(ticket.parent_ticket)}`] : [])]
                     .map((part, i) => <span key={i}>{i > 0 && ' · '}<span className={i === 2 && !ticket.assigned_to ? 'meta-part unassigned' : 'meta-part'}>{part}</span></span>)}
                 </span>
               </button>
@@ -424,6 +430,7 @@ function App() {
                 session={session}
                 mutate={mutate}
                 busy={busy || detailLoading}
+                open={(id) => { setSelected(id); setNotice('') }}
               />
             ) : (
               <div className="empty detail-empty">

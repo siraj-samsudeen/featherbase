@@ -19,7 +19,7 @@ import { ChangeForm } from '../shared/ChangeForm'
 import { Questions } from '../shared/Questions'
 import { LinePanel } from '../shared/LinePanel'
 import { HelpTab } from '../shared/Help'
-import { chainHeader, personIn, type ChainPageProps } from '../shared/chainPage'
+import { chainHeader, type ChainPageProps } from '../shared/chainPage'
 import { linesOf } from '../shared/chainData'
 import type { SortKey } from '../shared/MeasureTable'
 import { behindCounts, cellLines, commonPath, storesBySize, type Metric, type RankBy } from './heads'
@@ -42,15 +42,16 @@ const PIVOT_OPTIONS: { value: Pivot; label: string }[] = [
 ]
 const LEGEND_HINT = 'Click a row to open it; click a subcategory for how Feather Forecast built it.'
 
-export function CategoryHeadReview({ chain, hrefFor, openLine, onOpenLine }: ChainPageProps) {
-  // the category head (?as= picks one) and their merchandise: the subcategory codes at the stores their assignment names
-  const head = personIn(chain, 'Category Head')
+export function CategoryHeadReview({ chain, hrefFor, openLine, onOpenLine, person }: ChainPageProps) {
+  // the category head (the signed-in one, or the one an administrator views as) and their merchandise: the subcategory
+  // codes at the stores their assignment names
+  const head = person
   const all = useMemo(() => (head ? linesOf(head, chain.lines) : []), [head, chain.lines])
   const REGION = [...new Set(all.map(l => l.region))].filter(Boolean).join(' and ')
   const SUBDIVISIONS = [...new Set(all.map(l => l.subdivision))]
   const byId = useMemo(() => new Map(all.map(l => [l.rowId, l])), [all])
   const header = chainHeader(chain, head?.name ?? 'Category Head', 'Category Head')
-  const review = useChainReview(chain.proposals)
+  const review = useChainReview(chain.proposals, { chain, person: header.person, role: 'Category Head' })
   const mine = review.proposals.filter(p => byId.has(p.line))
   const waiting = mine.filter(p => p.state === 'waiting')
   const steps = useMemo(() => new Map([...new Set(all.map(l => l.store))].map(s => [s, storeStepOf(all.filter(l => l.store === s))])), [all])
@@ -215,7 +216,7 @@ export function CategoryHeadReview({ chain, hrefFor, openLine, onOpenLine }: Cha
     { id: 'help', label: 'Help', content: helpTab },
   ]
   return (
-    <ReviewFrame testId="category-head-review" unsaved={chain.real} title={`${SUBDIVISIONS.join(', ')} · ${REGION} · ${header.month.label}`}
+    <ReviewFrame testId="category-head-review" problem={review.problem} title={`${SUBDIVISIONS.join(', ')} · ${REGION} · ${header.month.label}`}
       status={`${header.person} · ${header.role} · ${categories} categories at ${storeCount} stores · sales to ${header.cutOff} · before tax`}
       all={all} scope={scope} views={views} view={screen}
       onView={v => { setScreen(v); setOpen(null); setRankOpen(null); if (v !== 'help') setHelp({ at: null, from: null }) }} />

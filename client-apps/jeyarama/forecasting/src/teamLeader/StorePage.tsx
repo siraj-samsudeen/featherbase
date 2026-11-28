@@ -13,8 +13,10 @@ import { loadStore, type SectionSummary, type StoreSummary } from './live'
 /** Moves within the app, as a link does (App's in-app navigation redraws on popstate). */
 const go = (href: string) => { history.pushState(null, '', href); window.dispatchEvent(new PopStateEvent('popstate')) }
 
-export function StorePage({ store, sectionHref, noSectionHref, onStore }: {
+export function StorePage({ store, sectionHref, noSectionHref, onStore, wholeStoreHref }: {
   store: string | null
+  /** Day Review and Needs Your Attention: the whole store's page, as its Store Manager sees it (#4935). */
+  wholeStoreHref?: (store: string) => string
   sectionHref: (store: string, s: SectionSummary) => string
   noSectionHref: (store: string) => string
   onStore: (store: string) => void
@@ -41,6 +43,7 @@ export function StorePage({ store, sectionHref, noSectionHref, onStore }: {
           {summary.stores.length > 1 && (
             <div className="w-48"><Field label="Store"><Select value={summary.store} onChange={e => onStore(e.target.value)}>
               {summary.stores.map(s => <option key={s} value={s}>{s}</option>)}</Select></Field></div>)}
+          {wholeStoreHref && <a className="text-sm font-medium text-action hover:underline" href={wholeStoreHref(summary.store)} data-testid="whole-store">The whole store</a>}
           {summary.noSection.subcategories > 0 && (
             <a className="text-sm font-medium text-action hover:underline" href={noSectionHref(summary.store)}>
               Subcategories in No Section ({summary.noSection.subcategories} · {inr(summary.noSection.fc)})</a>)}

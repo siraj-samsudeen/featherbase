@@ -20,7 +20,7 @@ import { KINDS } from '../shared/scope'
 import { useChainReview } from '../shared/useChainReview'
 import { nodeWaiting } from '../shared/Proposals'
 import { HelpTab } from '../shared/Help'
-import { chainHeader, personIn, type ChainPageProps } from '../shared/chainPage'
+import { chainHeader, type ChainPageProps } from '../shared/chainPage'
 import type { SortKey, TableRow } from '../shared/MeasureTable'
 import { crumbSteps, focusScope, linesAt, rbLevels, storeProgress, type InsideStore } from './rbModel'
 import { Crumbs, PendingTab, type RbQuestion } from './RbParts'
@@ -38,7 +38,7 @@ const PLURAL: Record<string, string> = { Store: 'Stores', Division: 'Divisions',
 /** What the side pane shows: a child's card (a node one level down) or a subcategory's. */
 type Pane = { kind: 'node'; key: string; title: string; level: string; lines: Line[]; next: Level | null } | { kind: 'line'; l: Line }
 
-export function RbReview({ chain, hrefFor, openLine, onOpenLine }: ChainPageProps) {
+export function RbReview({ chain, hrefFor, openLine, onOpenLine, person, pagesFor }: ChainPageProps) {
   const everyLine = useMemo(() => foldSmall(chain.lines, SMALL_UNDER), [chain.lines])
   const byRow = useMemo(() => new Map(everyLine.map(l => [l.rowId, l])), [everyLine])
   // Kerala first; a link to a Tamil Nadu subcategory opens on Tamil Nadu
@@ -50,8 +50,9 @@ export function RbReview({ chain, hrefFor, openLine, onOpenLine }: ChainPageProp
   })
   /** Everything the page shows: the lines of the region picked. */
   const all = useMemo(() => (region === 'Both' ? everyLine : everyLine.filter(l => l.region === region)), [everyLine, region])
-  const header = chainHeader(chain, personIn(chain, 'Chief Executive')?.name ?? 'RB', 'Chief Executive')
-  const review = useChainReview(chain.proposals)
+  // the Chief Executive from the org chart (ownerOf): the page never opens without one
+  const header = chainHeader(chain, person?.name ?? '', 'Chief Executive')
+  const review = useChainReview(chain.proposals, { chain, person: header.person, role: 'Chief Executive' })
   const [screen, setScreen] = useView(SCREENS)
   const [view, setView] = useState(MANAGER_VIEW)
   const [sort, setSort] = useState<SortKey>('aop')
@@ -62,7 +63,8 @@ export function RbReview({ chain, hrefFor, openLine, onOpenLine }: ChainPageProp
   const [crumb, setCrumb] = useState<string[]>(() => (first ? levels.map(lv => lv.key(first)) : []))
   const [pane, setPaneState] = useState<Pane | null>(first ? { kind: 'line', l: first } : null)
   const [help, setHelp] = useState<{ at: HelpTopic | null; from: string | null }>({ at: null, from: null })
-  const [questions, setQuestions] = useState<RbQuestion[]>(() => chain.proposals.slice(0, 3).flatMap((p, i) => {
+  // the made-up chain's sample questions; a real Run's questions to RB are not written anywhere yet, so none show (#1442)
+  const [questions, setQuestions] = useState<RbQuestion[]>(() => (chain.real ? [] : chain.proposals).slice(0, 3).flatMap((p, i) => {
     const l = byRow.get(p.line)
     return l ? [{ id: i, line: l, by: `${p.by} · Team Leader`, text: QUESTION_TEXTS[i], answer: null }] : []
   }))
@@ -168,9 +170,9 @@ export function RbReview({ chain, hrefFor, openLine, onOpenLine }: ChainPageProp
 
   const regions = [...new Set(everyLine.map(l => l.region))]
   return (
-    <ReviewFrame testId="rb-review" unsaved={chain.real} title={`${region === 'Both' ? regions.join(' and ') : region} · ${header.month.label}`} actions={regionToggle}
+    <ReviewFrame testId="rb-review" problem={review.problem} title={`${region === 'Both' ? regions.join(' and ') : region} · ${header.month.label}`} actions={regionToggle}
       status={`${header.person} · ${header.role} · ${new Set(all.map(l => l.store)).size} stores · sales to ${header.cutOff} · before tax`}
-      all={all} scope={scope} view={screen}
+      all={all} scope={scope} view={screen} links={pagesFor?.({ region: region === 'Both' ? 'Kerala' : region })}
       onView={v => { setScreen(v); setPane(null); if (v !== 'help') setHelp({ at: null, from: null }) }}
       views={[
         { id: 'forecast', label: 'Forecast', content: screen === 'forecast' && <SplitWithPane place={place} pane={paneView}><div data-testid="rb-forecast">{forecast}</div></SplitWithPane> },

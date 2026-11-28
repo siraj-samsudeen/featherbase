@@ -8,6 +8,9 @@ export type Ticket = {
   public_update?: string
   updated_at: string
   owner: string
+  // #1397: the ticket it sits under, and (on a parent's queue row) how many sit under it.
+  parent_ticket?: string | null
+  sub_tickets?: { count: number; open: number }
 }
 export type Session = {
   user: string | { row_id: string; full_name?: string; email?: string }

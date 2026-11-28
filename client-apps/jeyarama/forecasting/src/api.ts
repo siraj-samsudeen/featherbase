@@ -1,4 +1,5 @@
 import { version } from '../package.json'
+import { NO_PLACES } from './scoped'
 
 export class ApiError extends Error {
   constructor(message: string, readonly status?: number) { super(message) }
@@ -18,6 +19,11 @@ async function request<T>(path: string, method = 'GET', body?: unknown): Promise
 /** One of the app's read operations (server.ts reads), as the signed-in person. */
 export async function readOp<T>(name: string, payload: Record<string, unknown> = {}): Promise<T> {
   return (await request<{ result: T }>(`/api/app_reads/forecasting/${encodeURIComponent(name)}`, 'POST', { payload })).result
+}
+
+/** How many rows of a Table hold each value of `field`, among the rows the person may read: one call, however many rows. */
+export async function countBy(table: string, field: string, filters: Filter[]): Promise<{ label: string; value: number }[]> {
+  return (await request<{ data: { label: string; value: number }[] }>('/api/dashboard/chart', 'POST', { table, group_by: field, filters })).data
 }
 
 /** Every row of a Table, page by page. */
@@ -58,6 +64,19 @@ export async function listWhereAll<T>(table: string, fields: string[], filters: 
   for (let i = 0; i < starts.length; i += 8) for (const p of await Promise.all(starts.slice(i, i + 8).map(page))) rows.push(...p.data)
   return rows
 }
+// ---- #1454: the reads scoped by the org chart (server.ts `copy` and `review`, scoped.ts) ------------------------
+
+/** Whether a read was refused because the person may not read Forecasting's data at all. */
+export const refusedAccess = (e: unknown) => (e as { status?: number } | null)?.status === 403 || (e instanceof Error && e.message.includes(NO_PLACES))
+
+/** A read-only copy's rows that the person may see, matching `filters`: the platform keeps them to the person's
+ *  places on the org chart (#1454), on this ordinary Table read. */
+export const listCopy = <T>(table: string, fields: string[], filters: Filter[]): Promise<T[]> => listWhereAll<T>(table, fields, filters)
+/** A review Table's rows (answers, changes, questions, day explanations) the person may see: within their places,
+ *  and the rows they wrote (#1454). `_subTables` is kept for the callers; a Sub-table's rows are read by the parent. */
+export const listReview = <T>(table: string, fields: string[], filters: Filter[], orderBy = 'row_id asc', _subTables: string[] = []): Promise<T[]> =>
+  listWhere<T>(table, fields, filters, orderBy)
+
 /** One row, with its sub-table rows. */
 export async function getRow<T>(table: string, rowId: string): Promise<T> {
   const r = await request<{ data?: T } & T>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(rowId)}`)

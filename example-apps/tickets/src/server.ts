@@ -73,7 +73,7 @@ function validate(table: string, ctx: Validation) {
 }
 const kinds = ['generic', 'access', 'freshness', 'quality', 'report', 'source', 'schema', 'pipeline', 'backfill', REPORT_FEEDBACK]
 // Keys a configured field may never take: they carry the request or its gates.
-const protectedKeys = ['original', 'verification', 'approval', 'fulfillment', 'actor', 'by', 'at', 'owner', 'ticket_state', 'root_cause', 'title', 'kind', 'state']
+const protectedKeys = ['original', 'verification', 'approval', 'fulfillment', 'actor', 'by', 'at', 'owner', 'ticket_state', 'root_cause', 'title', 'kind', 'state', 'open']
 const fieldTypes = ['text', 'long text', 'choice', 'date', 'person', 'link']
 const lines = (value: unknown) => String(value ?? '').split('\n').map(line => line.trim()).filter(Boolean)
 // Instance configuration is edited in the generic Admin UI, not through
@@ -158,7 +158,7 @@ export const destructiveGuards = {
     if (allowed?.operation !== 'remove_rule' || allowed.user !== ctx.user) ctx.reject('Remove a rule from its ticket, with a reason')
   },
 }
-const ticketFields = ['row_id', 'title', 'kind', 'ticket_state', 'assigned_to', 'public_update', 'updated_at', 'owner']
+const ticketFields = ['row_id', 'title', 'kind', 'ticket_state', 'assigned_to', 'public_update', 'updated_at', 'owner', 'parent_ticket']
 const eventFields = ['row_id', 'ticket', 'operation', 'text', 'by', 'at']
 const progressFields = ['row_id', 'ticket', 'text', 'by', 'at']
 function object(ctx: ReadContext, value: unknown): Row {
@@ -335,6 +335,39 @@ async function current(ctx: Context, p: Row, supportOnly = true) {
 async function event(ctx: Context, ticket: Row, operation: string, data: Row) {
   return ctx.documents.create((await place(ctx, ticket.row_id)).event, { ticket: ticket.row_id, operation,
     text: JSON.stringify(data), by: ctx.user, at: new Date().toISOString() })
+}
+/** #1463: a link to where a ticket's work is done, on the same site: a label and a relative /… path. */
+function openLink(ctx: ReadContext, value: unknown): Row {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) ctx.reject('An open link has a label and href only')
+  const link = value as Row
+  if (Object.keys(link).some(key => key !== 'label' && key !== 'href')) ctx.reject('An open link has a label and href only')
+  const label = text(ctx, link.label, 'An open link\'s label')
+  if (label.length > 60) ctx.reject('An open link\'s label is up to 60 characters')
+  // A path on this site only: never a scheme, another host (//host) or a backslash a browser reads as one.
+  if (typeof link.href !== 'string' || !/^\/(?![\/\\])[^\s\\]*$/.test(link.href) || link.href.length > 500)
+    ctx.reject('An open link\'s href must be a relative path on this site, starting with /')
+  return { label, href: link.href }
+}
+/** Takes `open` out of details a caller gave, so the type checks the rest; undefined when not given, null to remove it. */
+function takeLink(ctx: ReadContext, value: unknown): { rest: unknown; link: Row | null | undefined } {
+  if (value === undefined || value === null || typeof value !== 'object' || Array.isArray(value) || !('open' in value)) return { rest: value, link: undefined }
+  const { open, ...rest } = value as Row
+  return { rest, link: open === null ? null : openLink(ctx, open) }
+}
+const withLink = (details: Row, link: Row | null | undefined) => {
+  const { open: _, ...rest } = details
+  return link ? { ...rest, open: link } : rest
+}
+/** #1397: the parent a ticket may sit under, one level deep; `self` is the ticket being re-parented. */
+async function parentFor(ctx: Context, value: unknown, self?: Row): Promise<string> {
+  const id = text(ctx, value, 'Parent ticket')
+  if (self && id === self.row_id) ctx.reject('A ticket cannot be its own parent')
+  const [parent] = await ctx.documents.list('tickets.ticket', { fields: ['row_id', 'parent_ticket'], filters: [['row_id', '=', id]], limit_page_length: 1 })
+  if (!parent) ctx.reject(`No ticket ${id}`)
+  if (parent.parent_ticket) ctx.reject(`${id} is a sub-ticket, and a sub-ticket cannot have sub-tickets`)
+  if (self && (await ctx.documents.list('tickets.ticket', { fields: ['row_id'], filters: [['parent_ticket', '=', String(self.row_id)]], limit_page_length: 1 })).length)
+    ctx.reject(`${String(self.row_id)} has sub-tickets, so it cannot be one`)
+  return id
 }
 async function bump(ctx: Context, ticket: Row, values: Row = {}) {
   return ctx.documents.update('tickets.ticket', { row_id: ticket.row_id, updated_at: ticket.updated_at, ...values })
@@ -527,7 +560,7 @@ async function rulesOf(ctx: ReadContext, ticketId: string) {
 }
 const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
   async create(ctx) {
-    const p = input(ctx, ['title', 'original', 'kind', 'details', 'raiser'])
+    const p = input(ctx, ['title', 'original', 'kind', 'details', 'raiser', 'parent_ticket'])
     // #1193: a System Manager (an agent's service account, say) raises it for someone else.
     const raiser = p.raiser === undefined ? ctx.user : text(ctx, p.raiser, 'Raiser')
     const onBehalf = raiser !== ctx.user
@@ -538,10 +571,13 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     const types = await configuredTypes(ctx)
     const category = kind(ctx, p.kind ?? 'generic', types)
     const type = types.get(category)
-    const structured = type ? await typedDetails(ctx, type, object(ctx, p.details ?? {}))
-      : category === REPORT_FEEDBACK ? reportFeedbackDetails(p.details, ctx.reject) : details(ctx, p.details ?? {})
+    // #1463: an open link is checked on its own; the type checks the rest.
+    const given = takeLink(ctx, p.details)
+    const structured = withLink(type ? await typedDetails(ctx, type, object(ctx, given.rest ?? {}))
+      : category === REPORT_FEEDBACK ? reportFeedbackDetails(given.rest, ctx.reject) : details(ctx, given.rest ?? {}), given.link)
     const assignee = type ? await routed(ctx, type, structured) : null
-    const ticket = await ctx.documents.create('tickets.ticket', { title, owner: raiser, kind: category,
+    const parent = p.parent_ticket === undefined || p.parent_ticket === null ? null : await parentFor(ctx, p.parent_ticket)
+    const ticket = await ctx.documents.create('tickets.ticket', { title, owner: raiser, kind: category, ...(parent ? { parent_ticket: parent } : {}),
       ticket_state: type ? type.states[0] : category === 'access' ? 'Needs verification' : 'New', ...(assignee ? { assigned_to: assignee } : {}) })
     // Access gates' keys belong to private requests only.
     await ctx.documents.create(type?.visibility === 'everyone' ? OPEN.request : PRIVATE.request, { row_id: ticket.row_id, original, details_json: JSON.stringify(structured),
@@ -553,9 +589,16 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     return { ticket }
   },
   async edit(ctx) {
-    const p = input(ctx, ['row_id', 'updated_at', 'title', 'kind', 'details', 'assigned_to', 'public_update', 'state', 'original'])
-    const { ticket, request, structured, support, where } = await current(ctx, p, false)
-    if (!support && ['kind', 'assigned_to', 'public_update', 'state'].some(key => p[key] !== undefined)) ctx.reject('Only support may triage or publish progress')
+    // A copy: the payload is frozen, and the open link is taken out of its details below.
+    const p = { ...input(ctx, ['row_id', 'updated_at', 'title', 'kind', 'details', 'assigned_to', 'public_update', 'state', 'original', 'parent_ticket']) }
+    const { ticket, request, structured: stored, support, where } = await current(ctx, p, false)
+    // #1463: the open link is set or kept apart from the type's own details, which never know it.
+    const { open: kept, ...structured } = stored
+    const given = takeLink(ctx, p.details)
+    const linkChanged = given.link !== undefined
+    if (linkChanged) p.details = Object.keys(given.rest as Row).length ? given.rest : undefined
+    const link = linkChanged ? given.link : (kept as Row | undefined)
+    if (!support && ['kind', 'assigned_to', 'public_update', 'state', 'parent_ticket'].some(key => p[key] !== undefined)) ctx.reject('Only support may triage, file under a parent or publish progress')
     const types = await configuredTypes(ctx)
     const category = p.kind === undefined ? String(ticket.kind) : kind(ctx, p.kind, types, ticket.kind)
     const type = types.get(category)
@@ -575,10 +618,11 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
       if (changed) ctx.reject(`${type.fields.find(f => f.name === changed)!.label} is recorded by an action, not here`)
     }
     const intake = type ? Object.fromEntries(Object.entries(merged).filter(([key]) => !actionFieldNames(type).has(key))) : merged
-    const next = type ? (p.details === undefined && category === ticket.kind ? structured : { ...await typedDetails(ctx, type, intake), ...recorded })
+    const checked = type ? (p.details === undefined && category === ticket.kind ? structured : { ...await typedDetails(ctx, type, intake), ...recorded })
       // #1240: feedback on a report keeps its checked shape whoever edits it, and whatever it was before.
       : category === REPORT_FEEDBACK ? (p.details === undefined && category === ticket.kind ? structured : reportFeedbackDetails(merged, ctx.reject))
       : p.details === undefined ? structured : { ...structured, ...details(ctx, p.details) }
+    const next = withLink(checked, link)
     // Only a configured type moves between states directly, and only among its own.
     if (p.state !== undefined && (!type || !type.states.includes(String(p.state)))) ctx.reject('Choose one of this type\'s states')
     // Never turn an access decision into an ordinary-resolution bypass.
@@ -595,7 +639,7 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
       if (kept) await ctx.documents.update(PRIVATE.request, { row_id: kept.row_id, updated_at: kept.updated_at, original,
         original_history: JSON.stringify([...history_of(kept), { text: kept.original, replaced_by: ctx.user, replaced_at: new Date().toISOString() }]) })
     }
-    if (p.details !== undefined || category !== ticket.kind || reworded) await ctx.documents.update(where.request, {
+    if (p.details !== undefined || linkChanged || category !== ticket.kind || reworded) await ctx.documents.update(where.request, {
       row_id: request.row_id, updated_at: request.updated_at, details_json: JSON.stringify(next), ...wording,
       ...(where.open ? {} : {
         verification_key: recipientChanged ? randomUUID() : request.verification_key,
@@ -603,10 +647,12 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
       }),
     })
     // Every edit is attributed history, including the requester's own scope or recipient change.
-    await event(ctx, ticket, 'edit', { before: structured, details: next, kind: category,
+    await event(ctx, ticket, 'edit', { before: stored, details: next, kind: category,
       ...(reworded ? { original_before: request.original, original } : {}),
-      ...(p.assigned_to !== undefined ? { assigned_to: p.assigned_to } : {}), ...(p.state !== undefined ? { state: p.state } : {}) })
+      ...(p.assigned_to !== undefined ? { assigned_to: p.assigned_to } : {}), ...(p.state !== undefined ? { state: p.state } : {}),
+      ...(p.parent_ticket !== undefined ? { parent_ticket: p.parent_ticket } : {}) })
     const values: Row = { kind: category }
+    if (p.parent_ticket !== undefined) values.parent_ticket = p.parent_ticket === null || p.parent_ticket === '' ? null : await parentFor(ctx, p.parent_ticket, ticket)
     if (p.title !== undefined) values.title = text(ctx, p.title, 'Public summary')
     if (p.assigned_to !== undefined) values.assigned_to = p.assigned_to === null || p.assigned_to === '' ? null : text(ctx, p.assigned_to, 'Assignee')
     if (p.public_update !== undefined) {
@@ -876,13 +922,22 @@ export const reads = {
     const p = input(ctx, ['search', 'kind', 'state', 'assigned_to'])
     let tickets = await all(ctx, 'tickets.ticket', ticketFields)
     const types = await configuredTypes(ctx)
+    // #1397: a parent's row counts its sub-tickets; the sub-tickets themselves are listed only by a search.
+    const subTickets = new Map<string, { count: number; open: number }>()
+    for (const ticket of tickets) if (ticket.parent_ticket) {
+      const counted = subTickets.get(String(ticket.parent_ticket)) ?? { count: 0, open: 0 }
+      subTickets.set(String(ticket.parent_ticket), { count: counted.count + 1, open: counted.open + Number(!isDone(ticket, types)) })
+    }
+    // Which parent each sub-ticket sits under, so a page keeps an opened sub-ticket open under its parent's row.
+    const under = Object.fromEntries(tickets.filter(ticket => ticket.parent_ticket).map(ticket => [String(ticket.row_id), String(ticket.parent_ticket)]))
+    tickets = tickets.flatMap(ticket => ticket.parent_ticket && !p.search ? [] : [subTickets.has(String(ticket.row_id)) ? { ...ticket, sub_tickets: subTickets.get(String(ticket.row_id)) } : ticket])
     for (const [key, column] of [['kind', 'kind'], ['state', 'ticket_state'], ['assigned_to', 'assigned_to']])
       if (p[key]) tickets = tickets.filter(ticket => p[key] === 'open' && key === 'state' ? !isDone(ticket, types) : ticket[column] === p[key])
     if (p.search) {
       const words = text(ctx, p.search, 'Search').toLowerCase().split(/\s+/)
       tickets = tickets.filter(ticket => words.every(word => `${ticket.row_id} ${ticket.title} ${ticket.public_update ?? ''}`.toLowerCase().includes(word)))
     }
-    return { answer: { tickets, count: tickets.length, hasMore: false,
+    return { answer: { tickets, count: tickets.length, hasMore: false, under,
       names: await names(ctx, tickets.map(ticket => ({ owner: ticket.owner, assigned_to: ticket.assigned_to }))) } }
   },
   // #1240: the caller's own open feedback on one report (Dash's "Report an issue"), newest first.
@@ -959,6 +1014,14 @@ export const reads = {
       }
       answer.actions = actions
     }
+    // #1397: its parent, or its sub-tickets, open ones first.
+    if (ticket.parent_ticket) {
+      const [parent] = await ctx.documents.list('tickets.ticket', { fields: ticketFields, filters: [['row_id', '=', String(ticket.parent_ticket)]], limit_page_length: 1 })
+      if (parent) answer.parent = parent
+    }
+    const allTypes = await configuredTypes(ctx)
+    answer.children = (await all(ctx, 'tickets.ticket', ticketFields, [['parent_ticket', '=', id]]))
+      .sort((a, b) => Number(isDone(a, allTypes)) - Number(isDone(b, allTypes)) || String(a.row_id).localeCompare(String(b.row_id)))
     answer.rules = await rulesOf(ctx, id)
     // #1230: everyone who reads the ticket reads the rows it covers; support is told how to switch them on.
     const covered = await coveredRows(ctx, id)

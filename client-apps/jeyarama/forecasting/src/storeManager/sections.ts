@@ -4,6 +4,7 @@ import { hash, type SectionInfo } from '../shared/madeUpChain'
 import { combine, type Group, type Line } from '../shared/model'
 import { SORTERS, type SortKey } from '../shared/MeasureTable'
 import { pathTo, type Level } from '../shared/levels'
+import type { Chain, ChainPerson } from '../shared/chainData'
 
 /** How many of a section's n subcategories its Team Leader has answered; null when the section has no Team Leader.
  *  On the made-up chain a steady sample (the prototype's `answered`); on a real Run what the app holds, none yet,
@@ -57,4 +58,19 @@ export function focusOpen(lines: Line[], levels: Level[], scoped: boolean, few =
   }
   if (scoped && lines.length <= few) for (const l of lines) pathTo(l, levels).forEach(id => open.add(id))
   return open
+}
+
+/** The store the page reviews (#1438): ?store= (its code or name) when it is one of the Store Manager's stores, or for an
+ *  administrator any store; else the Store Manager's own; else (an administrator naming nobody) the store with the
+ *  most subcategories. */
+export function storeOf(chain: Chain, person: ChainPerson | null, admin: boolean, asked: string | null): string {
+  const found = asked ? chain.lines.find(l => l.store === asked || l.storeName === asked) : undefined
+  // an administrator viewing as a Store Manager keeps to that manager's stores, as they would
+  if (found && ((admin && !person) || person?.places.some(x => x.store === found.store))) return found.store
+  const own = person?.places.find(x => chain.lines.some(l => l.store === x.store))
+  if (own) return own.store
+  if (!admin) return person?.places[0]?.store ?? ''
+  const n = new Map<string, number>()
+  for (const l of chain.lines) n.set(l.store, (n.get(l.store) ?? 0) + 1)
+  return [...n.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
 }

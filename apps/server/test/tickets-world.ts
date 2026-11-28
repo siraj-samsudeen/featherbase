@@ -16,10 +16,13 @@ import { grantRole, makeTable } from './fixtures'
 export const TICKETS_DIRECTORY = resolve('../..', 'example-apps/tickets')
 export const TICKETS_VERSION = (JSON.parse(readFileSync(resolve(TICKETS_DIRECTORY, 'package.json'), 'utf8')) as { version: string }).version
 
-/** Today's Tables as they stood before `later` migrations: each relabel undone (#1256). */
-export function tablesBefore<T extends { name: string; label: string }>(tables: T[], later: { operations: { kind: string; table?: string; from?: string }[] }[]): T[] {
-  const relabels = later.flatMap(m => m.operations).filter(op => op.kind === 'relabelTable').reverse()
-  return tables.map(t => relabels.reduce((table, op) => op.table === table.name ? { ...table, label: op.from! } : table, t))
+/** Today's Tables as they stood before `later` migrations: each relabel (#1256) and each added column (#1397) undone. */
+export function tablesBefore<T extends { name: string; label: string; columns?: { column_name: string }[] }>(tables: T[],
+  later: { operations: { kind: string; table?: string; from?: string; column?: { column_name: string } }[] }[]): T[] {
+  const undone = later.flatMap(m => m.operations).filter(op => op.kind === 'relabelTable' || op.kind === 'addColumn').reverse()
+  return tables.map(t => undone.reduce((table, op) => op.table !== table.name ? table
+    : op.kind === 'relabelTable' ? { ...table, label: op.from! }
+    : { ...table, columns: table.columns?.filter(c => c.column_name !== op.column!.column_name) }, t))
 }
 
 /** A client that names the installed Tickets version, as Tickets' own page does. */

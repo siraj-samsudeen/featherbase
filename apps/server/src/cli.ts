@@ -58,6 +58,10 @@
 //                                     link every current staff-roster row before they sign in, and end
 //                                     leavers' links (roster-link.ts, #1157): with no flag a dry run that
 //                                     changes nothing and prints counts only; --apply acts on it
+//   cli motherduck:umbrella [--apply]
+//                                     file the open MotherDuck review tickets that sit under no parent under
+//                                     the one umbrella ticket (motherduck-accounts.ts, #1397): with no flag a
+//                                     dry run that lists them and changes nothing; --apply files them
 //   cli leavers:check [--apply [--accept <n>]]
 //                                     the daily warehouse exit-date check (leaver-check.ts): with no flag a
 //                                     dry run that changes nothing and prints counts only; --apply acts on
@@ -671,6 +675,16 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       io.out(formatRosterLink(run.plan, run))
       break
     }
+    case 'motherduck:umbrella': {
+      const { fileReviewTicketsUnderUmbrella, formatUmbrellaFiling } = await import('./motherduck-accounts')
+      const apply = rest.includes('--apply')
+      if (apply) {
+        const { assertDatabaseEnvironment } = await import('./db-environment')
+        await assertDatabaseEnvironment()
+      }
+      io.out(formatUmbrellaFiling(await fileReviewTicketsUnderUmbrella(apply), apply))
+      break
+    }
     case 'leavers:check': {
       const { formatLeaverPlan, formatSummaryDelivery, planLeaverCheck, runLeaverCheck } = await import('./leaver-check')
       if (!rest.includes('--apply')) {
@@ -694,7 +708,7 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       await cmdConsole(io)
       break
     default:
-      io.out('usage: cli <migrate|seed|install-app|repin-apps|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|migrate:rehearse|leavers:check|roster:link|settings:set|settings:apply|settings:export|settings:variables|settings:compare|mail:test|seed-pack|boot-check|console> [...]')
+      io.out('usage: cli <migrate|seed|install-app|repin-apps|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|migrate:rehearse|leavers:check|roster:link|motherduck:umbrella|settings:set|settings:apply|settings:export|settings:variables|settings:compare|mail:test|seed-pack|boot-check|console> [...]')
       return cmd ? 1 : 0
   }
   return 0

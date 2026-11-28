@@ -49,6 +49,17 @@ uses gets no ticket.
 - **THEN** one ticket asks the reviewer to link it, and once someone sets its
   person, the next sync closes the ticket
 
+### Requirement: The review tickets sit under one umbrella ticket
+
+Every review ticket the sync raises SHALL sit under one umbrella ticket. The sync
+SHALL resolve the umbrella when none of its tickets is open, and reopen that same
+umbrella, never a second, when it raises a new one (#1397).
+
+#### Scenario: One umbrella across runs
+
+- **WHEN** the sync raises tickets on two runs, and every ticket was closed between them
+- **THEN** all of them sit under the same umbrella ticket, which was resolved after the first run's tickets closed and reopened by the second run
+
 ### Requirement: Search finds an account by its username or email
 
 Searching for a MotherDuck username or its email SHALL find the account, shown
@@ -79,3 +90,12 @@ the daily run.
 
 - **WHEN** someone who is not a System Manager asks for the screen's list
 - **THEN** they are refused
+
+### Requirement: A review ticket opens the Link screen
+
+Every review ticket SHALL link to the Link MotherDuck accounts screen at its account, and the umbrella to the screen. A sync SHALL add the link to an open review ticket raised without it, once (#1463).
+
+#### Scenario: A ticket raised before the link
+
+- **WHEN** an open review ticket has no link and the sync runs twice
+- **THEN** the first run adds the link and the second changes nothing

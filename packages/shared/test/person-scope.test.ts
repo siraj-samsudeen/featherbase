@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { personScopeSchema } from '../src/index'
+import { personScopeSchema, placeGroups, rowWithinPlaces } from '../src/index'
 
 const place = {
   label: 'Store 12 / Kids Wear',
@@ -52,4 +52,26 @@ test('a place may carry its reasons, each with a start and end day', () => {
 test('a reason without text, or with a day that is not a day, is not a valid scope', () => {
   for (const reasons of [[{ text: '' }], [{ text: 'Job', since: '6 Aug' }], [{ text: 'Job', until: '2026-13-01' }], [{ text: 'Job', extra: 1 }]])
     expect(personScopeSchema.safeParse([{ ...place, reasons }]).success).toBe(false)
+})
+
+// #1454: the places rule a Table about places is read by, the same in SQL (place-scope.ts) and here.
+const mapping = { store: 'store_code', subcategory: 'subcategory_code' }
+const tl = { label: '9001 / Section: Tops', filters: { store: ['9001'], subcategory: ['000000001'] } }
+const sm = { label: '9002', filters: { store: ['9002'] } }
+
+test('placeGroups/rowWithinPlaces: gives one group a place, mapped to the Table’s columns', () => {
+  expect(placeGroups(mapping, [tl, sm])).toEqual([
+    [{ column: 'store_code', values: ['9001'] }, { column: 'subcategory_code', values: ['000000001'] }],
+    [{ column: 'store_code', values: ['9002'] }],
+  ])
+})
+test('placeGroups/rowWithinPlaces: drops a place naming a filter the Table does not map, and one naming none (fail closed)', () => {
+  expect(placeGroups(mapping, [{ label: 'odd', filters: { store: ['9001'], line: ['L1'] } }, { label: 'empty', filters: {} }])).toEqual([])
+})
+test('placeGroups/rowWithinPlaces: keeps a row only when one place holds every mapped value, compared as text', () => {
+  expect(rowWithinPlaces(mapping, [tl], { store_code: '9001', subcategory_code: '000000001' })).toBe(true)
+  expect(rowWithinPlaces(mapping, [tl], { store_code: '9001', subcategory_code: '000000004' })).toBe(false)
+  expect(rowWithinPlaces(mapping, [tl], { store_code: '9001', subcategory_code: null })).toBe(false)
+  expect(rowWithinPlaces(mapping, [sm], { store_code: 9002, subcategory_code: null })).toBe(true)
+  expect(rowWithinPlaces(mapping, [], { store_code: '9001' })).toBe(false)
 })
